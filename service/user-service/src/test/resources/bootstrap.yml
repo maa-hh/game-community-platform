@@ -1,0 +1,9 @@
+spring:
+  cloud:
+    nacos:
+      config:
+        enabled: false
+      discovery:
+        enabled: false
+    sentinel:
+      enabled: false

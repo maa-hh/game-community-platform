@@ -1,0 +1,100 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: gateway
+  ai:
+    dashscope:
+      api-key: sk-fdc61462aa6c4a4c83e33b0125d4fc8d
+  data:
+    redis:
+      host: localhost
+      port: ${REDIS_PORT:6380}
+      database: 0
+      timeout: 5000ms
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+      config:
+        enabled: false
+        import-check:
+          enabled: false
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+      routes:
+        - id: user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/user/**
+        - id: content-service
+          uri: lb://content-service
+          predicates:
+            - Path=/article/**,/category/**,/file/**
+        - id: game-account-service
+          uri: lb://game-account-service
+          predicates:
+            - Path=/game-account/**
+        - id: social-service
+          uri: lb://social-service
+          predicates:
+            - Path=/social/**,/report/**
+        - id: notification-service
+          uri: lb://notification-service
+          predicates:
+            - Path=/notification/**
+        - id: shop-service
+          uri: lb://shop-service
+          predicates:
+            - Path=/shop/**,/api/shop/**
+        - id: recommend-service
+          uri: lb://recommend-service
+          predicates:
+            - Path=/hot-article/**
+        - id: search-service
+          uri: lb://search-service
+          predicates:
+            - Path=/search/**
+        - id: ai-agent-service
+          uri: lb://ai-agent-service
+          predicates:
+            - Path=/ai/**
+        - id: audit-service
+          uri: lb://audit-service
+          predicates:
+            - Path=/audit/**
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowed-origin-patterns: '*'
+            allowed-methods: '*'
+            allowed-headers: '*'
+            allow-credentials: true
+            max-age: 3600
+    sentinel:
+      transport:
+        dashboard: localhost:8859
+      eager: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: '*'
+  endpoint:
+    health:
+      show-details: always
+
+gateway:
+  sentinel:
+    user-service-qps: 50
+    user-service-degrade-exception-ratio: 0.5
+    user-service-degrade-slow-rt-ms: 3000
+    user-service-degrade-slow-ratio: 0.6
+    user-service-degrade-min-request-amount: 20
+    user-service-degrade-stat-interval-ms: 10000
+    user-service-degrade-time-window-seconds: 10

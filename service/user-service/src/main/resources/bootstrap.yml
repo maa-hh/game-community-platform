@@ -1,0 +1,9 @@
+spring:
+  application:
+    name: user-service
+  cloud:
+    nacos:
+      config:
+        enabled: ${NACOS_CONFIG_ENABLED:true}
+        server-addr: localhost:8848
+        file-extension: yml

@@ -1,0 +1,26 @@
+ai-agent:
+  embedding-endpoint: https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings
+  chat-endpoint: https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
+  embedding-model: ${DASHSCOPE_EMBEDDING_MODEL:text-embedding-v4}
+  chat-model: ${DASHSCOPE_CHAT_MODEL:qwen-plus}
+  knowledge-index: ai_knowledge_segment
+  retrieval-top-k: 6
+  retrieval-candidate-k: 12
+  segment-target-length: 420
+  segment-overlap: 60
+  memory-ttl-hours: 72
+  max-rounds: 10
+
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: '*'
