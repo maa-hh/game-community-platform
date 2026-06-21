@@ -1,0 +1,9 @@
+spring:
+  application:
+    name: gateway
+  cloud:
+    nacos:
+      config:
+        enabled: false
+        import-check:
+          enabled: false

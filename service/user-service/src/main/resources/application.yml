@@ -1,0 +1,69 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: user-service
+  ai:
+    dashscope:
+      api-key: sk-fdc61462aa6c4a4c83e33b0125d4fc8d
+      chat:
+        options:
+          model: ${DASHSCOPE_CHAT_MODEL:qwen-plus}
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3307/game_community?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false
+    username: root
+    password: root123
+  data:
+    redis:
+      host: localhost
+      port: ${REDIS_PORT:6380}
+      database: 0
+      timeout: 5000ms
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+      config:
+        server-addr: localhost:8848
+        file-extension: yml
+
+minio:
+  endpoint: http://localhost:9000
+  public-endpoint: ${MINIO_PUBLIC_ENDPOINT:http://localhost:9000}
+  accessKey: minioadmin
+  secretKey: minioadmin123
+  public-bucket-name: ${MINIO_PUBLIC_BUCKET_NAME:game-community-public}
+  private-bucket-name: ${MINIO_PRIVATE_BUCKET_NAME:game-community-private}
+  public-file-prefix: ${MINIO_PUBLIC_FILE_PREFIX:user-files/public}
+  private-file-prefix: ${MINIO_PRIVATE_FILE_PREFIX:user-files/pending}
+  presigned-expire-seconds: ${MINIO_PRESIGNED_EXPIRE_SECONDS:900}
+
+audit:
+  async:
+    core-pool-size: ${AUDIT_ASYNC_CORE_POOL_SIZE:2}
+    max-pool-size: ${AUDIT_ASYNC_MAX_POOL_SIZE:4}
+    queue-capacity: ${AUDIT_ASYNC_QUEUE_CAPACITY:200}
+    keep-alive-seconds: ${AUDIT_ASYNC_KEEP_ALIVE_SECONDS:60}
+    thread-name-prefix: ${AUDIT_ASYNC_THREAD_NAME_PREFIX:audit-}
+  dashscope:
+    text-model: ${AUDIT_DASHSCOPE_TEXT_MODEL:qwen-plus}
+    image-model: ${AUDIT_DASHSCOPE_IMAGE_MODEL:qwen3-vl-plus}
+    fail-open-on-unavailable: ${AUDIT_DASHSCOPE_FAIL_OPEN_ON_UNAVAILABLE:false}
+
+mybatis-plus:
+  mapper-locations: classpath*:mapper/*.xml
+  type-aliases-package: com.game.community.model.entity
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+      id-type: auto
+
+logging:
+  level:
+    com.game.community: debug

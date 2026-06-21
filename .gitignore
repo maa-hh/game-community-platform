@@ -1,0 +1,63 @@
+### Java / Maven ###
+HELP.md
+target/
+!.mvn/wrapper/maven-wrapper.properties
+!**/src/main/**/target/
+!**/src/test/**/target/
+*.jar
+*.class
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+
+### Frontend ###
+node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/package-lock.json
+
+### Logs ###
+*.log
+logs/
+
+### Tools / Binaries ###
+.tools/
+*.exe
+
+### Environment / Secrets ###
+.env
+.env.*
+!.env.example
+
+### OS ###
+.DS_Store
+Thumbs.db
+
+### Misc ###
+agent.md
