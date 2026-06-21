@@ -52,8 +52,10 @@ logs/
 
 ### Environment / Secrets ###
 .env
-.env.*
+.env.local
+.env.*.local
 !.env.example
+!.env.development
 
 ### OS ###
 .DS_Store
