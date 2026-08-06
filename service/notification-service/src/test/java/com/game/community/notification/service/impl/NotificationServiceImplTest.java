@@ -12,6 +12,8 @@ import com.game.community.model.vo.notification.NotificationSummaryVO;
 import com.game.community.notification.mapper.NotificationMessageMapper;
 import com.game.community.notification.mapper.NotificationUserStateMapper;
 import com.game.community.notification.service.SseService;
+import com.game.community.feign.ContentFeignClient;
+import com.game.community.feign.UserFeignClient;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -41,6 +43,12 @@ class NotificationServiceImplTest {
     @Mock
     private SseService sseService;
 
+    @Mock
+    private UserFeignClient userFeignClient;
+
+    @Mock
+    private ContentFeignClient contentFeignClient;
+
     private NotificationServiceImpl notificationService;
 
     @BeforeEach
@@ -48,9 +56,12 @@ class NotificationServiceImplTest {
         MapperBuilderAssistant assistant = new MapperBuilderAssistant(new MybatisConfiguration(), "");
         TableInfoHelper.initTableInfo(assistant, NotificationMessage.class);
         TableInfoHelper.initTableInfo(assistant, NotificationUserState.class);
-        notificationService = new NotificationServiceImpl(notificationMessageMapper, notificationUserStateMapper, sseService);
-        when(notificationUserStateMapper.selectCount(any())).thenReturn(1L);
-        when(notificationUserStateMapper.selectOne(any())).thenReturn(buildState(9L, 2L, 0));
+        notificationService = new NotificationServiceImpl(
+                notificationMessageMapper,
+                notificationUserStateMapper,
+                sseService,
+                userFeignClient,
+                contentFeignClient);
     }
 
     @Test
@@ -66,7 +77,8 @@ class NotificationServiceImplTest {
         event.setRouteType(NotificationConstants.RouteType.ARTICLE);
         event.setOccurredAt(LocalDateTime.now());
 
-        when(notificationUserStateMapper.selectOne(any())).thenReturn(buildState(9L, 3L, 0));
+        when(notificationUserStateMapper.selectByUserIdForUpdate(any())).thenReturn(buildState(9L, 2L, 0));
+        when(notificationMessageMapper.insertIgnore(any())).thenReturn(1);
 
         NotificationMessageVO result = notificationService.consumeNotificationEvent(event);
 
@@ -75,7 +87,7 @@ class NotificationServiceImplTest {
         assertThat(result.getPreviewText()).isEqualTo("alice 评论了你的帖子");
 
         ArgumentCaptor<NotificationMessage> messageCaptor = ArgumentCaptor.forClass(NotificationMessage.class);
-        verify(notificationMessageMapper).insert(messageCaptor.capture());
+        verify(notificationMessageMapper).insertIgnore(messageCaptor.capture());
         NotificationMessage inserted = messageCaptor.getValue();
         assertThat(inserted.getUserId()).isEqualTo(9L);
         assertThat(inserted.getActorUsername()).isEqualTo("alice");
@@ -94,12 +106,12 @@ class NotificationServiceImplTest {
         event.setRecipientUserId(6L);
         event.setOccurredAt(LocalDateTime.now());
 
-        when(notificationUserStateMapper.selectOne(any())).thenReturn(buildState(6L, 2L, 1));
+        when(notificationUserStateMapper.selectByUserIdForUpdate(any())).thenReturn(buildState(6L, 2L, 1));
 
         NotificationMessageVO result = notificationService.consumeNotificationEvent(event);
 
         assertThat(result).isNull();
-        verify(notificationMessageMapper, never()).insert(any(NotificationMessage.class));
+        verify(notificationMessageMapper, never()).insertIgnore(any(NotificationMessage.class));
         verify(notificationUserStateMapper).update(eq(null), any(LambdaUpdateWrapper.class));
         verify(sseService).sendFeedUnread(6L, new NotificationSummaryVO(2L, true));
         verify(sseService, never()).sendNotification(eq(6L), any(), any());
@@ -107,7 +119,7 @@ class NotificationServiceImplTest {
 
     @Test
     void markAllAsReadShouldResetUnreadCountAndPushSummary() {
-        when(notificationUserStateMapper.selectOne(any())).thenReturn(buildState(11L, 0L, 1));
+        when(notificationUserStateMapper.selectByUserIdForUpdate(any())).thenReturn(buildState(11L, 0L, 1));
 
         NotificationSummaryVO summary = notificationService.markAllAsRead(11L);
 

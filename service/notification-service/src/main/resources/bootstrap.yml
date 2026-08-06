@@ -1,59 +1,9 @@
-server:
-  port: 8092
-
 spring:
   application:
     name: notification-service
-  ai:
-    dashscope:
-      api-key: sk-fdc61462aa6c4a4c83e33b0125d4fc8d
-      chat:
-        options:
-          model: ${DASHSCOPE_CHAT_MODEL:qwen-plus}
   cloud:
     nacos:
-      discovery:
-        enabled: ${NACOS_DISCOVERY_ENABLED:true}
-        server-addr: localhost:8848
       config:
         enabled: ${NACOS_CONFIG_ENABLED:false}
-        server-addr: localhost:8848
-    sentinel:
-      eager: true
-  datasource:
-    driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:3307/game_community?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
-    username: root
-    password: root123
-  data:
-    redis:
-      host: localhost
-      port: ${REDIS_PORT:6380}
-  kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9093}
-    consumer:
-      group-id: notification-service-group
-      auto-offset-reset: earliest
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-      properties:
-        spring.json.trusted.packages: com.game.community.model.message
-
-mybatis-plus:
-  mapper-locations: classpath*:mapper/*.xml
-  type-aliases-package: com.game.community.model.entity
-  configuration:
-    map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
-  global-config:
-    db-config:
-      id-type: auto
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: '*'
-  endpoint:
-    health:
-      show-details: always
+        server-addr: ${NACOS_ADDR:localhost:8848}
+        file-extension: yml

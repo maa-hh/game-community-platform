@@ -6,9 +6,9 @@ import com.game.community.model.vo.shop.ShopItemVO;
 
 public interface ShopItemService {
 
-    PageResult<ShopItemVO> pageItems(Long page, Long size, Integer productType, Integer status);
+    PageResult<ShopItemVO> pageItems(Long userId, Long page, Long size, Integer status);
 
-    ShopItemVO getItem(Long itemId);
+    ShopItemVO getItem(Long userId, Long itemId);
 
     ShopItemVO saveItem(SaveShopItemDTO dto);
 

@@ -4,13 +4,18 @@ import lombok.Data;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 public class HotArticleVO implements Serializable {
 
     private Long id;
 
-    private Long userId;
+    private String publicId;
+
+    private Integer rank;
+
+    private Long authorAccountId;
 
     private String title;
 
@@ -18,9 +23,23 @@ public class HotArticleVO implements Serializable {
 
     private String coverUrl;
 
+    private Integer postType;
+
+    private String refArticleId;
+
+    private String videoUrl;
+
     private Long categoryId;
 
+    private List<Long> categoryIds;
+
     private String categoryName;
+
+    private List<String> categoryNames;
+
+    private String boardType;
+
+    private String periodKey;
 
     private String authorName;
 

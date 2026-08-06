@@ -17,6 +17,10 @@ public class NotificationMessage implements Serializable {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    private String eventId;
+
+    private String aggregateKey;
+
     private Long userId;
 
     private Integer eventType;
@@ -46,6 +50,8 @@ public class NotificationMessage implements Serializable {
     private Integer readStatus;
 
     private LocalDateTime readTime;
+
+    private LocalDateTime occurredAt;
 
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;

@@ -1,6 +1,6 @@
 package com.game.community.model.vo.social;
 
-import com.game.community.model.entity.article.Article;
+import com.game.community.model.vo.article.ArticleListVO;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -11,7 +11,9 @@ public class BrowseHistoryVO implements Serializable {
 
     private Long articleId;
 
-    private Article article;
+    private String articlePublicId;
+
+    private ArticleListVO article;
 
     private LocalDateTime browseTime;
 }

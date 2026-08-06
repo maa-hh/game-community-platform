@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestHeader;
 
 import java.util.List;
 
@@ -22,7 +23,8 @@ public interface SocialFeignClient {
     @PostMapping("/feed/publish")
     Result<Void> publishArticleToFollowers(@RequestParam("authorId") Long authorId,
                                            @RequestParam("articleId") Long articleId,
-                                           @RequestParam("publishedTime") String publishedTime);
+                                           @RequestParam("publishedTime") String publishedTime,
+                                           @RequestHeader("X-Internal-Token") String internalToken);
 
     @GetMapping("/comments/{commentId}")
     Result<CommentVO> getCommentDetail(@PathVariable("commentId") Long commentId);
@@ -41,4 +43,8 @@ public interface SocialFeignClient {
                                    @RequestParam("status") Integer status,
                                    @RequestParam("handlerId") Long handlerId,
                                    @RequestParam(value = "handleRemark", required = false) String handleRemark);
+
+    @GetMapping("/block/has-relation")
+    Result<Boolean> hasBlackRelation(@RequestParam("viewerId") Long viewerId,
+                                     @RequestParam("targetUserId") Long targetUserId);
 }

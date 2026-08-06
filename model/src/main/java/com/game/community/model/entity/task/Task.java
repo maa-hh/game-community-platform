@@ -58,6 +58,12 @@ public class Task implements Serializable {
 
     private Integer queued;
 
+    /** 当前执行租约令牌；只有持有令牌的 worker 才能完成/失败任务。 */
+    private String leaseToken;
+
+    /** 当前执行租约到期时间。 */
+    private LocalDateTime leaseExpireTime;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 

@@ -16,20 +16,20 @@ public class UserContex implements Serializable {
 
     private Integer type;
 
-    private String gameAccount;
+    private String steamAccount;
 
     private String sessionId;
 
-    public UserContex(Long userId, Integer type, String gameAccount) {
+    public UserContex(Long userId, Integer type, String steamAccount) {
         this.userId = userId;
         this.type = type;
-        this.gameAccount = gameAccount;
+        this.steamAccount = steamAccount;
     }
 
-    public UserContex(Long userId, Integer type, String gameAccount, String sessionId) {
+    public UserContex(Long userId, Integer type, String steamAccount, String sessionId) {
         this.userId = userId;
         this.type = type;
-        this.gameAccount = gameAccount;
+        this.steamAccount = steamAccount;
         this.sessionId = sessionId;
     }
 }

@@ -12,4 +12,13 @@ public class SuggestDocument implements Serializable {
     private String suggest;
 
     private String suggestNgram;
+
+    /** 对应 t_suggest_term.id */
+    private Long termId;
+
+    private Integer weight;
+
+    private String sourceType;
+
+    private Long sourceArticleId;
 }

@@ -1,6 +1,6 @@
 package com.game.community.content.schedule;
 
-import com.game.community.content.service.impl.TaskServiceImpl;
+import com.game.community.content.service.TaskService;
 import com.game.community.model.entity.task.Task;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,7 +22,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class TaskScheduler1 {
 
-    private final TaskServiceImpl taskService;
+    private final TaskService taskService;
 
     /**
      * 每秒钟执行一次，批量获取任务并并发执行

@@ -1,0 +1,23 @@
+package com.game.community.steam.config;
+
+import lombok.Data;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
+
+@Data
+@Component
+@ConfigurationProperties(prefix = "steam")
+public class SteamProperties {
+
+    private String webApiKey = "";
+
+    private String openidRealm = "http://localhost:8080";
+
+    private String openidReturnTo = "http://localhost:8080/steam/callback";
+
+    private String apiLang = "schinese";
+
+    private String apiCc = "cn";
+
+    private String frontendRedirect = "http://localhost:3000/profile";
+}

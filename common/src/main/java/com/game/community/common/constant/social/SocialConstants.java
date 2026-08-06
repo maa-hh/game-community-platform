@@ -28,6 +28,7 @@ public class SocialConstants {
         public static final int COMMENT = 2;
         public static final int REPLY = 3;
         public static final int USER = 4;
+        public static final int DANMAKU = 5;
 
         private ReportTargetType() {
         }
@@ -46,6 +47,7 @@ public class SocialConstants {
     public static class FeedSourceType {
         public static final int PUBLISH_PUSH = 1;
         public static final int FOLLOW_COMPENSATION = 2;
+        public static final int SELF = 3;
 
         private FeedSourceType() {
         }

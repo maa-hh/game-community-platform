@@ -2,6 +2,7 @@ package com.game.community.utils.audit;
 
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.SpringBootConfiguration;
@@ -17,15 +18,17 @@ import java.io.ByteArrayOutputStream;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
+@EnabledIfEnvironmentVariable(named = "DASHSCOPE_API_KEY", matches = ".+")
 @SpringBootTest(classes = DashScopeAuditClientIntegrationTest.TestApp.class)
 @TestPropertySource(properties = {
-        "spring.ai.dashscope.api-key=${DASHSCOPE_API_KEY:}",
+        "audit.mode=llm",
+        "spring.ai.dashscope.api-key=${DASHSCOPE_API_KEY}",
         "spring.ai.dashscope.chat.options.model=qwen-plus",
         "audit.dashscope.text-model=qwen-plus",
         "audit.dashscope.image-model=qwen3-vl-plus",
         "audit.dashscope.fail-open-on-unavailable=false",
         "spring.main.web-application-type=none",
-        "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration,org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration,org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchDataAutoConfiguration,org.springframework.boot.autoconfigure.elasticsearch.ElasticsearchClientAutoConfiguration,org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchRepositoriesAutoConfiguration"
+        "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration,org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration,org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchDataAutoConfiguration,org.springframework.boot.autoconfigure.elasticsearch.ElasticsearchClientAutoConfiguration,org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchRepositoriesAutoConfiguration,com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAgentAutoConfiguration"
 })
 class DashScopeAuditClientIntegrationTest {
 
@@ -40,9 +43,10 @@ class DashScopeAuditClientIntegrationTest {
         AuditResult result = auditClient.auditText("这是一段正常的游戏社区自我介绍，今天心情很好，准备分享一下攻略。");
 
         assertNotNull(result);
+        assertNotNull(result.getScore());
         assertFalse("内容审核服务暂不可用".equals(result.getReason()), "文本审核未真正打通 DashScope");
-        System.out.printf("TEXT_AUDIT pass=%s reason=%s durationMs=%s totalTokens=%s%n",
-                result.isPass(), result.getReason(), result.getDurationMs(), result.getTotalTokens());
+        System.out.printf("TEXT_AUDIT score=%s pass=%s reason=%s durationMs=%s totalTokens=%s%n",
+                result.getScore(), result.isPass(), result.getReason(), result.getDurationMs(), result.getTotalTokens());
     }
 
     @Test
@@ -54,9 +58,10 @@ class DashScopeAuditClientIntegrationTest {
         AuditResult result = auditClient.auditImage(imageBytes, "image/png");
 
         assertNotNull(result);
+        assertNotNull(result.getScore());
         assertFalse("图片审核服务暂不可用".equals(result.getReason()), "图片审核未真正打通 DashScope");
-        System.out.printf("IMAGE_AUDIT pass=%s reason=%s durationMs=%s totalTokens=%s%n",
-                result.isPass(), result.getReason(), result.getDurationMs(), result.getTotalTokens());
+        System.out.printf("IMAGE_AUDIT score=%s pass=%s reason=%s durationMs=%s totalTokens=%s%n",
+                result.getScore(), result.isPass(), result.getReason(), result.getDurationMs(), result.getTotalTokens());
     }
 
     @Test
@@ -67,9 +72,10 @@ class DashScopeAuditClientIntegrationTest {
         AuditResult result = auditClient.auditImageUrl("https://raw.githubusercontent.com/github/explore/main/topics/java/java.png");
 
         assertNotNull(result);
+        assertNotNull(result.getScore());
         assertFalse("图片审核服务暂不可用".equals(result.getReason()), "图片 URL 审核未真正打通 DashScope");
-        System.out.printf("IMAGE_URL_AUDIT pass=%s reason=%s durationMs=%s totalTokens=%s%n",
-                result.isPass(), result.getReason(), result.getDurationMs(), result.getTotalTokens());
+        System.out.printf("IMAGE_URL_AUDIT score=%s pass=%s reason=%s durationMs=%s totalTokens=%s%n",
+                result.getScore(), result.isPass(), result.getReason(), result.getDurationMs(), result.getTotalTokens());
     }
 
     private byte[] buildSampleImage() throws Exception {

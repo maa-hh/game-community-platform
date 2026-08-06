@@ -41,6 +41,12 @@ public class SentinelGatewayConfig {
     @Value("${gateway.sentinel.user-service-qps:50}")
     private double userServiceQps;
 
+    @Value("${gateway.sentinel.steam-service-qps:100}")
+    private double steamServiceQps;
+
+    @Value("${gateway.sentinel.shop-service-qps:200}")
+    private double shopServiceQps;
+
     @Value("${gateway.sentinel.user-service-degrade-exception-ratio:0.5}")
     private double userServiceDegradeExceptionRatio;
 
@@ -85,6 +91,16 @@ public class SentinelGatewayConfig {
                 .setGrade(RuleConstant.FLOW_GRADE_QPS)
                 .setCount(userServiceQps)
                 .setIntervalSec(1));
+        rules.add(new GatewayFlowRule("steam-service")
+                .setResourceMode(SentinelGatewayConstants.RESOURCE_MODE_ROUTE_ID)
+                .setGrade(RuleConstant.FLOW_GRADE_QPS)
+                .setCount(steamServiceQps)
+                .setIntervalSec(1));
+        rules.add(new GatewayFlowRule("shop-service")
+                .setResourceMode(SentinelGatewayConstants.RESOURCE_MODE_ROUTE_ID)
+                .setGrade(RuleConstant.FLOW_GRADE_QPS)
+                .setCount(shopServiceQps)
+                .setIntervalSec(1));
         GatewayRuleManager.loadRules(rules);
         DegradeRuleManager.loadRules(buildDegradeRules());
 
@@ -100,6 +116,19 @@ public class SentinelGatewayConfig {
         rules.add(new DegradeRule("user-service")
                 .setGrade(RuleConstant.DEGRADE_GRADE_EXCEPTION_RATIO)
                 .setCount(userServiceDegradeExceptionRatio)
+                .setMinRequestAmount(userServiceDegradeMinRequestAmount)
+                .setStatIntervalMs(userServiceDegradeStatIntervalMs)
+                .setTimeWindow(userServiceDegradeTimeWindowSeconds));
+        rules.add(new DegradeRule("steam-service")
+                .setGrade(RuleConstant.DEGRADE_GRADE_EXCEPTION_RATIO)
+                .setCount(userServiceDegradeExceptionRatio)
+                .setMinRequestAmount(userServiceDegradeMinRequestAmount)
+                .setStatIntervalMs(userServiceDegradeStatIntervalMs)
+                .setTimeWindow(userServiceDegradeTimeWindowSeconds));
+        rules.add(new DegradeRule("steam-service")
+                .setGrade(RuleConstant.DEGRADE_GRADE_RT)
+                .setCount(userServiceDegradeSlowRtMs)
+                .setSlowRatioThreshold(userServiceDegradeSlowRatio)
                 .setMinRequestAmount(userServiceDegradeMinRequestAmount)
                 .setStatIntervalMs(userServiceDegradeStatIntervalMs)
                 .setTimeWindow(userServiceDegradeTimeWindowSeconds));

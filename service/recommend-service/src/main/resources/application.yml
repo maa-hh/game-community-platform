@@ -1,0 +1,100 @@
+server:
+  port: 8086
+
+spring:
+  application:
+    name: recommend-service
+  # AI 配置
+  ai:
+    dashscope:
+      api-key: ${DASHSCOPE_API_KEY}
+  # 数据源配置
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3307}/${MYSQL_DB:game_community}?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:root123}
+  # Redis 配置
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6380}
+      database: 0
+      timeout: 5000ms
+  # Nacos 配置
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:localhost:8848}
+      config:
+        server-addr: ${NACOS_ADDR:localhost:8848}
+        file-extension: yml
+    sentinel:
+      transport:
+        dashboard: ${SENTINEL_DASHBOARD:localhost:8859}
+      eager: true
+    # 榜单由多个 Feign 下游共同组装，必须设置明确的连接/读取上限。
+    openfeign:
+      circuitbreaker:
+        enabled: false
+      client:
+        config:
+          default:
+            connectTimeout: ${FEIGN_CONNECT_TIMEOUT_MS:1000}
+            readTimeout: ${FEIGN_READ_TIMEOUT_MS:2500}
+            loggerLevel: basic
+  # Kafka 配置
+  kafka:
+    bootstrap-servers: ${KAFKA_SERVERS:localhost:9093}
+    consumer:
+      auto-offset-reset: ${RECOMMEND_KAFKA_AUTO_OFFSET_RESET:earliest}
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      enable-auto-commit: false
+      properties:
+        spring.json.trusted.packages: com.game.community.model.message
+        spring.json.value.default.type: com.game.community.model.message.ArticleBehaviorMessage
+        spring.json.use.type.headers: false
+
+    listener:
+      ack-mode: record
+      concurrency: ${RECOMMEND_KAFKA_CONCURRENCY:3}
+      missing-topics-fatal: false
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+# XXL-JOB 配置
+xxl:
+  job:
+    admin-addresses: ${XXL_JOB_ADMIN_ADDRESS:http://localhost:8088/xxl-job-admin}
+    access-token: ${XXL_JOB_ACCESS_TOKEN}
+    appname: recommend-service
+    port: ${XXL_JOB_PORT:9996}
+    log-path: logs/xxl-job/recommend-service
+    log-retention-days: 30
+
+# 推荐配置
+recommend:
+  kafka:
+    consumer-group: ${RECOMMEND_KAFKA_CONSUMER_GROUP:recommend-service-hot-rank}
+  startup:
+    # 启动后自动执行热榜初始化（对应 hotRankDailyFinalizeJob / hotRankWeeklyJob / hotRankTotalDailyJob）
+    run-hot-rank-jobs: ${RECOMMEND_STARTUP_RUN_HOT_RANK_JOBS:true}
+    # 表为空时从 social/content 历史数据回填行为事件
+    backfill-behavior-events: ${RECOMMEND_STARTUP_BACKFILL_BEHAVIOR_EVENTS:true}
+
+# 日志配置
+logging:
+  level:
+    com.game.community: info
+
+# 管理端点
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: never

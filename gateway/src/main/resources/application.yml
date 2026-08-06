@@ -4,41 +4,55 @@ server:
 spring:
   application:
     name: gateway
+
+# AI 配置
   ai:
     dashscope:
-      api-key: sk-fdc61462aa6c4a4c83e33b0125d4fc8d
+      api-key: ${DASHSCOPE_API_KEY}
+  # Redis 配置
   data:
     redis:
-      host: localhost
+      host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6380}
       database: 0
       timeout: 5000ms
+  # Nacos 配置
   cloud:
     nacos:
       discovery:
-        server-addr: localhost:8848
+        server-addr: ${NACOS_ADDR:localhost:8848}
+        ip: ${NACOS_DISCOVERY_IP:127.0.0.1}
       config:
         enabled: false
         import-check:
           enabled: false
+    # Gateway 路由配置
     gateway:
       discovery:
         locator:
           enabled: true
           lower-case-service-id: true
       routes:
+        - id: danmaku-websocket-service
+          uri: lb:ws://danmaku-service
+          predicates:
+            - Path=/danmaku/ws/**
+        - id: danmaku-service
+          uri: lb://danmaku-service
+          predicates:
+            - Path=/danmaku/**
         - id: user-service
           uri: lb://user-service
           predicates:
             - Path=/user/**
+        - id: steam-service
+          uri: lb://steam-service
+          predicates:
+            - Path=/steam/**,/game/**
         - id: content-service
           uri: lb://content-service
           predicates:
-            - Path=/article/**,/category/**,/file/**
-        - id: game-account-service
-          uri: lb://game-account-service
-          predicates:
-            - Path=/game-account/**
+            - Path=/article/**,/category/**,/file/**,/share/post/**
         - id: social-service
           uri: lb://social-service
           predicates:
@@ -50,11 +64,11 @@ spring:
         - id: shop-service
           uri: lb://shop-service
           predicates:
-            - Path=/shop/**,/api/shop/**
+            - Path=/shop/**
         - id: recommend-service
           uri: lb://recommend-service
           predicates:
-            - Path=/hot-article/**
+            - Path=/hot-article/**,/api/**
         - id: search-service
           uri: lb://search-service
           predicates:
@@ -67,31 +81,49 @@ spring:
           uri: lb://audit-service
           predicates:
             - Path=/audit/**
+      # CORS 配置
       globalcors:
         cors-configurations:
           '[/**]':
-            allowed-origin-patterns: '*'
+            allowed-origin-patterns:
+              - 'http://localhost:*'
+              - 'http://127.0.0.1:*'
             allowed-methods: '*'
             allowed-headers: '*'
             allow-credentials: true
             max-age: 3600
+    # Sentinel 配置
     sentinel:
       transport:
-        dashboard: localhost:8859
+        dashboard: ${SENTINEL_DASHBOARD:localhost:8859}
       eager: true
 
+# 管理端点
 management:
   endpoints:
     web:
       exposure:
-        include: '*'
+        include: health,info,metrics,prometheus
   endpoint:
     health:
-      show-details: always
+      show-details: never
 
+# Gateway Sentinel 限流配置
 gateway:
+  internal-secret: ${GATEWAY_INTERNAL_SECRET}
+  auth:
+    # 与 GatewayConstants.AUTH_PUBLIC_PATHS 一致，仅作文档；实际白名单在 JwtGlobalFilter
+    public-paths:
+      - /user/auth/send-code
+      - /user/auth/register
+      - /user/auth/login
+      - /user/auth/refresh
+      - /user/auth/reset-password
+      - /user/auth/logout
   sentinel:
     user-service-qps: 50
+    steam-service-qps: 100
+    shop-service-qps: 200
     user-service-degrade-exception-ratio: 0.5
     user-service-degrade-slow-rt-ms: 3000
     user-service-degrade-slow-ratio: 0.6

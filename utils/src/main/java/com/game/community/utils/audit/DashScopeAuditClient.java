@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.metadata.Usage;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -17,26 +18,29 @@ import org.springframework.util.MimeTypeUtils;
 import org.springframework.util.StringUtils;
 
 import java.net.MalformedURLException;
-import java.net.URL;
 import java.util.Base64;
 
 /**
- * 基于 Spring AI Alibaba DashScope ChatClient 的审核客户端。
+ * 基于 Spring AI Alibaba DashScope 的打分审核客户端（0-10）。
  */
 @Slf4j
 @Component
+@ConditionalOnProperty(prefix = "audit", name = "mode", havingValue = "llm")
 @RequiredArgsConstructor
 @EnableConfigurationProperties(DashScopeAuditProperties.class)
 public class DashScopeAuditClient implements AuditClient {
 
     private static final String AUDIT_SYSTEM_PROMPT = """
-            你是游戏社区内容安全审核器。你需要审核文本和图片，判断是否包含违法违规、辱骂、色情、政治敏感、广告引流、人身攻击、未成年人不适宜内容。
+            你是游戏社区内容安全审核器。请对用户提交的文本或图片进行合规打分。
+            评分标准（整数 0-10，越高越合规）：
+            - 0-3：明显违规（违法、色情、赌博、严重辱骂、政治敏感、引流诈骗等），应直接拒绝
+            - 4-6：存疑或轻微风险，需人工复核
+            - 7-10：基本合规或完全合规，可直接通过
             只能返回 JSON，不要输出 markdown、解释、代码块或其他文本。
-            通过时返回 {"pass":true,"reason":"通过"}
-            不通过时返回 {"pass":false,"reason":"具体原因"}
+            返回格式：{"score":8,"reason":"简要理由"}
             """;
 
-    private static final String IMAGE_AUDIT_PROMPT = "请审核这张用户上传图片是否适合作为游戏社区头像或文章配图，只返回 JSON。";
+    private static final String IMAGE_AUDIT_PROMPT = "请审核这张用户上传图片是否适合作为游戏社区头像，按 0-10 打分，只返回 JSON。";
 
     private final DashScopeChatModel chatModel;
 
@@ -47,14 +51,14 @@ public class DashScopeAuditClient implements AuditClient {
     @Override
     public AuditResult auditText(String text) {
         if (!StringUtils.hasText(text)) {
-            return AuditResult.pass();
+            return AuditResult.of(10, "空文本");
         }
         long start = System.nanoTime();
         try {
             ChatResponse response = client().prompt()
                     .options(textOptions())
                     .system(AUDIT_SYSTEM_PROMPT)
-                    .user("请审核这段用户资料文本：" + text)
+                    .user("请审核这段用户资料文本并打分：" + text)
                     .call()
                     .chatResponse();
             AuditResult result = parseAuditResult(response, durationMs(start));
@@ -70,7 +74,7 @@ public class DashScopeAuditClient implements AuditClient {
     @Override
     public AuditResult auditImage(byte[] imageBytes, String mimeType) {
         if (imageBytes == null || imageBytes.length == 0) {
-            return AuditResult.pass();
+            return AuditResult.of(10, "空图片");
         }
         long start = System.nanoTime();
         try {
@@ -87,7 +91,7 @@ public class DashScopeAuditClient implements AuditClient {
     @Override
     public AuditResult auditImageUrl(String imageUrl) {
         if (!StringUtils.hasText(imageUrl)) {
-            return AuditResult.pass();
+            return AuditResult.of(10, "空图片URL");
         }
         long start = System.nanoTime();
         try {
@@ -122,12 +126,7 @@ public class DashScopeAuditClient implements AuditClient {
         if (!StringUtils.hasText(content)) {
             return withUsage(AuditResult.reject("审核结果为空"), response, durationMs);
         }
-        String json = extractJson(content);
-        JSONObject result = JSONObject.parseObject(json);
-        boolean pass = Boolean.TRUE.equals(result.getBoolean("pass"));
-        String reason = result.getString("reason");
-        AuditResult auditResult = pass ? AuditResult.pass() : AuditResult.reject(StringUtils.hasText(reason) ? reason : "审核未通过");
-        return withUsage(auditResult, response, durationMs);
+        return withUsage(parseScoreJson(content), response, durationMs);
     }
 
     private AuditResult withUsage(AuditResult result, ChatResponse response, long durationMs) {
@@ -147,7 +146,7 @@ public class DashScopeAuditClient implements AuditClient {
         long durationMs = durationMs(startNanos);
         if (properties.isFailOpenOnUnavailable()) {
             log.warn("DashScope{}调用失败，按本地规则放行: {}", scene, e.getMessage());
-            return AuditResult.pass(durationMs, null, null, null);
+            return AuditResult.of(8, "审核服务降级放行", durationMs, null, null, null);
         }
         log.warn("DashScope{}调用失败，按失败处理: {}", scene, e.getMessage());
         return AuditResult.reject(rejectReason, durationMs, null, null, null);
@@ -158,8 +157,9 @@ public class DashScopeAuditClient implements AuditClient {
     }
 
     private void logAuditMetrics(String scene, AuditResult result) {
-        log.info("{}完成: pass={}, reason={}, durationMs={}, promptTokens={}, completionTokens={}, totalTokens={}",
+        log.info("{}完成: score={}, pass={}, reason={}, durationMs={}, promptTokens={}, completionTokens={}, totalTokens={}",
                 scene,
+                result.getScore(),
                 result.isPass(),
                 result.getReason(),
                 result.getDurationMs(),
@@ -175,20 +175,6 @@ public class DashScopeAuditClient implements AuditClient {
             } catch (Exception ignored) {
                 // 回退到 jpeg。
             }
-        }
-        return MimeTypeUtils.IMAGE_JPEG;
-    }
-
-    private MimeType guessImageMimeType(String imageUrl) throws MalformedURLException {
-        String normalized = imageUrl.toLowerCase();
-        if (normalized.endsWith(".png")) {
-            return MimeTypeUtils.IMAGE_PNG;
-        }
-        if (normalized.endsWith(".gif")) {
-            return MimeType.valueOf("image/gif");
-        }
-        if (normalized.endsWith(".webp")) {
-            return MimeType.valueOf("image/webp");
         }
         return MimeTypeUtils.IMAGE_JPEG;
     }
@@ -247,11 +233,7 @@ public class DashScopeAuditClient implements AuditClient {
         if (!StringUtils.hasText(content)) {
             return AuditResult.reject("审核结果为空", durationMs, null, null, null);
         }
-        String json = extractJson(content);
-        JSONObject result = JSONObject.parseObject(json);
-        boolean pass = Boolean.TRUE.equals(result.getBoolean("pass"));
-        String reason = result.getString("reason");
-        AuditResult auditResult = pass ? AuditResult.pass() : AuditResult.reject(StringUtils.hasText(reason) ? reason : "审核未通过");
+        AuditResult auditResult = parseScoreJson(content);
         auditResult.setDurationMs(durationMs);
 
         JSONObject usage = response.getJSONObject("usage");
@@ -261,6 +243,21 @@ public class DashScopeAuditClient implements AuditClient {
             auditResult.setTotalTokens(usage.getInteger("total_tokens"));
         }
         return auditResult;
+    }
+
+    private AuditResult parseScoreJson(String content) {
+        String json = extractJson(content);
+        JSONObject result = JSONObject.parseObject(json);
+        Integer score = result.getInteger("score");
+        String reason = result.getString("reason");
+        if (score == null && result.containsKey("pass")) {
+            boolean pass = Boolean.TRUE.equals(result.getBoolean("pass"));
+            score = pass ? 9 : 1;
+        }
+        if (score == null) {
+            return AuditResult.reject(StringUtils.hasText(reason) ? reason : "审核结果缺少分数");
+        }
+        return AuditResult.of(score, reason);
     }
 
     private String buildDataUrl(byte[] imageBytes, MimeType mimeType) {

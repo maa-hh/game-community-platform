@@ -18,4 +18,7 @@ public class SearchPageDTO extends PageDto implements Serializable {
      * relevance: ES score, latest: published time desc.
      */
     private String sort = "relevance";
+
+    /** lexical、semantic 或 hybrid；不传时由 search.ai.hybrid-enabled 决定。 */
+    private String mode;
 }

@@ -1,0 +1,29 @@
+server:
+  forward-headers-strategy: native
+
+logging:
+  level:
+    root: INFO
+    com.game.community: INFO
+
+email:
+  mock:
+    enabled: false
+  force-real: true
+  validation:
+    mx-check-enabled: ${EMAIL_MX_CHECK_ENABLED:true}
+
+auth:
+  seed:
+    enabled: false
+  cookie:
+    secure: ${AUTH_COOKIE_SECURE:true}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when_authorized

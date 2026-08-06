@@ -1,6 +1,6 @@
 package com.game.community.content.aspect;
 
-import com.game.community.common.constant.user.UserConstants;
+import com.game.community.model.enums.user.AccountType;
 import com.game.community.model.base.Result;
 import com.game.community.utils.ThreadLocal.UserThreadLocal;
 import lombok.extern.slf4j.Slf4j;
@@ -45,7 +45,7 @@ public class AuthAspect {
 
         // 2. 管理员权限校验
         Integer userType = UserThreadLocal.getType();
-        if (userType == null || userType != UserConstants.UserType.ADMIN) {
+        if (userType == null || userType != AccountType.ADMIN.getCode()) {
             log.warn("管理员校验失败: 用户不是管理员, userId={}, type={}", userId, userType);
             return Result.error("无权限，需要管理员权限");
         }

@@ -8,6 +8,7 @@ import com.game.community.model.dto.social.CreateReportDTO;
 import com.game.community.model.dto.social.HandleReportDTO;
 import com.game.community.model.vo.social.ReportVO;
 import com.game.community.social.service.ReportService;
+import com.game.community.social.aspect.SocialRateLimit;
 import com.game.community.utils.ThreadLocal.UserThreadLocal;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,7 @@ public class ReportController {
     private final ReportService reportService;
 
     @LoginCheck
+    @SocialRateLimit(action = "report:create", limit = 5, windowSeconds = 300)
     @PostMapping
     public Result<Long> createReport(@Valid @RequestBody CreateReportDTO dto) {
         return Result.success(reportService.createReport(UserThreadLocal.getUserId(), dto));

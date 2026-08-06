@@ -1,0 +1,3 @@
+-- 已废弃：帖子详情字段已统一进入 content.sql、content-public-id.sql 和 social.sql。
+-- 历史环境请按 scripts/db/migrations.order 执行，不再执行本文件，避免重复 ALTER
+-- 或把 ref_article_id 错误迁回内部自增 ID 格式。

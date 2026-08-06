@@ -6,13 +6,17 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.game.community.model.enums.user.AuditFieldType;
+import com.game.community.model.enums.user.AuditMode;
+import com.game.community.model.enums.user.AuditTaskStatus;
+import com.game.community.model.enums.user.UserStrings;
 import lombok.Data;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
 /**
- * 用户审核任务
+ * 用户字段审核任务
  */
 @Data
 @TableName("t_user_audit_task")
@@ -23,20 +27,17 @@ public class UserAuditTask implements Serializable {
 
     private Long userId;
 
-    /**
-     * PROFILE / AVATAR
-     */
-    private String taskType;
+    private AuditFieldType taskType;
 
-    /**
-     * PENDING / PASSED / REJECTED / FAILED
-     */
-    private String status;
+    private AuditTaskStatus status;
 
-    /**
-     * 审核任务负载，JSON 序列化存储。
-     */
+    private String pendingContent;
+
     private String payload;
+
+    private AuditMode auditMode;
+
+    private Integer score;
 
     private String errorMessage;
 
@@ -48,4 +49,16 @@ public class UserAuditTask implements Serializable {
 
     @TableLogic
     private Integer deleted;
+
+    public String getPendingContent() {
+        return UserStrings.orEmpty(pendingContent);
+    }
+
+    public String getPayload() {
+        return UserStrings.orEmpty(payload);
+    }
+
+    public String getErrorMessage() {
+        return UserStrings.orEmpty(errorMessage);
+    }
 }

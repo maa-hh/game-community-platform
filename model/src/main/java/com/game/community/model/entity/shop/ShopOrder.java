@@ -27,23 +27,15 @@ public class ShopOrder implements Serializable {
 
     private String itemIcon;
 
-    private Integer productType;
+    private String cosmeticCode;
 
     private Integer quantity;
 
-    private Integer payType;
+    private Long pricePoints;
 
-    private Integer originalPrice;
+    private Long totalPoints;
 
-    private Integer discountAmount;
-
-    private Integer finalPrice;
-
-    private Long couponId;
-
-    private Long userCouponId;
-
-    private String businessCode;
+    private Integer grantQuantity;
 
     private Integer status;
 
@@ -53,7 +45,11 @@ public class ShopOrder implements Serializable {
 
     private LocalDateTime payTime;
 
+    private LocalDateTime completeTime;
+
     private LocalDateTime expireTime;
 
     private LocalDateTime updateTime;
+
+    private Integer version;
 }

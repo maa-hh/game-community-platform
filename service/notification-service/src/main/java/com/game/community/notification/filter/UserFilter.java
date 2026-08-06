@@ -26,13 +26,13 @@ public class UserFilter implements Filter {
         HttpServletRequest httpRequest = (HttpServletRequest) request;
         String userIdStr = httpRequest.getHeader(GatewayConstants.USER_ID_HEADER);
         String userTypeStr = httpRequest.getHeader(GatewayConstants.USER_TYPE_HEADER);
-        String gameAccount = httpRequest.getHeader(GatewayConstants.GAME_ACCOUNT_HEADER);
+        String steamAccount = httpRequest.getHeader(GatewayConstants.STEAM_ACCOUNT_HEADER);
         String sessionId = httpRequest.getHeader(GatewayConstants.SESSION_ID_HEADER);
         if (userIdStr != null && !userIdStr.isBlank()) {
             try {
                 Long userId = Long.parseLong(userIdStr);
                 Integer userType = userTypeStr == null || userTypeStr.isBlank() ? 0 : Integer.parseInt(userTypeStr);
-                UserThreadLocal.setUser(new UserContex(userId, userType, gameAccount == null ? "" : gameAccount, sessionId));
+                UserThreadLocal.setUser(new UserContex(userId, userType, steamAccount == null ? "" : steamAccount, sessionId));
             } catch (NumberFormatException e) {
                 log.warn("通知服务用户上下文解析失败: userId={}, type={}", userIdStr, userTypeStr);
             }

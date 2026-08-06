@@ -17,9 +17,7 @@ public class ShopUserCurrency implements Serializable {
 
     private Long userId;
 
-    private Long gold;
-
-    private Long diamond;
+    private Long points;
 
     private LocalDateTime createTime;
 

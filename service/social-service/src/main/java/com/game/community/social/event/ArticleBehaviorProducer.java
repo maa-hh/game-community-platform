@@ -2,32 +2,63 @@ package com.game.community.social.event;
 
 import com.game.community.common.constant.KafkaTopicConstants;
 import com.game.community.model.message.ArticleBehaviorMessage;
+import com.game.community.social.common.SocialOutboxEventTypes;
+import com.game.community.social.service.SocialOutboxService;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
-@Slf4j
+import java.util.UUID;
+
 @Component
 @RequiredArgsConstructor
 public class ArticleBehaviorProducer {
 
-    private final KafkaTemplate<String, ArticleBehaviorMessage> kafkaTemplate;
+    private final SocialOutboxService socialOutboxService;
 
-    public void publish(Long articleId, long likeDelta, long commentDelta, long viewDelta) {
+    public void publish(Long articleId,
+                        long likeDelta,
+                        long commentDelta,
+                        long viewDelta,
+                        long favoriteDelta,
+                        long shareDelta) {
+        publish(articleId, likeDelta, commentDelta, viewDelta, favoriteDelta, shareDelta, 0L, 0L);
+    }
+
+    public void publish(Long articleId,
+                        long likeDelta,
+                        long commentDelta,
+                        long viewDelta,
+                        long favoriteDelta,
+                        long shareDelta,
+                        long commentLikeDelta,
+                        long replyLikeDelta) {
         if (articleId == null) {
             return;
         }
-        ArticleBehaviorMessage message = new ArticleBehaviorMessage(articleId, likeDelta, commentDelta, viewDelta);
-        try {
-            kafkaTemplate.send(KafkaTopicConstants.ARTICLE_BEHAVIOR_TOPIC, articleId.toString(), message)
-                    .whenComplete((result, error) -> {
-                        if (error != null) {
-                            log.warn("发送文章行为事件失败: articleId={}, error={}", articleId, error.getMessage());
-                        }
-                    });
-        } catch (RuntimeException e) {
-            log.warn("发送文章行为事件异常: articleId={}, error={}", articleId, e.getMessage());
-        }
+        ArticleBehaviorMessage message = new ArticleBehaviorMessage(
+                articleId,
+                likeDelta,
+                commentDelta,
+                viewDelta,
+                favoriteDelta,
+                shareDelta,
+                commentLikeDelta,
+                replyLikeDelta,
+                System.currentTimeMillis());
+        message.setEventId(UUID.randomUUID().toString());
+        socialOutboxService.enqueue(SocialOutboxEventTypes.ARTICLE_BEHAVIOR,
+                KafkaTopicConstants.ARTICLE_BEHAVIOR_TOPIC, articleId.toString(), message);
+    }
+
+    public void publish(Long articleId, long likeDelta, long commentDelta, long viewDelta) {
+        publish(articleId, likeDelta, commentDelta, viewDelta, 0L, 0L);
+    }
+
+    public void publishCommentLike(Long articleId, long commentLikeDelta) {
+        publish(articleId, 0L, 0L, 0L, 0L, 0L, commentLikeDelta, 0L);
+    }
+
+    public void publishReplyLike(Long articleId, long replyLikeDelta) {
+        publish(articleId, 0L, 0L, 0L, 0L, 0L, 0L, replyLikeDelta);
     }
 }

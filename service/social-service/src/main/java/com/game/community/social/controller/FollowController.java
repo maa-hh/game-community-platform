@@ -5,6 +5,7 @@ import com.game.community.model.base.PageResult;
 import com.game.community.model.base.Result;
 import com.game.community.model.vo.social.FollowUserVO;
 import com.game.community.social.service.FollowService;
+import com.game.community.social.aspect.SocialRateLimit;
 import com.game.community.utils.ThreadLocal.UserThreadLocal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -25,6 +26,22 @@ public class FollowController {
     private final FollowService followService;
 
     @LoginCheck
+    @SocialRateLimit(action = "follow", limit = 30, windowSeconds = 60)
+    @PostMapping("/by-account/{targetAccountId}")
+    public Result<Void> followByAccount(@PathVariable("targetAccountId") Long targetAccountId) {
+        followService.followByAccountId(UserThreadLocal.getUserId(), targetAccountId);
+        return Result.success(null);
+    }
+
+    @LoginCheck
+    @DeleteMapping("/by-account/{targetAccountId}")
+    public Result<Void> unfollowByAccount(@PathVariable("targetAccountId") Long targetAccountId) {
+        followService.unfollowByAccountId(UserThreadLocal.getUserId(), targetAccountId);
+        return Result.success(null);
+    }
+
+    @LoginCheck
+    @SocialRateLimit(action = "follow", limit = 30, windowSeconds = 60)
     @PostMapping("/{targetUserId}")
     public Result<Void> follow(@PathVariable("targetUserId") Long targetUserId) {
         followService.follow(UserThreadLocal.getUserId(), targetUserId);
@@ -39,9 +56,25 @@ public class FollowController {
     }
 
     @LoginCheck
+    @SocialRateLimit(action = "black", limit = 30, windowSeconds = 60)
+    @PostMapping("/black/by-account/{targetAccountId}")
+    public Result<Void> blackByAccount(@PathVariable("targetAccountId") Long targetAccountId) {
+        followService.blackByAccountId(UserThreadLocal.getUserId(), targetAccountId);
+        return Result.success(null);
+    }
+
+    @LoginCheck
+    @SocialRateLimit(action = "black", limit = 30, windowSeconds = 60)
     @PostMapping("/black/{targetUserId}")
     public Result<Void> black(@PathVariable("targetUserId") Long targetUserId) {
         followService.black(UserThreadLocal.getUserId(), targetUserId);
+        return Result.success(null);
+    }
+
+    @LoginCheck
+    @DeleteMapping("/black/by-account/{targetAccountId}")
+    public Result<Void> unblackByAccount(@PathVariable("targetAccountId") Long targetAccountId) {
+        followService.unblackByAccountId(UserThreadLocal.getUserId(), targetAccountId);
         return Result.success(null);
     }
 
@@ -78,15 +111,36 @@ public class FollowController {
     }
 
     @LoginCheck
+    @GetMapping("/check/by-account/{targetAccountId}")
+    public Result<Boolean> isFollowingByAccount(@PathVariable("targetAccountId") Long targetAccountId) {
+        return Result.success(followService.isFollowingByAccountId(UserThreadLocal.getUserId(), targetAccountId));
+    }
+
+    @LoginCheck
     @GetMapping("/check/{targetUserId}")
     public Result<Boolean> isFollowing(@PathVariable("targetUserId") Long targetUserId) {
         return Result.success(followService.isFollowing(UserThreadLocal.getUserId(), targetUserId));
     }
 
     @LoginCheck
+    @GetMapping("/black/check/by-account/{targetAccountId}")
+    public Result<Boolean> isBlackedByAccount(@PathVariable("targetAccountId") Long targetAccountId) {
+        return Result.success(followService.isBlackedByAccountId(UserThreadLocal.getUserId(), targetAccountId));
+    }
+
+    @LoginCheck
     @GetMapping("/black/check/{targetUserId}")
     public Result<Boolean> isBlacked(@PathVariable("targetUserId") Long targetUserId) {
         return Result.success(followService.isBlacked(UserThreadLocal.getUserId(), targetUserId));
+    }
+
+    @LoginCheck
+    @GetMapping("/count/by-account/{accountId}")
+    public Result<Map<String, Long>> countByAccount(@PathVariable("accountId") Long accountId) {
+        return Result.success(Map.of(
+                "following", followService.countFollowingByAccountId(accountId),
+                "fans", followService.countFansByAccountId(accountId)
+        ));
     }
 
     @LoginCheck

@@ -29,7 +29,7 @@ public class UserFilter implements Filter {
         HttpServletRequest httpRequest = (HttpServletRequest) request;
         String userIdStr = httpRequest.getHeader(GatewayConstants.USER_ID_HEADER);
         String userTypeStr = httpRequest.getHeader(GatewayConstants.USER_TYPE_HEADER);
-        String gameAccount = httpRequest.getHeader(GatewayConstants.GAME_ACCOUNT_HEADER);
+        String steamAccount = httpRequest.getHeader(GatewayConstants.STEAM_ACCOUNT_HEADER);
         String sessionId = httpRequest.getHeader(GatewayConstants.SESSION_ID_HEADER);
 
         if (userIdStr != null && !userIdStr.isBlank()) {
@@ -38,9 +38,10 @@ public class UserFilter implements Filter {
                 Integer userType = userTypeStr == null || userTypeStr.isBlank()
                         ? 0
                         : Integer.parseInt(userTypeStr);
-                UserThreadLocal.setUser(new UserContex(userId, userType, gameAccount == null ? "" : gameAccount, sessionId));
-                log.debug("设置用户上下文: userId={}, type={}, gameAccount={}, sessionId={}",
-                        userId, userType, gameAccount, sessionId);
+                UserThreadLocal.setUser(new UserContex(userId, userType,
+                        steamAccount == null ? "" : steamAccount, sessionId));
+                log.debug("设置用户上下文: userId={}, type={}, steamAccount={}, sessionId={}",
+                        userId, userType, steamAccount, sessionId);
             } catch (NumberFormatException e) {
                 log.warn("用户 Header 解析失败: userId={}, type={}", userIdStr, userTypeStr);
             }

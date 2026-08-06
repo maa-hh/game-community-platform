@@ -1,10 +1,12 @@
 package com.game.community.recommend.listen;
 
 import com.game.community.common.constant.KafkaTopicConstants;
+import com.game.community.common.constant.RecommendConstants;
 import com.game.community.model.message.ArticleBehaviorMessage;
-import com.game.community.recommend.service.HotArticleService;
+import com.game.community.recommend.service.HotRankService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
@@ -13,15 +15,20 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class ArticleHotScoreStreamProcessor {
 
-    private final HotArticleService hotArticleService;
+    private final HotRankService hotRankService;
 
-    @KafkaListener(topics = KafkaTopicConstants.ARTICLE_BEHAVIOR_AGGREGATED_TOPIC, groupId = "recommend-service-hot-score")
-    public void handleAggregatedMessage(ArticleBehaviorMessage message) {
+    @KafkaListener(topics = KafkaTopicConstants.ARTICLE_BEHAVIOR_TOPIC,
+            groupId = "${recommend.kafka.consumer-group:" + RecommendConstants.BEHAVIOR_CONSUMER_GROUP + "}")
+    public void handleBehaviorMessage(ConsumerRecord<String, ArticleBehaviorMessage> record) {
+        ArticleBehaviorMessage message = record == null ? null : record.value();
         if (message == null || message.getArticleId() == null || message.getArticleId() <= 0) {
             return;
         }
-        log.info("收到文章行为聚合事件，刷新热度: articleId={}, likeDelta={}, commentDelta={}, viewDelta={}",
-                message.getArticleId(), message.getLikeCount(), message.getCommentCount(), message.getViewCount());
-        hotArticleService.updateHotScore(message.getArticleId());
+        if (message.getEventId() == null || message.getEventId().isBlank()) {
+            // 兼容旧消息：Kafka offset 在同一分区内稳定，可作为临时幂等键。
+            message.setEventId(record.topic() + ":" + record.partition() + ":" + record.offset());
+        }
+        log.debug("处理文章行为事件: eventId={}, articleId={}", message.getEventId(), message.getArticleId());
+        hotRankService.applyBehaviorDelta(message);
     }
 }

@@ -3,11 +3,17 @@ package com.game.community.content.service;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.game.community.model.base.PageResult;
+import com.game.community.model.base.Result;
 import com.game.community.model.dto.article.ArticleDTO;
 import com.game.community.model.entity.article.Article;
+import com.game.community.model.vo.article.ArticleContentVO;
 import com.game.community.model.vo.article.ArticleDetailVO;
+import com.game.community.model.vo.article.ArticleListVO;
+import com.game.community.model.vo.article.ArticleProgressVO;
 
 import java.util.List;
+import java.util.Map;
+
 /**
  * 文章服务接口
  */
@@ -52,12 +58,39 @@ public interface ArticleService extends IService<Article> {
     void deleteArticle(Long id);
 
     /**
-     * 获取文章详情（合并MySQL + MongoDB数据）
-     *
-     * @param id 文章ID
-     * @return 文章详情VO
+     * 获取文章详情（对外：仅已发布文章可读）
      */
     ArticleDetailVO getArticleDetail(Long id);
+
+    /**
+     * 作者编辑：读取自己的文章（任意状态）
+     */
+    ArticleDetailVO getArticleDetailForOwner(Long id, Long userId);
+
+    /**
+     * 内部调用（Feign）：不做可见性门禁
+     */
+    ArticleDetailVO getArticleDetailInternal(Long id);
+
+    /**
+     * 校验当前访问者可读该正文（仅已发布）
+     */
+    void assertContentReadable(Long articleId);
+
+    /**
+     * 作者提交审核（草稿 → PENDING），禁止直接置为已发布
+     */
+    void submitForAudit(Long id, Long userId);
+
+    /**
+     * 下架：停上传、取消审核任务、移入草稿，保留已上传文件
+     */
+    void unpublishByAuthor(Long id, Long userId);
+
+    /**
+     * 作者侧上传/审核进度
+     */
+    ArticleProgressVO getArticleProgress(Long id, Long userId);
 
     /**
      * 分页查询文章列表
@@ -77,6 +110,11 @@ public interface ArticleService extends IService<Article> {
      * @return 文章列表
      */
     List<Article> getUserArticles(Long userId);
+
+    /**
+     * 分页获取用户文章（个人页 Tab：published / draft / unpublished）
+     */
+    Page<Article> getUserArticlesPage(Long userId, Integer page, Integer size, String tab);
 
     /**
      * 根据关注列表拉取帖子（拉模式）
@@ -144,7 +182,7 @@ public interface ArticleService extends IService<Article> {
 
     List<Article> listPublishedByAuthor(Long authorId, int limit);
 
-    List<Article> listPublishedByAuthorsBefore(List<Long> authorIds, java.time.LocalDateTime before, int limit);
+    List<Article> listPublishedByAuthorsBefore(List<Long> authorIds, java.time.LocalDateTime before, Long beforeArticleId, int limit);
 
     /**
      * 统计文章总数
@@ -152,4 +190,71 @@ public interface ArticleService extends IService<Article> {
      * @return 文章总数
      */
     Long countArticle();
+
+    // ==================== HTTP API（Controller / Feign 原样转发）====================
+
+    Result<Long> saveArticleForCurrentUser(ArticleDTO dto);
+
+    Result<Long> updateArticleForCurrentUser(Long id, ArticleDTO dto);
+
+    Result<Void> deleteArticleForCurrentUser(Long id);
+
+    Result<ArticleDetailVO> queryArticleDetail(Long id);
+
+    Result<ArticleDetailVO> queryArticleDetailForOwner(Long id);
+
+    Result<ArticleContentVO> queryArticleContent(Long id);
+
+    PageResult<ArticleListVO> queryArticlePage(Integer page, Integer size, Long categoryId, Integer status);
+
+    PageResult<ArticleListVO> queryMyArticlesPage(Integer page, Integer size, String tab);
+
+    PageResult<ArticleListVO> queryFollowArticles(Integer page, Integer size);
+
+    Result<List<ArticleListVO>> queryLatestArticles(Long categoryId, Integer size);
+
+    Result<List<ArticleListVO>> queryMoreArticles(Long categoryId, Long lastId, Integer size);
+
+    Result<ArticleProgressVO> queryArticleProgress(Long id);
+
+    Result<Void> submitPublish(Long id);
+
+    Result<Void> submitUnpublish(Long id);
+
+    Result<List<ArticleListVO>> queryPublishedList();
+
+    Result<PageResult<ArticleListVO>> queryPublishedPage(Integer page, Integer size);
+
+    Result<List<ArticleListVO>> queryByIds(List<Long> ids);
+
+    Result<List<ArticleListVO>> queryByPublicIds(List<String> publicIds);
+
+    Long resolvePublicId(String publicId);
+
+    String getPublicId(Long articleId);
+
+    Article getByPublicId(String publicId);
+
+    Result<Map<Long, List<Long>>> queryCategoryIdsByArticleIds(List<Long> articleIds);
+
+    Result<List<ArticleListVO>> queryPublishedByAuthor(Long authorId, Integer size);
+
+    Result<List<ArticleListVO>> queryPublishedByAccountId(Long accountId, Integer size);
+
+    Result<List<ArticleListVO>> queryPublishedByAuthors(List<Long> authorIds, String before, Long beforeArticleId, Integer size);
+
+    PageResult<ArticleListVO> queryArticlePageAdmin(Integer page, Integer size, String keyword,
+                                                    Long categoryId, Integer status, Long authorId);
+
+    Result<Void> deleteArticleAdminOp(Long articleId);
+
+    Result<Void> updateArticleStatusAdmin(Long articleId, Integer status);
+
+    Result<Long> countArticles();
+
+    Result<ArticleDetailVO> queryArticleDetailInternal(Long id);
+
+    Result<Void> updateArticleStatusForFeign(Long articleId, Integer status);
+
+    Result<PageResult<ArticleListVO>> queryPublishedPageForFeign(Integer page, Integer size);
 }

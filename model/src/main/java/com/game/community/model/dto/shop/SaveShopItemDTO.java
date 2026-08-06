@@ -18,12 +18,14 @@ public class SaveShopItemDTO implements Serializable {
 
     private String description;
 
-    @NotNull(message = "价格不能为空")
-    @Min(value = 0, message = "价格不能小于0")
-    private Integer price;
+    @NotBlank(message = "装扮编码不能为空")
+    private String cosmeticCode;
 
-    @NotNull(message = "商品类型不能为空")
-    private Integer productType;
+    @NotNull(message = "积分价格不能为空")
+    @Min(value = 0, message = "积分价格不能小于0")
+    private Long pricePoints;
+
+    private Integer grantQuantity;
 
     private Integer stock;
 
@@ -31,13 +33,11 @@ public class SaveShopItemDTO implements Serializable {
 
     private Integer status;
 
-    private String businessCode;
-
-    private Long businessId;
-
-    private Integer quantity;
+    private String repurchasePolicy;
 
     private Integer limitCount;
+
+    private Integer limitWindowSeconds;
 
     private LocalDateTime beginTime;
 

@@ -4,73 +4,85 @@ import com.game.community.common.constant.KafkaTopicConstants;
 import com.game.community.common.constant.notification.NotificationConstants;
 import com.game.community.common.constant.social.SocialConstants;
 import com.game.community.model.message.NotificationEventMessage;
-import com.game.community.model.vo.user.UserVO;
+import com.game.community.model.vo.user.UserCardInternalVO;
+import com.game.community.social.common.SocialOutboxEventTypes;
+import com.game.community.social.service.SocialOutboxService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class NotificationEventProducer {
 
-    private final KafkaTemplate<String, NotificationEventMessage> kafkaTemplate;
+    private final SocialOutboxService socialOutboxService;
 
-    public void publishArticleLike(Long recipientUserId, UserVO actor, Long articleId) {
+    public void publishArticleLike(Long recipientUserId, UserCardInternalVO actor, Long articleId) {
         publish(buildEvent(recipientUserId, actor,
                 NotificationConstants.EventType.ARTICLE_LIKE,
                 NotificationConstants.RouteType.ARTICLE,
-                articleId, null, null, null, null,
+                articleId, null, null, null, null, null,
                 safeUsername(actor) + " 点赞了你的帖子",
                 null));
     }
 
-    public void publishArticleComment(Long recipientUserId, UserVO actor, Long articleId, Long commentId, String content) {
+    public void publishArticleFavorite(Long recipientUserId, UserCardInternalVO actor, Long articleId) {
+        publish(buildEvent(recipientUserId, actor,
+                NotificationConstants.EventType.ARTICLE_FAVORITE,
+                NotificationConstants.RouteType.ARTICLE,
+                articleId, null, null, null, null, null,
+                safeUsername(actor) + " 收藏了你的帖子",
+                null));
+    }
+
+    public void publishArticleComment(Long recipientUserId, UserCardInternalVO actor, Long articleId, Long commentId, String content) {
         publish(buildEvent(recipientUserId, actor,
                 NotificationConstants.EventType.ARTICLE_COMMENT,
                 NotificationConstants.RouteType.COMMENT,
-                articleId, commentId, null, null, null,
+                articleId, commentId, null, null, null, null,
                 safeUsername(actor) + " 评论了你的帖子",
                 trimText(content)));
     }
 
-    public void publishCommentReply(Long recipientUserId, UserVO actor, Long articleId, Long commentId, Long replyId, String content) {
+    public void publishCommentReply(Long recipientUserId, UserCardInternalVO actor, Long articleId, Long commentId, Long replyId, String content) {
         publish(buildEvent(recipientUserId, actor,
                 NotificationConstants.EventType.COMMENT_REPLY,
                 NotificationConstants.RouteType.REPLY,
-                articleId, commentId, replyId, null, null,
+                articleId, commentId, replyId, null, null, null,
                 safeUsername(actor) + " 回复了你",
                 trimText(content)));
     }
 
-    public void publishCommentLike(Long recipientUserId, UserVO actor, Long articleId, Long commentId) {
+    public void publishCommentLike(Long recipientUserId, UserCardInternalVO actor, Long articleId, Long commentId) {
         publish(buildEvent(recipientUserId, actor,
                 NotificationConstants.EventType.COMMENT_LIKE,
                 NotificationConstants.RouteType.COMMENT,
-                articleId, commentId, null, null, null,
+                articleId, commentId, null, null, null, null,
                 safeUsername(actor) + " 点赞了你的评论",
                 null));
     }
 
-    public void publishReplyLike(Long recipientUserId, UserVO actor, Long articleId, Long commentId, Long replyId) {
+    public void publishReplyLike(Long recipientUserId, UserCardInternalVO actor, Long articleId, Long commentId, Long replyId) {
         publish(buildEvent(recipientUserId, actor,
                 NotificationConstants.EventType.REPLY_LIKE,
                 NotificationConstants.RouteType.REPLY,
-                articleId, commentId, replyId, null, null,
+                articleId, commentId, replyId, null, null, null,
                 safeUsername(actor) + " 点赞了你的回复",
                 null));
     }
 
-    public void publishFollow(Long recipientUserId, UserVO actor) {
+    public void publishFollow(Long recipientUserId, UserCardInternalVO actor) {
         publish(buildEvent(recipientUserId, actor,
                 NotificationConstants.EventType.FOLLOW,
                 NotificationConstants.RouteType.USER,
-                null, null, null, null, actor == null ? null : actor.getId(),
+                null, null, null, null, actor == null ? null : actor.getUserId(),
+                actor == null ? null : actor.getAccountId(),
                 safeUsername(actor) + " 关注了你",
                 null));
     }
@@ -81,7 +93,7 @@ public class NotificationEventProducer {
                 recipientUserId,
                 NotificationConstants.EventType.REPORT_SUBMITTED,
                 routeTypeForTargetType(targetType),
-                articleId, commentId, replyId, null, targetUserId,
+                articleId, commentId, replyId, null, targetUserId, null,
                 "举报已提交，管理员会尽快处理",
                 trimText(reason)
         );
@@ -93,7 +105,7 @@ public class NotificationEventProducer {
                 recipientUserId,
                 NotificationConstants.EventType.FEED_UNREAD,
                 NotificationConstants.RouteType.NONE,
-                null, null, null, null, null,
+                null, null, null, null, null, null,
                 "",
                 null
         );
@@ -101,13 +113,16 @@ public class NotificationEventProducer {
         publish(event);
     }
 
-    private NotificationEventMessage buildEvent(Long recipientUserId, UserVO actor, Integer eventType, Integer routeType,
-                                                Long articleId, Long commentId, Long replyId, Long reportId, Long targetUserId,
+    private NotificationEventMessage buildEvent(Long recipientUserId, UserCardInternalVO actor, Integer eventType, Integer routeType,
+                                                Long articleId, Long commentId, Long replyId, Long reportId,
+                                                Long targetUserId, Long targetAccountId,
                                                 String previewText, String resultText) {
         NotificationEventMessage event = new NotificationEventMessage();
+        event.setEventId(UUID.randomUUID().toString());
         event.setEventType(eventType);
         event.setRecipientUserId(recipientUserId);
-        event.setActorUserId(actor == null ? null : actor.getId());
+        event.setActorUserId(actor == null ? null : actor.getUserId());
+        event.setActorAccountId(actor == null ? null : actor.getAccountId());
         event.setActorUsername(safeUsername(actor));
         event.setActorAvatar(actor == null ? null : actor.getAvatar());
         event.setArticleId(articleId);
@@ -115,6 +130,7 @@ public class NotificationEventProducer {
         event.setReplyId(replyId);
         event.setReportId(reportId);
         event.setTargetUserId(targetUserId);
+        event.setTargetAccountId(targetAccountId);
         event.setRouteType(routeType);
         event.setPreviewText(previewText);
         event.setResultText(resultText);
@@ -123,10 +139,11 @@ public class NotificationEventProducer {
     }
 
     private NotificationEventMessage systemEvent(Long recipientUserId, Integer eventType, Integer routeType,
-                                                 Long articleId, Long commentId, Long replyId, Long reportId, Long targetUserId,
+                                                 Long articleId, Long commentId, Long replyId, Long reportId,
+                                                 Long targetUserId, Long targetAccountId,
                                                  String previewText, String resultText) {
         NotificationEventMessage event = buildEvent(recipientUserId, null, eventType, routeType,
-                articleId, commentId, replyId, reportId, targetUserId, previewText, resultText);
+                articleId, commentId, replyId, reportId, targetUserId, targetAccountId, previewText, resultText);
         event.setActorUserId(0L);
         event.setActorUsername("系统通知");
         return event;
@@ -162,23 +179,19 @@ public class NotificationEventProducer {
     }
 
     private void doPublish(NotificationEventMessage event) {
-        kafkaTemplate.send(KafkaTopicConstants.NOTIFICATION_EVENT_TOPIC, String.valueOf(event.getRecipientUserId()), event)
-                .whenComplete((result, error) -> {
-                    if (error != null) {
-                        log.warn("发送通知事件失败: recipientUserId={}, eventType={}, error={}",
-                                event.getRecipientUserId(), event.getEventType(), error.getMessage());
-                    }
-                });
+        socialOutboxService.enqueue(SocialOutboxEventTypes.NOTIFICATION,
+                KafkaTopicConstants.NOTIFICATION_EVENT_TOPIC,
+                String.valueOf(event.getRecipientUserId()), event);
     }
 
-    private String safeUsername(UserVO actor) {
+    private String safeUsername(UserCardInternalVO actor) {
         if (actor == null) {
             return "玩家";
         }
         if (actor.getUsername() != null && !actor.getUsername().isBlank()) {
             return actor.getUsername();
         }
-        return actor.getId() == null ? "玩家" : "玩家" + actor.getId();
+        return actor.getUserId() == null ? "玩家" : "玩家" + actor.getUserId();
     }
 
     private String trimText(String text) {

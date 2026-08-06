@@ -4,6 +4,6 @@ spring:
   cloud:
     nacos:
       config:
-        enabled: ${NACOS_CONFIG_ENABLED:true}
-        server-addr: localhost:8848
+        enabled: ${NACOS_CONFIG_ENABLED:false}
+        server-addr: ${NACOS_ADDR:localhost:8848}
         file-extension: yml

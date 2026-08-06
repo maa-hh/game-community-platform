@@ -11,7 +11,5 @@ public class ProfileAuditPayload {
 
     private String signature;
 
-    private String phone;
-
-    private String gameAccount;
+    private String steamAccount;
 }

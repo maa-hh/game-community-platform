@@ -82,7 +82,7 @@ foreach ($file in $files) {
             'social-service' { '/social/article/10' }
             'notification-service' { '/notification/summary' }
             'recommend-service' { '/hot-article/list?page=1&size=10' }
-            'audit-service' { '/audit/report/page?page=1&size=10' }
+            'audit-service' { '/audit/moderation/page?page=1&size=10&status=0&taskType=REPORT' }
             'game-account-service' { '/game-account/resources/characters?page=1&size=10' }
             'shop-service' { '/shop/item/list?page=1&size=10' }
             'search-service' { '/search/article?keyword=test&page=1&size=10' }

@@ -1,3 +1,57 @@
+server:
+  port: 8093
+
+spring:
+  application:
+    name: ai-agent-service
+  # AI 配置
+  ai:
+    dashscope:
+      api-key: ${DASHSCOPE_API_KEY}
+      chat:
+        options:
+          model: ${DASHSCOPE_CHAT_MODEL:qwen-plus}
+  # 数据源配置
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3307}/${MYSQL_DB:game_community}?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:root123}
+  # Redis 配置
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6380}
+      database: 0
+      timeout: 5000ms
+  # Elasticsearch 配置
+  elasticsearch:
+    uris: ${ELASTICSEARCH_URIS:http://localhost:9201}
+  # Nacos 配置
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:localhost:8848}
+        ip: ${NACOS_DISCOVERY_IP:127.0.0.1}
+      config:
+        server-addr: ${NACOS_ADDR:localhost:8848}
+        file-extension: yml
+    sentinel:
+      transport:
+        dashboard: ${SENTINEL_DASHBOARD:localhost:8859}
+      eager: true
+
+# MyBatis-Plus 配置
+mybatis-plus:
+  mapper-locations: classpath*:mapper/*.xml
+  type-aliases-package: com.game.community.model.entity
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: auto
+
+# AI Agent 配置
 ai-agent:
   embedding-endpoint: https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings
   chat-endpoint: https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
@@ -11,6 +65,12 @@ ai-agent:
   memory-ttl-hours: 72
   max-rounds: 10
 
+# 日志配置
+logging:
+  level:
+    com.game.community: debug
+
+# API 文档
 springdoc:
   api-docs:
     enabled: true
@@ -19,8 +79,12 @@ springdoc:
     enabled: true
     path: /swagger-ui.html
 
+# 管理端点
 management:
   endpoints:
     web:
       exposure:
         include: '*'
+  endpoint:
+    health:
+      show-details: always

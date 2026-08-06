@@ -1,0 +1,97 @@
+server:
+  port: 8094
+
+spring:
+  application:
+    name: danmaku-service
+  # danmaku-service 只使用本地 DFA 审核；AI/DashScope 依赖来自公共 utils，
+  # 但该服务不应因未配置 DASHSCOPE_API_KEY 而无法启动。
+  autoconfigure:
+    exclude:
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeChatAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAgentAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeImageAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeVideoAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAudioSpeechAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAudioTranscriptionAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeRerankAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeEmbeddingAutoConfiguration
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3307}/${MYSQL_DB:game_community}?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:root123}
+    hikari:
+      maximum-pool-size: ${DANMAKU_DB_POOL_MAX_SIZE:20}
+      minimum-idle: ${DANMAKU_DB_POOL_MIN_IDLE:4}
+      connection-timeout: ${DANMAKU_DB_CONNECTION_TIMEOUT_MS:3000}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6380}
+      database: 0
+      timeout: ${DANMAKU_REDIS_TIMEOUT:500ms}
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:localhost:8848}
+        ip: ${NACOS_DISCOVERY_IP:127.0.0.1}
+      config:
+        server-addr: ${NACOS_ADDR:localhost:8848}
+        file-extension: yml
+    sentinel:
+      transport:
+        dashboard: ${SENTINEL_DASHBOARD:localhost:8859}
+      eager: true
+  kafka:
+    bootstrap-servers: ${KAFKA_SERVERS:localhost:9093}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: ${DANMAKU_KAFKA_RETRIES:5}
+      properties:
+        enable.idempotence: true
+        delivery.timeout.ms: ${DANMAKU_KAFKA_DELIVERY_TIMEOUT_MS:30000}
+        request.timeout.ms: ${DANMAKU_KAFKA_REQUEST_TIMEOUT_MS:5000}
+    consumer:
+      group-id: ${DANMAKU_KAFKA_GROUP:danmaku-persistence}
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: com.game.community.model.message
+        spring.json.value.default.type: com.game.community.model.message.DanmakuEvent
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+    listener:
+      ack-mode: record
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      logic-delete-field: deleted
+      id-type: input
+
+danmaku:
+  max-content-length: ${DANMAKU_MAX_CONTENT_LENGTH:200}
+  history-window-ms: ${DANMAKU_HISTORY_WINDOW_MS:30000}
+  recent-ttl-seconds: ${DANMAKU_RECENT_TTL_SECONDS:604800}
+  user-rate-limit: ${DANMAKU_USER_RATE_LIMIT:6}
+  user-rate-window-seconds: ${DANMAKU_USER_RATE_WINDOW_SECONDS:3}
+  max-video-time-drift-ms: ${DANMAKU_MAX_VIDEO_TIME_DRIFT_MS:10000}
+
+logging:
+  level:
+    com.game.community.danmaku: ${DANMAKU_LOG_LEVEL:info}
+
+management:
+  # 弹幕服务不依赖 Elasticsearch；model 公共依赖会带入 ES 健康指标，不能因此把本服务判为 DOWN。
+  health:
+    elasticsearch:
+      enabled: false
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics

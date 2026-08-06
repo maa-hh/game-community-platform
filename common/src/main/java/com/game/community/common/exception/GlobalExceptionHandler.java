@@ -1,6 +1,7 @@
 package com.game.community.common.exception;
 
 import com.game.community.model.base.Result;
+import com.game.community.common.constant.ApiErrorCodes;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.BindException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -16,7 +17,12 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
     public Result<Void> handleBusinessException(BusinessException e) {
-        return Result.error(e.getMessage());
+        return Result.error(e.getCode(), e.getMessage());
+    }
+
+    @ExceptionHandler(MailSendException.class)
+    public Result<Void> handleMailSendException(MailSendException e) {
+        return Result.error(e.getCode(), e.getMessage());
     }
 
     @ExceptionHandler({MethodArgumentNotValidException.class, BindException.class})
@@ -30,12 +36,12 @@ public class GlobalExceptionHandler {
                 && bindException.getBindingResult().getFieldError() != null) {
             message = bindException.getBindingResult().getFieldError().getDefaultMessage();
         }
-        return Result.error(message);
+        return Result.error(ApiErrorCodes.BAD_REQUEST, message);
     }
 
     @ExceptionHandler(Exception.class)
     public Result<Void> handleException(Exception e) {
         log.error("系统异常", e);
-        return Result.error("系统异常，请稍后重试");
+        return Result.error(ApiErrorCodes.INTERNAL_ERROR, "系统异常，请稍后重试");
     }
 }

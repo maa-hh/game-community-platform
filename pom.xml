@@ -21,10 +21,11 @@
         <module>service/user-service</module>
         <module>service/content-service</module>
         <module>service/social-service</module>
+        <module>service/danmaku-service</module>
+        <module>service/steam-service</module>
         <module>service/notification-service</module>
         <module>service/recommend-service</module>
         <module>service/audit-service</module>
-        <module>service/game-account-service</module>
         <module>service/shop-service</module>
         <module>service/search-service</module>
         <module>service/ai-agent-service</module>
@@ -157,6 +158,31 @@
             </dependency>
         </dependencies>
     </dependencyManagement>
+
+    <repositories>
+        <repository>
+            <id>central</id>
+            <name>Maven Central</name>
+            <url>https://repo1.maven.org/maven2/</url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+        <repository>
+            <id>aliyun-maven</id>
+            <name>Aliyun Maven</name>
+            <url>https://maven.aliyun.com/repository/public</url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
 
     <build>
         <plugins>

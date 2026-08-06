@@ -40,6 +40,21 @@ public interface TaskService {
     void cancelTask(Long taskId);
 
     /**
+     * 按业务 ID 取消待执行/执行中任务（删帖/取消上架）
+     */
+    void cancelTasksByBusinessId(Long businessId, int type);
+
+    /**
+     * 查询业务最近一条任务状态（无则 null）
+     */
+    Integer getLatestTaskStatus(Long businessId, int type);
+
+    /**
+     * 查询业务最近一条任务（无则 null）
+     */
+    Task getLatestTask(Long businessId, int type);
+
+    /**
      * 执行任务（供定时器调用）
      *
      * @param task 任务对象
@@ -64,4 +79,14 @@ public interface TaskService {
      * 启动补偿：把数据库里未入队的任务重新回灌到 Redis。
      */
     void recoverPendingTasks();
+
+    /**
+     * 将到期延迟任务从 ZSet 移入立即队列
+     */
+    void updateZSetToQueue();
+
+    /**
+     * 将数据库未入队任务回灌 Redis
+     */
+    void updateDatabaseToRedis();
 }

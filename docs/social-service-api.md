@@ -182,7 +182,7 @@
 ### 获取文章统计
 
 - 路径：`GET /social/article/count/{articleId}`
-- 作用：获取文章点赞数、评论数、浏览数和当前用户是否点赞。
+- 作用：获取文章点赞数、评论数、收藏数、分享数、浏览数和当前用户是否点赞/收藏。
 
 输出：
 
@@ -191,13 +191,16 @@
 | articleId | Long | 文章 ID |
 | likeCount | Long | 点赞数 |
 | commentCount | Long | 评论数 |
+| favoriteCount | Long | 收藏数 |
+| shareCount | Long | 分享次数 |
 | viewCount | Long | 浏览数 |
 | liked | Boolean | 当前用户是否点赞 |
+| favorited | Boolean | 当前用户是否收藏 |
 
 ### 批量获取文章统计
 
-- 路径：`GET /social/article/counts?articleIds=1&articleIds=2`
-- 作用：内容列表批量补充社交统计。
+- 路径：`GET /social/article/counts?articleIds=<publicId1>&articleIds=<publicId2>`
+- 作用：内容列表批量补充社交统计（含 `favoriteCount`、`shareCount`、`favorited`）。
 
 ### 浏览历史
 
@@ -211,6 +214,51 @@
 - 作用：分页查询当前用户点赞过的文章。
 - 登录：需要
 
+## 收藏接口
+
+### 文章收藏 / 取消收藏
+
+- 收藏：`POST /social/favorite/article/{articleId}`
+- 取消：`DELETE /social/favorite/article/{articleId}`
+- 作用：收藏或取消收藏文章。
+- 登录：需要
+- 规则：与点赞相同，与作者互黑则拒绝；仅已发布文章可收藏。
+- 并发策略：`t_social_favorite` 使用 `(user_id, article_id)` 唯一索引保证幂等，`favorite_count` 原子增减（`GREATEST` 保底 ≥0）。
+
+### 收藏状态检查
+
+- 路径：`GET /social/favorite/article/check/{articleId}`
+- 登录：可选
+- 输出：`data = true/false`
+
+### 收藏文章列表
+
+- 路径：`GET /social/favorite/article/list`
+- 作用：分页查询当前用户收藏过的文章（个人页「收藏」Tab）。
+- 登录：需要
+
+## 分享计数接口
+
+### 记录分享
+
+- 路径：`POST /social/share/article/{articleId}`
+- 作用：用户主动分享时累计 `share_count`（复制链接 / 站内转发 / 外部分享）。
+- 登录：需要
+- 请求体（可选）：
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| channel | String | 否 | `link` / `repost` / `external` |
+
+- 输出：`data = null`
+
+## OG 分享落地页（content-service）
+
+- 路径：`GET /share/post/{articleId}`
+- 作用：返回带 `og:title` / `og:description` / `og:image` / `og:url` 的 HTML，并跳转到前端 `/post/{id}`。
+- 登录：不需要（网关白名单）
+- 配置：`share.frontend-base-url`（环境变量 `SHARE_FRONTEND_BASE_URL`）
+
 ### 关注 Feed 信箱
 
 - 路径：`GET /social/feed`
@@ -222,15 +270,16 @@
 | 字段 | 类型 | 必填 | 默认 | 说明 |
 | --- | --- | --- | --- | --- |
 | before | String | 否 | 当前时间 | 游标时间，格式为 `yyyy-MM-ddTHH:mm:ss` |
+| beforeArticleId | Long | 否 | - | 与 `before` 配套的同时间游标 ID，避免同一时间戳文章分页重复或遗漏 |
 | size | Long | 否 | 20 | 每次拉取数量，最大 100 |
 
 输出 `data[]`：内容为文章骨架 `Article`，包含 `id`、`userId`、`title`、`summary`、`coverUrl`、`categoryId`、`publishedTime` 等字段。
 
-### 发布文章推送到粉丝信箱
+### 发布文章推送到粉丝信箱（服务间调用）
 
-- 路径：`POST /social/internal/feed/publish`
+- 路径：`POST /feign/social/feed/publish`
 - 作用：content-service 在文章审核通过并发布后调用，将文章基础信息推入作者粉丝的 Feed 信箱。
-- 登录：内部接口，不走用户登录态。
+- 登录：不使用用户登录态，必须携带 `X-Internal-Token`，两端使用同一 `SOCIAL_INTERNAL_TOKEN`。
 
 请求参数：
 
@@ -301,33 +350,35 @@
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | targetType | Integer | 是 | 1-文章，2-评论，3-回复，4-用户 |
-| targetId | Long | 是 | 目标 ID |
+| targetId | String | 是 | 目标标识：文章传 publicId，用户传 accountId，评论/回复传数字 ID |
 | reason | String | 是 | 举报原因 |
 
 输出：`data = 举报ID`
 
-### 审核中心举报分页
+### 审核中心工单分页
 
-- 路径：`GET /audit/report/page`
+- 路径：`GET /audit/moderation/page`
 - 登录：管理员
-- 作用：分页查看 Kafka 生成的举报审核工单。
-- 参数：`page`、`size`、`status`、`targetType`
+- 作用：统一查看举报、帖子审核、资料审核工单。
+- 参数：`page`、`size`、`status`、`taskType`
 
-### 审核中心举报详情
+### 审核中心工单详情
 
-- 路径：`GET /audit/report/{taskId}`
+- 路径：`GET /audit/moderation/{taskId}`
 - 登录：管理员
-- 作用：点开审核工单时通过 Feign 拉取目标详情。文章返回标题、摘要、正文和图片；评论返回评论内容；回复返回回复内容；用户返回用户资料。
+- 作用：点开工单时按需通过 Feign 拉取目标详情，并校验目标状态和更新时间快照。
 
-### 审核中心处理举报
+### 审核中心认领与处理工单
 
-- 路径：`PUT /audit/report/{taskId}`
+- 路径：`POST /audit/moderation/{taskId}/claim`，随后 `PUT /audit/moderation/{taskId}`
 - 登录：管理员
-- 作用：确认违规时会联动处理目标，文章下架、评论隐藏、回复隐藏、用户封禁；驳回时只更新举报状态。
+- 作用：先通过租约令牌认领，再提交处理；同一工单只允许一个有效认领者，租约过期后自动重新入队。
 
 请求参数：
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| status | Integer | 是 | 1-采纳，2-驳回 |
+| handleAction | String | 是 | 处理动作，如 `NO_VIOLATION`、`OFFLINE_ARTICLE`、`AUDIT_APPROVE` |
+| claimToken | String | 是 | 认领接口返回的租约令牌 |
+| requestId | String | 是 | 前端生成的幂等请求号 |
 | handleRemark | String | 否 | 处理说明 |

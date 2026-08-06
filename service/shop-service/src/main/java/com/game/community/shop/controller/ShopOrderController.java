@@ -32,12 +32,6 @@ public class ShopOrderController {
     }
 
     @LoginCheck
-    @PostMapping("/create")
-    public Result<ShopOrderVO> createOrderCompat(@Valid @RequestBody CreateShopOrderDTO dto) {
-        return Result.success(orderService.createOrder(UserThreadLocal.getUserId(), dto));
-    }
-
-    @LoginCheck
     @GetMapping("/{orderNo}")
     public Result<ShopOrderVO> getOrder(@PathVariable("orderNo") String orderNo) {
         return Result.success(orderService.getOrder(UserThreadLocal.getUserId(), orderNo));
@@ -64,10 +58,4 @@ public class ShopOrderController {
         return Result.success(null);
     }
 
-    @LoginCheck
-    @PostMapping("/cancel/{orderNo}")
-    public Result<Void> cancelOrderCompat(@PathVariable("orderNo") String orderNo) {
-        orderService.cancelOrder(UserThreadLocal.getUserId(), orderNo);
-        return Result.success(null);
-    }
 }

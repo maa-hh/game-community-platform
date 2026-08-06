@@ -1,6 +1,5 @@
 package com.game.community.model.dto.article;
 
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
@@ -45,9 +44,25 @@ public class ArticleDTO implements Serializable {
     private Map<String, String> contentParagraphs;
 
     /**
-     * 封面图片URL（第一张图片）
+     * 封面图片URL（第一张图片 / pending://）
      */
     private String coverUrl;
+
+    /**
+     * 发帖模式: 1-图文, 2-文章, 3-视频, 4-转发；默认文章
+     */
+    private Integer postType;
+
+    /**
+     * 转发引用的原帖 ID（postType=4 时必填）
+     */
+    /** 转发引用的原帖 publicId（postType=4 时必填）。 */
+    private String refArticleId;
+
+    /**
+     * 主视频 pending:// 或公网 URL（视频模式）
+     */
+    private String videoUrl;
 
     /**
      * 内容中的图片URL列表
@@ -55,13 +70,18 @@ public class ArticleDTO implements Serializable {
     private List<String> imageUrls;
 
     /**
-     * 分类ID
+     * 主分类 ID（兼容旧客户端；新客户端请传 categoryIds，首项为主分类）
      */
-    @NotNull(message = "分类不能为空")
     private Long categoryId;
 
     /**
-     * 文章状态: 0-草稿, 1-已发布, 2-待审核
+     * 分类 ID 列表（1~3 个，首项写入 category_id）
+     */
+    @Size(max = 3, message = "最多选择3个分类")
+    private List<Long> categoryIds;
+
+    /**
+     * 文章状态: 0-草稿；非草稿一律进入待审核
      */
     private Integer status;
 
@@ -69,4 +89,9 @@ public class ArticleDTO implements Serializable {
      * 定时发布时间（为空则立即发布）
      */
     private LocalDateTime scheduledPublishTime;
+
+    /**
+     * 关联 Steam 游戏 appId 列表（发帖标签）
+     */
+    private List<Long> gameAppIds;
 }

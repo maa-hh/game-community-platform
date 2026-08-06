@@ -7,7 +7,5 @@ import java.io.Serializable;
 @Data
 public class ShopCurrencyVO implements Serializable {
 
-    private Long gold;
-
-    private Long diamond;
+    private Long points;
 }

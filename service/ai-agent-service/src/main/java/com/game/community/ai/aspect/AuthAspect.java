@@ -2,7 +2,7 @@ package com.game.community.ai.aspect;
 
 import com.game.community.common.annotation.AdminCheck;
 import com.game.community.common.annotation.LoginCheck;
-import com.game.community.common.constant.user.UserConstants;
+import com.game.community.model.enums.user.AccountType;
 import com.game.community.model.base.PageResult;
 import com.game.community.model.base.Result;
 import com.game.community.utils.ThreadLocal.UserThreadLocal;
@@ -33,7 +33,7 @@ public class AuthAspect {
         if (userId == null) {
             return errorForReturnType(joinPoint, "请先登录");
         }
-        if (type == null || type != UserConstants.UserType.ADMIN) {
+        if (type == null || type != AccountType.ADMIN.getCode()) {
             log.warn("AI 服务管理员校验失败: userId={}, type={}", userId, type);
             return errorForReturnType(joinPoint, "无权限，需要管理员权限");
         }

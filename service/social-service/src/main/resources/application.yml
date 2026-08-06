@@ -1,0 +1,182 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: social-service
+  # AI 配置
+  ai:
+    dashscope:
+      api-key: ${DASHSCOPE_API_KEY}
+      chat:
+        options:
+          model: ${DASHSCOPE_CHAT_MODEL:qwen-plus}
+  # 数据源配置
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3307}/${MYSQL_DB:game_community}?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:root123}
+    hikari:
+      maximum-pool-size: ${SOCIAL_DB_POOL_MAX_SIZE:40}
+      minimum-idle: ${SOCIAL_DB_POOL_MIN_IDLE:8}
+      connection-timeout: ${SOCIAL_DB_CONNECTION_TIMEOUT_MS:3000}
+      validation-timeout: ${SOCIAL_DB_VALIDATION_TIMEOUT_MS:1000}
+      idle-timeout: ${SOCIAL_DB_IDLE_TIMEOUT_MS:600000}
+      max-lifetime: ${SOCIAL_DB_MAX_LIFETIME_MS:1800000}
+      leak-detection-threshold: ${SOCIAL_DB_LEAK_DETECTION_MS:0}
+  # MongoDB 配置
+  data:
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://localhost:27018/game_community_social?connectTimeoutMS=3000&serverSelectionTimeoutMS=3000&socketTimeoutMS=15000&maxPoolSize=100&minPoolSize=10&waitQueueTimeoutMS=3000}
+      auto-index-creation: ${SOCIAL_MONGO_AUTO_INDEX:true}
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6380}
+      database: 0
+      timeout: ${SOCIAL_REDIS_COMMAND_TIMEOUT:500ms}
+      connect-timeout: ${SOCIAL_REDIS_CONNECT_TIMEOUT:1000ms}
+      lettuce:
+        pool:
+          max-active: ${SOCIAL_REDIS_POOL_MAX_ACTIVE:64}
+          max-idle: ${SOCIAL_REDIS_POOL_MAX_IDLE:16}
+          min-idle: ${SOCIAL_REDIS_POOL_MIN_IDLE:4}
+          max-wait: ${SOCIAL_REDIS_POOL_MAX_WAIT:500ms}
+  # Nacos 配置
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:localhost:8848}
+        ip: ${NACOS_DISCOVERY_IP:127.0.0.1}
+      config:
+        server-addr: ${NACOS_ADDR:localhost:8848}
+        file-extension: yml
+    sentinel:
+      transport:
+        dashboard: ${SENTINEL_DASHBOARD:localhost:8859}
+      eager: true
+    openfeign:
+      circuitbreaker:
+        enabled: true
+        alphanumeric-ids:
+          enabled: true
+      client:
+        config:
+          default:
+            connectTimeout: ${SOCIAL_FEIGN_CONNECT_TIMEOUT_MS:1000}
+            readTimeout: ${SOCIAL_FEIGN_READ_TIMEOUT_MS:3000}
+            loggerLevel: ${SOCIAL_FEIGN_LOG_LEVEL:none}
+    circuitbreaker:
+      resilience4j:
+        enabled: true
+  # Kafka 配置
+  kafka:
+    bootstrap-servers: ${KAFKA_SERVERS:localhost:9093}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: ${SOCIAL_KAFKA_RETRIES:5}
+      properties:
+        enable.idempotence: true
+        delivery.timeout.ms: ${SOCIAL_KAFKA_DELIVERY_TIMEOUT_MS:30000}
+        request.timeout.ms: ${SOCIAL_KAFKA_REQUEST_TIMEOUT_MS:5000}
+        max.in.flight.requests.per.connection: 5
+
+# MinIO 配置
+minio:
+  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  public-endpoint: ${MINIO_PUBLIC_ENDPOINT:http://localhost:9000}
+  accessKey: ${MINIO_ACCESS_KEY:minioadmin}
+  secretKey: ${MINIO_SECRET_KEY:minioadmin123}
+  public-bucket-name: ${MINIO_PUBLIC_BUCKET:game-community-public}
+  private-bucket-name: ${MINIO_PRIVATE_BUCKET:game-community-private}
+  public-file-prefix: ${MINIO_PUBLIC_FILE_PREFIX:user-files/public}
+  private-file-prefix: ${MINIO_PRIVATE_FILE_PREFIX:user-files/pending}
+  presigned-expire-seconds: ${MINIO_PRESIGNED_EXPIRE_SECONDS:900}
+  max-read-bytes: ${MINIO_MAX_READ_BYTES:16777216}
+  max-hash-bytes: ${MINIO_MAX_HASH_BYTES:0}
+
+# MyBatis-Plus 配置
+mybatis-plus:
+  mapper-locations: classpath*:mapper/*.xml
+  type-aliases-package: com.game.community.model.entity
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+      id-type: auto
+
+# 日志配置
+logging:
+  level:
+    com.game.community: ${SOCIAL_LOG_LEVEL:info}
+
+# Feign 与社交远程调用的熔断、重试和隔离。重试仅限定为网络类失败，避免重复写操作。
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 50
+        minimumNumberOfCalls: 20
+        failureRateThreshold: 50
+        slowCallRateThreshold: 60
+        slowCallDurationThreshold: 2s
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 5
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+    instances:
+      default:
+        baseConfig: default
+      socialRemote:
+        baseConfig: default
+  retry:
+    configs:
+      default:
+        maxAttempts: 2
+        waitDuration: 100ms
+        retryExceptions:
+          - feign.RetryableException
+          - java.net.SocketTimeoutException
+          - java.net.ConnectException
+    instances:
+      default:
+        baseConfig: default
+      socialRemoteRetry:
+        baseConfig: default
+  bulkhead:
+    configs:
+      default:
+        maxConcurrentCalls: ${SOCIAL_REMOTE_MAX_CONCURRENT:64}
+        maxWaitDuration: 0ms
+    instances:
+      default:
+        baseConfig: default
+      socialRemote:
+        baseConfig: default
+
+social:
+  internal-token: ${SOCIAL_INTERNAL_TOKEN:}
+  outbox:
+    poll-interval-ms: ${SOCIAL_OUTBOX_POLL_INTERVAL_MS:500}
+    batch-size: ${SOCIAL_OUTBOX_BATCH_SIZE:100}
+    stale-lock-minutes: ${SOCIAL_OUTBOX_STALE_LOCK_MINUTES:2}
+  rate-limit:
+    enabled: ${SOCIAL_RATE_LIMIT_ENABLED:true}
+    fail-open: ${SOCIAL_RATE_LIMIT_FAIL_OPEN:false}
+  stats-cache:
+    ttl-seconds: ${SOCIAL_STATS_CACHE_TTL_SECONDS:5}
+
+# 管理端点
+management:
+  endpoints:
+    web:
+      exposure:
+        include: '*'
+  endpoint:
+    health:
+      show-details: always
