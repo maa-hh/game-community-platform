@@ -1,0 +1,98 @@
+server:
+  port: 8092
+
+spring:
+  application:
+    name: notification-service
+  # AI 配置
+  ai:
+    dashscope:
+      api-key: ${DASHSCOPE_API_KEY}
+      chat:
+        options:
+          model: ${DASHSCOPE_CHAT_MODEL:qwen-plus}
+  # 数据源配置
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3307}/${MYSQL_DB:game_community}?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:root123}
+  # Redis 配置
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6380}
+      database: 0
+      timeout: 5000ms
+  # Nacos 配置
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:localhost:8848}
+        ip: ${NACOS_DISCOVERY_IP:127.0.0.1}
+      config:
+        server-addr: ${NACOS_ADDR:localhost:8848}
+        file-extension: yml
+    sentinel:
+      transport:
+        dashboard: ${SENTINEL_DASHBOARD:localhost:8859}
+      eager: true
+  # Kafka 配置
+  kafka:
+    bootstrap-servers: ${KAFKA_SERVERS:localhost:9093}
+    consumer:
+      group-id: notification-service-group
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: com.game.community.model.message
+        spring.json.value.default.type: com.game.community.model.message.NotificationEventMessage
+    listener:
+      ack-mode: record
+      concurrency: ${NOTIFICATION_KAFKA_CONCURRENCY:3}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: ${NOTIFICATION_KAFKA_RETRIES:5}
+      properties:
+        enable.idempotence: true
+    streams:
+      application-id: notification-service-forward-stream-v2
+      properties:
+        processing.guarantee: at_least_once
+        auto.offset.reset: earliest
+        default.key.serde: org.apache.kafka.common.serialization.Serdes$StringSerde
+        default.value.serde: org.springframework.kafka.support.serializer.JsonSerde
+
+notification:
+  kafka:
+    window-seconds: ${NOTIFICATION_KAFKA_WINDOW_SECONDS:1}
+    window-grace-ms: ${NOTIFICATION_KAFKA_WINDOW_GRACE_MS:200}
+
+# MyBatis-Plus 配置
+mybatis-plus:
+  mapper-locations: classpath*:mapper/*.xml
+  type-aliases-package: com.game.community.model.entity
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: auto
+
+# 日志配置
+logging:
+  level:
+    com.game.community: debug
+
+# 管理端点
+management:
+  endpoints:
+    web:
+      exposure:
+        include: '*'
+  endpoint:
+    health:
+      show-details: always

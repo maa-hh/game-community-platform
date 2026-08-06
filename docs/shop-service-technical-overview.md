@@ -1,58 +1,30 @@
-# 购物模块技术说明
+# shop-service v3 技术方案
 
-## 整体脉络
+## 一致性边界
 
-购物模块从 demo 的商品、订单、优惠券、用户券、用户货币账户能力迁移到当前微服务体系，当前实现包括 `shop-service`、Gateway 路由、MySQL 表、Redis 预扣、Kafka 支付事件和前端商城页。
+Redis Lua 只负责高并发入口的库存、限购和请求号原子预占；MySQL 是订单、库存、限购和积分的最终事实源。Redis Key 过期或异常后，按 MySQL 中的订单预占量重建。
 
-核心表包括：
+订单创建流程：
 
-| 表 | 作用 |
-| --- | --- |
-| `t_shop_item` | 商品、库存、限购、业务编码 |
-| `t_shop_order` | 订单主表，包含原价、优惠、实付、券信息和状态 |
-| `t_shop_coupon` | 优惠券模板 |
-| `t_shop_user_coupon` | 用户持有的优惠券，支持锁定、释放、使用 |
-| `t_shop_currency` | 用户金币和钻石账户 |
+1. 校验商品快照、用户装扮状态和请求号。
+2. Lua 原子校验库存、永久限购、冷却时间或窗口限购，并写入订单状态缓存。
+3. MySQL 事务写入 `CREATING` 订单，扣减数据库库存并锁定限购记录，状态转为 `PENDING_PAY`。
+4. 任一步失败都释放 Redis 预占；数据库任务会修复异常遗留的 `CREATING` 订单。
 
-## 核心下单链路
+支付流程只在 shop-service 本地事务中扣减积分并把订单转为 `PAID`，同时写入唯一的 `t_shop_delivery_task`。发货 worker 调用 user-service，按订单号幂等发放装扮，失败指数退避，超过次数进入死信状态。
 
-1. 前端提交 `itemId`、`quantity`、`payType`、`requestId`、可选 `userCouponId`。
-2. 后端先校验商品、支付方式、优惠券适用性，并把用户券从未使用状态原子更新为锁定状态。
-3. Redis Lua 脚本按用户维度执行幂等、库存和限购校验，成功后生成 `orderNo` 并写入异步创建队列。
-4. 异步 worker 消费队列，扣减 MySQL 库存并创建 `t_shop_order`。
-5. 前端轮询订单详情，订单从创建中变为待支付后允许支付。
-6. 支付接口在事务内扣减金币或钻石、更新订单为已支付、标记用户券已使用。
-7. 普通商品支付成功后发送 `shop-order-paid-events` Kafka 事件，事件发送失败只记日志，不回滚主交易。
-8. 如果商品 `product_type = 0`，表示优惠券商品，支付成功后不发游戏道具 Kafka，而是根据商品 `business_id` 发放对应优惠券模板。
+## 并发保证
 
-## 并发一致性设计
+- 库存入口由 Redis Lua 串行化，数据库使用 `stock >= quantity` 原子扣减兜底。
+- 限购表按 `(user_id, item_id)` 加行锁，同时维护 `purchased_count` 和 `reserved_count`。
+- `ONCE_FOREVER` 在 shop-service 内固定为有效限购 1 次，不依赖前端或单次远程查询。
+- `LIMIT_PER_WINDOW` 在 Lua 和数据库侧都按窗口起点重置。
+- `COOLDOWN` 在 Lua 中按毫秒时间比较，数据库侧再次校验。
+- 订单请求使用 `(user_id, request_id)` 唯一索引，积分流水使用 `(biz_type, biz_ref)` 唯一索引。
+- 发货任务使用 `order_no` 唯一索引，user-service 的权益发放记录使用订单号幂等。
 
-- 库存预扣在 Redis Lua 中完成，避免同一商品高并发下多命令竞态。
-- MySQL 落库时再次用 `stock = stock - quantity` 且 `stock >= quantity` 的条件更新兜底，防止 Redis 与 DB 不一致导致超卖。
-- 限购在 Redis Lua 中预占，但 Lua 执行前会用 MySQL 的 `t_shop_purchase_limit` 和有效订单历史初始化 Redis 计数，避免服务重启或 Redis key 过期后忘记历史购买。
-- 用户券用 `status = 0 -> 3 -> 1` 的状态流转，依赖条件更新保证同一张券不能被并发订单重复锁定。
-- 订单支付用订单状态条件更新，只有待支付订单能进入已支付，重复支付不会重复扣款。
-- 用户货币扣减使用 `balance >= amount` 的原子条件更新，余额不足不会扣成负数。
-- 取消、创建失败、过期任务都会释放 Redis 预扣和锁定优惠券。
-- `requestId` 做用户维度幂等，同一用户重复提交同一个 `requestId` 会返回已有订单号。
+## 迁移
 
-## 功能亮点
+`sql/shop-v3-migration.sql` 会迁移现有商品、订单、限购和积分数据，清理重复装扮商品，补齐非 NULL 默认值，删除已经下线的优惠券表，并为已支付订单生成发货任务。执行顺序已写入 `scripts/db/migrations.order`。
 
-- 保留 demo 的 `/api/shop/**` 兼容路径，同时提供当前项目标准的 `/shop/**` 路径。
-- 支持优惠券模板、用户券、券发放、券锁定、支付后核销、取消释放。
-- 支持优惠券最低使用门槛 `min_amount`，商品未达到门槛时列表过滤和下单校验都会拦截。
-- 支持将优惠券作为商品上架，商品通过 `business_id` 绑定优惠券模板，购买成功后直接进入用户券包。
-- 支持金币和钻石账户，后台可增减、重置和删除账户。
-- 前端商城页展示余额、可用券、商品、订单状态，创建订单时可选择适用券。
-- 订单使用异步创建模型，把高并发入口压在 Redis，降低 MySQL 峰值压力。
-
-## 难点与权衡
-
-- 下单时先锁券再执行 Redis Lua，如果 Lua 校验失败必须立即释放券；当前代码在失败分支和异常分支都做了释放。
-- 支付成功事件不应影响主交易，因此 Kafka 发送采用尽力通知。后续如果要强一致事件，可升级为本地消息表或事务外盒。
-- `scopeType` 保留为 demo 兼容字段，但真实判断优先使用 `scope_item_id` 和 `scope_product_type`。这样可以避免“小数字既像商品 ID 又像商品类型”的歧义。
-- 当前商品权益发放只发出 Kafka 事件，具体权益到账消费者可以后续由对应业务模块订阅实现。
-
-## 初始化资源
-
-`sql/shop.sql` 会创建或补齐购物模块表，并插入基础商品、优惠券模板、用户货币账户和用户券测试数据。已有库可重复执行，脚本包含部分幂等处理。
+生产部署前必须设置 `GATEWAY_INTERNAL_SECRET`，Gateway 和 shop-service 必须使用同一随机密钥；shop-service 不接受绕过 Gateway 的直接调用。

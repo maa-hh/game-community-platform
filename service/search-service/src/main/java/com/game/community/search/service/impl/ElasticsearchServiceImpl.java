@@ -6,8 +6,10 @@ import co.elastic.clients.elasticsearch.core.BulkResponse;
 import co.elastic.clients.elasticsearch.core.DeleteRequest;
 import co.elastic.clients.elasticsearch.core.IndexRequest;
 import com.game.community.model.elasticsearch.ArticleDocument;
+import com.game.community.model.elasticsearch.GameIndexDocument;
 import com.game.community.model.elasticsearch.SuggestDocument;
-import com.game.community.search.initIndex.InitElasticsearchIndex;
+import com.game.community.model.vo.game.GameListItemVO;
+import com.game.community.common.constant.search.SearchConstants;
 import com.game.community.search.service.ElasticsearchService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,7 +32,7 @@ public class ElasticsearchServiceImpl implements ElasticsearchService {
         }
         try {
             elasticsearchClient.index(IndexRequest.of(i -> i
-                    .index(InitElasticsearchIndex.ARTICLE_INDEX)
+                    .index(SearchConstants.ARTICLE_INDEX)
                     .id(String.valueOf(document.getId()))
                     .document(document)
             ));
@@ -47,12 +49,82 @@ public class ElasticsearchServiceImpl implements ElasticsearchService {
         }
         try {
             elasticsearchClient.delete(DeleteRequest.of(d -> d
-                    .index(InitElasticsearchIndex.ARTICLE_INDEX)
+                    .index(SearchConstants.ARTICLE_INDEX)
                     .id(String.valueOf(articleId))
             ));
             log.info("文章索引删除成功: articleId={}", articleId);
         } catch (IOException e) {
             throw new IllegalStateException("文章索引删除失败", e);
+        }
+    }
+
+    @Override
+    public void indexGame(GameIndexDocument document) {
+        if (document == null || document.getAppId() == null) {
+            return;
+        }
+        try {
+            elasticsearchClient.index(IndexRequest.of(i -> i
+                    .index(SearchConstants.GAME_INDEX)
+                    .id(String.valueOf(document.getAppId()))
+                    .document(document)));
+        } catch (IOException e) {
+            throw new IllegalStateException("游戏索引同步失败", e);
+        }
+    }
+
+    @Override
+    public void indexGame(GameListItemVO game) {
+        if (game == null || game.getAppId() == null) {
+            return;
+        }
+        GameIndexDocument document = new GameIndexDocument();
+        document.setAppId(game.getAppId());
+        document.setName(game.getName());
+        document.setDevelopers(game.getDeveloper() == null ? List.of() : List.of(game.getDeveloper()));
+        document.setPublishers(game.getPublisher() == null ? List.of() : List.of(game.getPublisher()));
+        document.setGenres(game.getGenres() == null ? List.of() : game.getGenres());
+        document.setCoverUrl(game.getCoverUrl());
+        document.setReleaseDate(game.getReleaseDate());
+        document.setSteamReviewScore(game.getSteamReviewScore());
+        document.setSteamReviewCount(game.getSteamReviewCount());
+        document.setAvgScore(game.getAvgScore());
+        document.setReviewCount(game.getReviewCount());
+        document.setDiscussCount(game.getDiscussCount());
+        document.setPrice(game.getPrice());
+        document.setStatus(SearchConstants.GAME_STATUS_ACTIVE);
+        document.setDetailReady(false);
+        document.setUpdatedAt(java.time.LocalDateTime.now());
+        indexGame(document);
+    }
+
+    @Override
+    public void deleteGame(Long appId) {
+        if (appId == null) {
+            return;
+        }
+        try {
+            elasticsearchClient.delete(DeleteRequest.of(d -> d
+                    .index(SearchConstants.GAME_INDEX)
+                    .id(String.valueOf(appId))));
+        } catch (IOException e) {
+            throw new IllegalStateException("游戏索引删除失败", e);
+        }
+    }
+
+    @Override
+    public void indexSuggestion(SuggestDocument document) {
+        if (document == null || document.getId() == null) {
+            return;
+        }
+        try {
+            elasticsearchClient.index(IndexRequest.of(i -> i
+                    .index(SearchConstants.SUGGEST_INDEX)
+                    .id(String.valueOf(document.getId()))
+                    .document(document)
+            ));
+        } catch (IOException e) {
+            throw new IllegalStateException("建议词索引写入失败", e);
         }
     }
 
@@ -65,7 +137,7 @@ public class ElasticsearchServiceImpl implements ElasticsearchService {
             BulkRequest.Builder bulkBuilder = new BulkRequest.Builder();
             for (SuggestDocument document : documents) {
                 bulkBuilder.operations(op -> op.index(idx -> idx
-                        .index(InitElasticsearchIndex.SUGGEST_INDEX)
+                        .index(SearchConstants.SUGGEST_INDEX)
                         .id(document.getId() == null ? null : String.valueOf(document.getId()))
                         .document(document)
                 ));
@@ -88,7 +160,7 @@ public class ElasticsearchServiceImpl implements ElasticsearchService {
         }
         try {
             elasticsearchClient.delete(DeleteRequest.of(d -> d
-                    .index(InitElasticsearchIndex.SUGGEST_INDEX)
+                    .index(SearchConstants.SUGGEST_INDEX)
                     .id(String.valueOf(id))
             ));
         } catch (IOException e) {

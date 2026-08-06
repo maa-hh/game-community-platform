@@ -1,6 +1,7 @@
 package com.game.community.model.vo.user;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 /**
@@ -11,22 +12,12 @@ public class LoginVO {
 
     private String accessToken;
 
-    private Long accessTokenExpireIn;
+    @JsonProperty("accessExpiresIn")
+    private Long accessExpiresIn;
 
-    private Long userId;
+    private LoginUserVO user;
 
-    private Long accountId;
-
-    private String username;
-
-    private String avatar;
-
-    private Integer type;
-
-    private String gameAccount;
-
-    private Integer auditStatus;
-
+    /** 仅服务端写 Cookie 使用，不输出到 JSON */
     @JsonIgnore
     private String refreshToken;
 }

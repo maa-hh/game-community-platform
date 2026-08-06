@@ -6,17 +6,8 @@ public interface ShopCurrencyService {
 
     ShopCurrencyVO getOrCreate(Long userId);
 
-    ShopCurrencyVO saveCurrency(Long userId, Long gold, Long diamond);
+    ShopCurrencyVO addPoints(Long userId, Long amount, String bizType, String bizRef, String remark);
 
-    ShopCurrencyVO resetCurrency(Long userId);
+    ShopCurrencyVO deductPoints(Long userId, Long amount, String bizType, String bizRef, String remark);
 
-    ShopCurrencyVO addGold(Long userId, Long amount);
-
-    ShopCurrencyVO addDiamond(Long userId, Long amount);
-
-    ShopCurrencyVO deductGold(Long userId, Long amount);
-
-    ShopCurrencyVO deductDiamond(Long userId, Long amount);
-
-    void deleteCurrency(Long userId);
 }

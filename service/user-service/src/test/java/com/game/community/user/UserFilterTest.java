@@ -22,13 +22,13 @@ class UserFilterTest {
         MockHttpServletResponse response = new MockHttpServletResponse();
         request.addHeader(GatewayConstants.USER_ID_HEADER, "10001");
         request.addHeader(GatewayConstants.USER_TYPE_HEADER, "1");
-        request.addHeader(GatewayConstants.GAME_ACCOUNT_HEADER, "game_10001");
+        request.addHeader(GatewayConstants.STEAM_ACCOUNT_HEADER, "steam_10001");
         request.addHeader(GatewayConstants.SESSION_ID_HEADER, "session-1");
 
         FilterChain chain = (servletRequest, servletResponse) -> {
             assertThat(UserThreadLocal.getUserId()).isEqualTo(10001L);
             assertThat(UserThreadLocal.getType()).isEqualTo(1);
-            assertThat(UserThreadLocal.getGameAccount()).isEqualTo("game_10001");
+            assertThat(UserThreadLocal.getSteamAccount()).isEqualTo("steam_10001");
             assertThat(UserThreadLocal.getSessionId()).isEqualTo("session-1");
         };
 

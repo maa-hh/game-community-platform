@@ -5,10 +5,12 @@ import com.game.community.model.dto.social.AddCommentDTO;
 import com.game.community.model.dto.social.AddReplyDTO;
 import com.game.community.model.dto.social.CommentPageDTO;
 import com.game.community.model.dto.social.ReplyPageDTO;
-import com.game.community.model.entity.article.Article;
+import com.game.community.model.dto.social.ShareArticleDTO;
+import com.game.community.model.vo.article.ArticleListVO;
 import com.game.community.model.vo.social.ArticleStatsVO;
 import com.game.community.model.vo.social.BrowseHistoryVO;
 import com.game.community.model.vo.social.CommentVO;
+import com.game.community.model.vo.social.MyCommentFeedVO;
 import com.game.community.model.vo.social.ReplyVO;
 
 import java.util.List;
@@ -26,9 +28,9 @@ public interface SocialService {
 
     void deleteReply(Long userId, Long replyId);
 
-    CommentVO getCommentDetail(Long commentId);
+    CommentVO getCommentDetail(Long userId, Long commentId);
 
-    ReplyVO getReplyDetail(Long replyId);
+    ReplyVO getReplyDetail(Long userId, Long replyId);
 
     void hideCommentByAudit(Long commentId);
 
@@ -54,7 +56,7 @@ public interface SocialService {
 
     boolean hasLikedReply(Long userId, Long replyId);
 
-    Article viewArticle(Long userId, Long articleId);
+    ArticleListVO viewArticle(Long userId, Long articleId);
 
     ArticleStatsVO getArticleStats(Long userId, Long articleId);
 
@@ -62,9 +64,38 @@ public interface SocialService {
 
     PageResult<BrowseHistoryVO> listBrowseHistory(Long userId, Long page, Long size);
 
-    PageResult<Article> listLikedArticles(Long userId, Long page, Long size);
+    PageResult<ArticleListVO> listLikedArticles(Long userId, Long page, Long size);
 
-    PageResult<Article> listFeed(Long userId, LocalDateTime before, Long size);
+    PageResult<ArticleListVO> listFeed(Long userId, LocalDateTime before, Long beforeArticleId,
+                                       Long size, Integer postType, Boolean includeSelf);
+
+    PageResult<MyCommentFeedVO> listMyComments(Long userId, Long page, Long size);
+
+    PageResult<MyCommentFeedVO> listMyReplies(Long userId, Long page, Long size);
+
+    PageResult<MyCommentFeedVO> listMyLikedComments(Long userId, Long page, Long size);
+
+    PageResult<MyCommentFeedVO> listMyLikedReplies(Long userId, Long page, Long size);
+
+    PageResult<MyCommentFeedVO> listReceivedComments(Long userId, Long page, Long size);
+
+    PageResult<MyCommentFeedVO> listReceivedReplies(Long userId, Long page, Long size);
+
+    PageResult<ArticleListVO> listReceivedLikedArticles(Long userId, Long page, Long size);
+
+    PageResult<MyCommentFeedVO> listReceivedArticleLikes(Long userId, Long page, Long size);
+
+    Long countReceivedLikes(Long userId);
 
     void publishArticleToFollowers(Long authorId, Long articleId, LocalDateTime publishedTime);
+
+    void favoriteArticle(Long userId, Long articleId);
+
+    void unfavoriteArticle(Long userId, Long articleId);
+
+    boolean hasFavoritedArticle(Long userId, Long articleId);
+
+    PageResult<ArticleListVO> listFavoritedArticles(Long userId, Long page, Long size);
+
+    void shareArticle(Long userId, Long articleId, ShareArticleDTO dto);
 }

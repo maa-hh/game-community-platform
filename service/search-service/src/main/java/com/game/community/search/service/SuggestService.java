@@ -4,13 +4,14 @@ import com.game.community.model.dto.search.SearchCorrectVO;
 import com.game.community.model.dto.search.SearchResult;
 import com.game.community.model.dto.search.SuggestionPageDTO;
 import com.game.community.model.elasticsearch.SuggestDocument;
+import com.game.community.model.vo.search.SuggestItemVO;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
 public interface SuggestService {
 
-    List<SuggestDocument> suggest(String prefix);
+    List<SuggestItemVO> suggest(String prefix);
 
     SearchCorrectVO correct(String keyword);
 

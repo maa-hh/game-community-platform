@@ -10,6 +10,8 @@ public class FollowUserVO implements Serializable {
 
     private Long userId;
 
+    private Long accountId;
+
     private String username;
 
     private String avatar;

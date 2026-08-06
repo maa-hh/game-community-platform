@@ -135,7 +135,7 @@ $cases = @(
     @{ Service = 'social-service'; Endpoint = '/social/article/10'; Port = 8084; Label = 'social-article-view' },
     @{ Service = 'notification-service'; Endpoint = '/notification/summary'; Port = 8092; Label = 'notification-summary' },
     @{ Service = 'recommend-service'; Endpoint = '/hot-article/list?page=1&size=10'; Port = 8086; Label = 'recommend-hot-list' },
-    @{ Service = 'audit-service'; Endpoint = '/audit/report/page?page=1&size=10'; Port = 8091; Label = 'audit-report-page' },
+    @{ Service = 'audit-service'; Endpoint = '/audit/moderation/page?page=1&size=10&status=0&taskType=REPORT'; Port = 8091; Label = 'audit-report-page' },
     @{ Service = 'game-account-service'; Endpoint = '/game-account/resources/characters?page=1&size=10'; Port = 8083; Label = 'game-character-catalog' },
     @{ Service = 'shop-service'; Endpoint = '/shop/item/list?page=1&size=10'; Port = 8085; Label = 'shop-item-list' },
     @{ Service = 'search-service'; Endpoint = '/search/article?keyword=test&page=1&size=10'; Port = 8087; Label = 'search-article' }

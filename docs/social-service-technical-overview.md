@@ -77,7 +77,7 @@ MySQL 和 MongoDB 没有做分布式事务。当前策略是在同一个业务�
 
 当前实现采用推拉结合：
 
-1. 文章审核通过发布后，content-service 调用 social-service 内部接口 `/social/internal/feed/publish`。
+1. 文章审核通过发布后，content-service 通过带 `X-Internal-Token` 的 Feign 接口 `/feign/social/feed/publish` 调用 social-service。
 2. social-service 查询作者粉丝，将 `authorId/articleId/publishedTime` 写入 `t_social_feed_item`。
 3. 用户关注某个作者时，立即拉取该作者最近文章补偿写入信箱，避免“关注后看不到历史内容”。
 4. 用户请求 `/social/feed` 时，优先按 `published_time` 游标读取信箱。
@@ -87,7 +87,7 @@ Feed 信箱只保存文章基础索引，不复制标题、摘要、封面等文
 
 ### 举报
 
-举报先写入 `t_social_report`，再通过 Kafka 投递 `ReportAuditMessage`，audit-service 消费后生成 `t_audit_report_task`。审核端点开详情时才通过 Feign 拉取目标详情，避免 Kafka 消息携带大正文或过期快照。
+举报先写入 `t_social_report`，再通过 Kafka 投递 `ReportAuditMessage`，audit-service 消费后幂等写入统一的 `t_moderation_task`。审核端点开详情时才通过 Feign 拉取目标详情，避免 Kafka 消息携带大正文或阻塞消费线程。
 
 目标详情和处理动作：
 
@@ -96,7 +96,7 @@ Feed 信箱只保存文章基础索引，不复制标题、摘要、封面等文
 - 回复：通过 social-service 拉取回复内容；举报采纳后隐藏回复。
 - 用户：通过 user-service 拉取用户资料；举报采纳后封禁用户。
 
-管理员处理时只允许从待处理状态变为处理中，再变为采纳或驳回，更新条件包含 `status = PENDING`，避免两个管理员并发处理时后写覆盖先写。联动目标处理失败时会把审核工单回退到待处理，方便重试。
+管理员处理时先使用 `claimToken + version + leaseExpireTime` CAS 认领，再提交带 `requestId` 的幂等处理请求；联动目标处理失败时工单回退到待处理，租约过期也会自动回收。通知先写入审核 Outbox，再由后台投递 Kafka，避免数据库已完成但通知丢失。
 
 ## 并发与一致性设计
 

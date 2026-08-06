@@ -1,6 +1,9 @@
 spring:
   application:
     name: user-service-test
+  ai:
+    dashscope:
+      api-key: test-key
   datasource:
     driver-class-name: org.h2.Driver
     url: jdbc:h2:mem:user_service;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
@@ -22,6 +25,12 @@ spring:
     redis:
       repositories:
         enabled: false
+  kafka:
+    bootstrap-servers: localhost:9093
+    consumer:
+      auto-startup: false
+    listener:
+      auto-startup: false
 
 minio:
   endpoint: http://localhost:9000
@@ -34,7 +43,23 @@ minio:
   private-file-prefix: user-files/pending
   presigned-expire-seconds: 900
 
+email:
+  validation:
+    mx-check-enabled: false
+  code:
+    expire-seconds: 300
+  mock:
+    enabled: true
+    addresses: "*"
+    fixed-code: "123456"
+  force-real: false
+
+auth:
+  seed:
+    enabled: false
+
 audit:
+  mode: mock
   async:
     core-pool-size: 2
     max-pool-size: 4

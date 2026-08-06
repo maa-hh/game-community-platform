@@ -1,0 +1,3 @@
+-- 历史社交行为 → t_article_behavior_event
+-- 有 create_time / published_time 的用原时间；否则统一为昨天 12:00（上海）
+-- 由 recommend-service 启动任务或 XXL-JOB 执行，表非空时跳过

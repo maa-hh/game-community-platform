@@ -7,12 +7,15 @@ import com.game.community.model.base.Result;
 import com.game.community.model.dto.search.SearchCorrectVO;
 import com.game.community.model.dto.search.SearchPageDTO;
 import com.game.community.model.dto.search.SuggestionPageDTO;
+import com.game.community.model.dto.search.SuggestTriggerDTO;
 import com.game.community.model.elasticsearch.SuggestDocument;
+import com.game.community.model.vo.search.SuggestItemVO;
 import com.game.community.model.vo.article.ArticleSearchItemVO;
 import com.game.community.search.service.ArticleSearchService;
-import com.game.community.search.service.ArticleSyncService;
+import com.game.community.search.service.SearchStartupSyncService;
 import com.game.community.search.service.SearchRecordService;
 import com.game.community.search.service.SuggestService;
+import com.game.community.search.service.SuggestTermService;
 import com.game.community.utils.ThreadLocal.UserThreadLocal;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -38,12 +41,12 @@ public class SearchController {
 
     private final ArticleSearchService articleSearchService;
     private final SuggestService suggestService;
+    private final SuggestTermService suggestTermService;
     private final SearchRecordService searchRecordService;
-    private final ArticleSyncService articleSyncService;
+    private final SearchStartupSyncService searchStartupSyncService;
 
     @Operation(summary = "文章搜索")
     @GetMapping("/article")
-    @LoginCheck
     public PageResult<ArticleSearchItemVO> searchArticle(@ModelAttribute SearchPageDTO searchDTO) {
         var searchResult = articleSearchService.search(searchDTO);
         if (!searchResult.isSuccess()) {
@@ -56,10 +59,14 @@ public class SearchController {
             return error;
         }
         if (searchDTO.getKeyword() != null && !searchDTO.getKeyword().isBlank()) {
-            searchRecordService.addRecord(UserThreadLocal.getUserId(), searchDTO.getKeyword());
+            Long userId = UserThreadLocal.getUserId();
+            if (userId != null) {
+                searchRecordService.addRecord(userId, searchDTO.getKeyword());
+            }
+            suggestTermService.triggerByKeywordAsync(searchDTO.getKeyword().trim());
         }
         return PageResult.of(
-                (List<ArticleSearchItemVO>) searchResult.getList(),
+                castItems(searchResult.getList(), ArticleSearchItemVO.class),
                 searchResult.getPage(),
                 searchResult.getSize(),
                 searchResult.getTotal()
@@ -69,8 +76,16 @@ public class SearchController {
     @Operation(summary = "搜索建议")
     @GetMapping("/suggest")
     @LoginCheck
-    public Result<List<SuggestDocument>> suggest(@RequestParam("prefix") String prefix) {
+    public Result<List<SuggestItemVO>> suggest(@RequestParam("prefix") String prefix) {
         return Result.success(suggestService.suggest(prefix));
+    }
+
+    @Operation(summary = "记录建议词触发（选中下拉项）")
+    @PostMapping("/suggest/trigger")
+    @LoginCheck
+    public Result<Void> triggerSuggest(@RequestBody SuggestTriggerDTO dto) {
+        suggestTermService.triggerAsync(dto.getTermId(), dto.getTerm());
+        return Result.success(null);
     }
 
     @Operation(summary = "搜索纠错")
@@ -85,7 +100,7 @@ public class SearchController {
     @AdminCheck
     public PageResult<SuggestDocument> getSuggestions(@ModelAttribute SuggestionPageDTO pageDTO) {
         var result = suggestService.getSuggestions(pageDTO);
-        return PageResult.of((List<SuggestDocument>) result.getList(), result.getPage(), result.getSize(), result.getTotal());
+        return PageResult.of(castItems(result.getList(), SuggestDocument.class), result.getPage(), result.getSize(), result.getTotal());
     }
 
     @Operation(summary = "批量添加建议词")
@@ -112,11 +127,18 @@ public class SearchController {
         return Result.success(null);
     }
 
-    @Operation(summary = "重建已发布文章索引")
+    private <T> List<T> castItems(List<?> items, Class<T> type) {
+        if (items == null) {
+            return List.of();
+        }
+        return items.stream().filter(type::isInstance).map(type::cast).toList();
+    }
+
+    @Operation(summary = "重建已发布文章索引与建议词")
     @PostMapping("/article/rebuild")
     @AdminCheck
     public Result<Void> rebuildArticleIndex() {
-        articleSyncService.rebuildPublishedArticles();
+        searchStartupSyncService.rebuildNow();
         return Result.success(null);
     }
 }

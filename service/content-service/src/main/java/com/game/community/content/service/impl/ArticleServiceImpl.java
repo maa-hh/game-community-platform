@@ -6,16 +6,36 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.game.community.common.constant.content.ContentConstants;
 import com.game.community.common.exception.BusinessException;
+import com.game.community.content.common.converter.ArticleConverter;
 import com.game.community.content.event.ArticleSearchSyncProducer;
 import com.game.community.content.mapper.ArticleMapper;
+import com.game.community.content.util.ArticleCategoryHelper;
+import com.game.community.content.util.ArticleContentCompat;
+import com.game.community.content.service.ArticleCategoryService;
+import com.game.community.content.service.ArticleGameService;
 import com.game.community.content.service.ArticleContentService;
 import com.game.community.content.service.ArticleService;
+import com.game.community.content.service.ChunkUploadService;
 import com.game.community.content.service.TaskService;
+import com.game.community.content.util.ArticleMediaHelper;
+import com.game.community.content.mapper.ArticleAuditMapper;
+import com.game.community.feign.UserFeignClient;
 import com.game.community.model.base.PageResult;
+import com.game.community.model.base.Result;
 import com.game.community.model.dto.article.ArticleDTO;
 import com.game.community.model.entity.article.Article;
+import com.game.community.model.entity.article.ArticleAudit;
+import com.game.community.model.entity.task.Task;
+import com.game.community.model.enums.user.AccountType;
+import com.game.community.model.vo.article.ArticleContentVO;
 import com.game.community.model.vo.article.ArticleDetailVO;
+import com.game.community.model.vo.article.ArticleListVO;
+import com.game.community.model.vo.article.ArticleProgressVO;
+import com.game.community.model.vo.article.ArticleRefVO;
+import com.game.community.model.vo.file.ChunkUploadStatusVO;
+import com.game.community.model.vo.user.UserCardInternalVO;
 import com.game.community.utils.RedisUtils;
+import com.game.community.utils.ThreadLocal.UserThreadLocal;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -30,6 +50,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -50,24 +71,56 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
     private final ArticleSearchSyncProducer articleSearchSyncProducer;
 
-    private static final int MAX_ARTICLE_IMAGE_COUNT = 10;
+    private final ArticleMediaHelper articleMediaHelper;
 
-    private static final int MAX_CONTENT_LENGTH = 800;
+    private final ChunkUploadService chunkUploadService;
+
+    private final ArticleAuditMapper articleAuditMapper;
+
+    private final UserFeignClient userFeignClient;
+
+    private final ArticleCategoryService articleCategoryService;
+
+    private final ArticleGameService articleGameService;
+
+    private final ArticleDeletionPersistenceService articleDeletionPersistenceService;
+
+    private static final int MAX_CONTENT_LENGTH = 8000;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long saveArticle(ArticleDTO dto, Long userId) {
         validatePublishTime(dto.getScheduledPublishTime());
-        List<String> articleImages = normalizeArticleImages(dto.getImageUrls(), dto.getCoverUrl());
-        String coverUrl = articleImages.isEmpty() ? null : articleImages.get(0);
+        int postType = normalizePostType(dto.getPostType());
+        validateByPostType(dto, postType);
+        Article refArticle = resolveRefArticleIfRepost(postType, dto.getRefArticleId());
+        List<Long> categoryIds = resolveCategoryIds(dto, postType, refArticle);
+        List<String> articleImages = normalizeArticleImages(dto.getImageUrls(), dto.getCoverUrl(), postType);
+        String coverUrl = resolveCoverUrl(dto.getCoverUrl(), articleImages, postType, refArticle);
+        String videoUrl = StringUtils.hasText(dto.getVideoUrl()) ? dto.getVideoUrl().trim() : null;
         Map<String, String> contentParagraphs = normalizeParagraphs(dto);
         String contentText = joinParagraphs(contentParagraphs);
-        validateContent(contentText);
+        if (postType == ContentConstants.PostType.IMAGE_TEXT) {
+            ArticleContentCompat.NormalizedImageText normalized =
+                    ArticleContentCompat.normalizeImageTextSave(
+                            contentText, contentParagraphs, articleImages, coverUrl);
+            contentText = normalized.content();
+            contentParagraphs = normalized.contentParagraphs();
+            articleImages = normalized.imageUrls();
+            coverUrl = normalized.coverUrl();
+        }
+        if (postType == ContentConstants.PostType.REPOST && !StringUtils.hasText(contentText)) {
+            contentText = ContentConstants.Repost.DEFAULT_COMMENT;
+            contentParagraphs = new LinkedHashMap<>();
+            contentParagraphs.put("p1", contentText);
+        }
+        validateContent(contentText, postType);
 
         boolean isUpdate = dto.getId() != null;
         Article article = isUpdate ? requireOwnedArticle(dto.getId(), userId) : new Article();
         if (!isUpdate) {
             article.setUserId(userId);
+            article.setPublicId(newPublicId());
             article.setCreateTime(LocalDateTime.now());
             article.setDeleted(0);
         }
@@ -75,7 +128,17 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         article.setTitle(dto.getTitle().trim());
         article.setSummary(StringUtils.hasText(dto.getSummary()) ? dto.getSummary().trim() : buildSummary(contentText));
         article.setCoverUrl(coverUrl);
-        article.setCategoryId(dto.getCategoryId());
+        article.setPostType(postType);
+        article.setRefArticleId(postType == ContentConstants.PostType.REPOST
+                ? refArticle.getPublicId() : null);
+        article.setVideoUrl(videoUrl);
+        if (postType == ContentConstants.PostType.REPOST && dto.getCategoryId() == null
+                && (dto.getCategoryIds() == null || dto.getCategoryIds().isEmpty()) && refArticle != null) {
+            article.setCategoryId(refArticle.getCategoryId());
+        } else {
+            article.setCategoryId(categoryIds.get(0));
+        }
+        article.setCategoryIds(categoryIds);
         article.setScheduledPublishTime(dto.getScheduledPublishTime());
         article.setUpdateTime(LocalDateTime.now());
 
@@ -85,10 +148,16 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             article.setAuditMessage(null);
             article.setPublishedTime(null);
             saveOrUpdate(article);
+            articleCategoryService.replaceCategoryRelations(article.getId(), categoryIds);
             articleContentService.saveContent(article.getId(), contentText, contentParagraphs, articleImages, userId);
+            articleGameService.saveArticleGames(article.getId(), dto.getGameAppIds());
             articleSearchSyncProducer.delete(article.getId());
             log.info("文章草稿保存成功: articleId={}, userId={}", article.getId(), userId);
             return article.getId();
+        }
+
+        if (postType == ContentConstants.PostType.VIDEO && !StringUtils.hasText(videoUrl)) {
+            throw new BusinessException("视频模式下请先完成视频上传");
         }
 
         article.setStatus(ContentConstants.ArticleStatus.PENDING);
@@ -96,7 +165,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         article.setPublishedTime(null);
         saveOrUpdate(article);
         Long articleId = article.getId();
+        articleCategoryService.replaceCategoryRelations(articleId, categoryIds);
         articleContentService.saveContent(articleId, contentText, contentParagraphs, articleImages, userId);
+        articleGameService.saveArticleGames(articleId, dto.getGameAppIds());
 
         Map<String, Object> taskParam = new HashMap<>();
         taskParam.put("articleId", articleId);
@@ -106,7 +177,11 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         taskParam.put("content", contentText);
         taskParam.put("contentParagraphs", contentParagraphs);
         taskParam.put("coverUrl", coverUrl);
-        taskParam.put("categoryId", dto.getCategoryId());
+        taskParam.put("videoUrl", videoUrl);
+        taskParam.put("postType", postType);
+        taskParam.put("refArticleId", dto.getRefArticleId());
+        taskParam.put("categoryId", article.getCategoryId());
+        taskParam.put("categoryIds", categoryIds);
         taskParam.put("imageUrls", articleImages);
 
         if (dto.getScheduledPublishTime() != null && dto.getScheduledPublishTime().isAfter(LocalDateTime.now())) {
@@ -119,7 +194,94 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         return articleId;
     }
 
-    private List<String> normalizeArticleImages(List<String> imageUrls, String coverUrl) {
+    private int normalizePostType(Integer postType) {
+        if (postType == null) {
+            return ContentConstants.PostType.IMAGE_TEXT;
+        }
+        if (postType == ContentConstants.PostType.ARTICLE) {
+            return ContentConstants.PostType.IMAGE_TEXT;
+        }
+        if (postType != ContentConstants.PostType.IMAGE_TEXT
+                && postType != ContentConstants.PostType.VIDEO
+                && postType != ContentConstants.PostType.REPOST) {
+            throw new BusinessException("不支持的发帖模式");
+        }
+        return postType;
+    }
+
+    private Article resolveRefArticleIfRepost(int postType, String refArticleId) {
+        if (postType != ContentConstants.PostType.REPOST) {
+            return null;
+        }
+        return requirePublishedRefArticle(refArticleId);
+    }
+
+    private Article requirePublishedRefArticle(String refArticleId) {
+        if (!StringUtils.hasText(refArticleId)) {
+            throw new BusinessException("转发帖必须指定原帖");
+        }
+        Article refArticle = getByPublicId(refArticleId);
+        if (refArticle == null || (refArticle.getDeleted() != null && refArticle.getDeleted() == 1)) {
+            throw new BusinessException("原帖不存在");
+        }
+        if (!Objects.equals(refArticle.getStatus(), ContentConstants.ArticleStatus.PUBLISHED)) {
+            throw new BusinessException("仅可转发已发布的帖子");
+        }
+        return refArticle;
+    }
+
+    private void validateByPostType(ArticleDTO dto, int postType) {
+        if (postType == ContentConstants.PostType.REPOST) {
+            requirePublishedRefArticle(dto.getRefArticleId());
+        }
+    }
+
+    private List<Long> resolveCategoryIds(ArticleDTO dto, int postType, Article refArticle) {
+        List<Long> ids = new ArrayList<>();
+        if (dto.getCategoryIds() != null) {
+            for (Long categoryId : dto.getCategoryIds()) {
+                if (categoryId != null && !ids.contains(categoryId)) {
+                    ids.add(categoryId);
+                }
+            }
+        }
+        if (ids.isEmpty() && dto.getCategoryId() != null) {
+            ids.add(dto.getCategoryId());
+        }
+        if (ids.isEmpty() && postType == ContentConstants.PostType.REPOST && refArticle != null) {
+            ids.addAll(ArticleCategoryHelper.resolveIds(refArticle));
+        }
+        if (ids.isEmpty()) {
+            throw new BusinessException("请选择分类");
+        }
+        if (ids.size() > 3) {
+            throw new BusinessException("最多选择3个分类");
+        }
+        return ids;
+    }
+
+    private void applyCategoryFilter(LambdaQueryWrapper<Article> wrapper, Long categoryId) {
+        if (categoryId == null) {
+            return;
+        }
+        wrapper.apply("EXISTS (SELECT 1 FROM t_article_category ac "
+                + "WHERE ac.article_id = t_article.id AND ac.category_id = {0})", categoryId);
+    }
+
+    private String resolveCoverUrl(String coverUrl, List<String> images, int postType, Article refArticle) {
+        if (postType == ContentConstants.PostType.REPOST) {
+            if (StringUtils.hasText(coverUrl)) {
+                return coverUrl.trim();
+            }
+            return refArticle == null ? null : refArticle.getCoverUrl();
+        }
+        if (StringUtils.hasText(coverUrl)) {
+            return coverUrl.trim();
+        }
+        return images.isEmpty() ? null : images.get(0);
+    }
+
+    private List<String> normalizeArticleImages(List<String> imageUrls, String coverUrl, int postType) {
         List<String> images = new ArrayList<>();
         if (imageUrls != null) {
             for (String imageUrl : imageUrls) {
@@ -128,44 +290,239 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 }
             }
         }
-        if (images.isEmpty() && StringUtils.hasText(coverUrl)) {
+        if (postType != ContentConstants.PostType.REPOST
+                && images.isEmpty()
+                && StringUtils.hasText(coverUrl)) {
             images.add(coverUrl.trim());
         }
-        if (images.size() > MAX_ARTICLE_IMAGE_COUNT) {
-            throw new BusinessException("文章图片最多支持10张");
+        if (images.size() > ContentConstants.MediaLimit.IMAGE_MAX_COUNT) {
+            throw new BusinessException("文章图片最多支持"
+                    + ContentConstants.MediaLimit.IMAGE_MAX_COUNT + "张");
         }
         return images;
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public void deleteArticle(Long id) {
         Article article = getById(id);
         if (article == null) {
             throw new IllegalArgumentException("文章不存在");
         }
-        articleContentService.deleteByArticleId(id);
-        update(new LambdaUpdateWrapper<Article>()
-                .eq(Article::getId, id)
-                .set(Article::getDeleted, 1)
-                .set(Article::getUpdateTime, LocalDateTime.now()));
-        articleSearchSyncProducer.delete(id);
-        log.info("文章删除成功: articleId={}", id);
+        Long ownerId = article.getUserId();
+        var content = articleContentService.getByArticleId(id);
+        boolean deleted = articleDeletionPersistenceService.markDeleted(article, content);
+        if (deleted) {
+            log.info("文章删除状态已提交，异步清理资源: articleId={}", id);
+        }
     }
 
     @Override
     public ArticleDetailVO getArticleDetail(Long id) {
         Article article = getById(id);
         if (article == null) {
-            throw new IllegalArgumentException("文章不存在");
+            throw new BusinessException("文章不存在");
         }
+        assertReadable(article);
+        return buildDetailVo(article, false);
+    }
+
+    @Override
+    public ArticleDetailVO getArticleDetailForOwner(Long id, Long userId) {
+        Article article = requireOwnedArticle(id, userId);
+        return buildDetailVo(article, true);
+    }
+
+    @Override
+    public ArticleDetailVO getArticleDetailInternal(Long id) {
+        Article article = getById(id);
+        if (article == null) {
+            throw new BusinessException("文章不存在");
+        }
+        return buildDetailVo(article, false);
+    }
+
+    @Override
+    public void assertContentReadable(Long articleId) {
+        Article article = getById(articleId);
+        if (article == null) {
+            throw new BusinessException("文章不存在");
+        }
+        assertReadable(article);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void submitForAudit(Long id, Long userId) {
+        Article article = requireOwnedArticle(id, userId);
+        if (Objects.equals(article.getStatus(), ContentConstants.ArticleStatus.PENDING)) {
+            throw new BusinessException("文章已在审核中");
+        }
+        if (Objects.equals(article.getStatus(), ContentConstants.ArticleStatus.PUBLISHED)) {
+            throw new BusinessException("文章已发布");
+        }
+        var content = articleContentService.getByArticleId(id);
+        if (content == null || !StringUtils.hasText(content.getContent())) {
+            throw new BusinessException("请先完善正文再提交审核");
+        }
+        if (Objects.equals(article.getPostType(), ContentConstants.PostType.VIDEO)
+                && !StringUtils.hasText(article.getVideoUrl())) {
+            throw new BusinessException("视频模式下请先完成视频上传");
+        }
+
+        article.setStatus(ContentConstants.ArticleStatus.PENDING);
+        article.setAuditMessage("审核中");
+        article.setPublishedTime(null);
+        article.setUpdateTime(LocalDateTime.now());
+        updateById(article);
+
+        Map<String, Object> taskParam = new HashMap<>();
+        taskParam.put("articleId", id);
+        taskParam.put("userId", userId);
+        taskParam.put("title", article.getTitle());
+        taskParam.put("summary", article.getSummary());
+        taskParam.put("content", content.getContent());
+        taskParam.put("contentParagraphs", content.getContentParagraphs());
+        taskParam.put("coverUrl", article.getCoverUrl());
+        taskParam.put("videoUrl", article.getVideoUrl());
+        taskParam.put("postType", article.getPostType());
+        taskParam.put("categoryId", article.getCategoryId());
+        taskParam.put("imageUrls", content.getImageUrls() == null ? List.of() : content.getImageUrls());
+        taskService.addImmediateTask(ContentConstants.TaskType.ARTICLE_PUBLISH, taskParam, id);
+        articleSearchSyncProducer.delete(id);
+        log.info("文章提交审核: articleId={}", id);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void unpublishByAuthor(Long id, Long userId) {
+        Article article = requireOwnedArticle(id, userId);
+        taskService.cancelTasksByBusinessId(id, ContentConstants.TaskType.ARTICLE_PUBLISH);
+        // 取消上架：停上传并清分片，保留已合并文件
+        chunkUploadService.abortByArticleId(id, userId, false);
+        article.setStatus(ContentConstants.ArticleStatus.DRAFT);
+        article.setAuditMessage("作者下架，已移入草稿");
+        article.setPublishedTime(null);
+        article.setUpdateTime(LocalDateTime.now());
+        updateById(article);
+        articleSearchSyncProducer.delete(id);
+        log.info("文章取消上架: articleId={}", id);
+    }
+
+    @Override
+    public ArticleProgressVO getArticleProgress(Long id, Long userId) {
+        Article article = requireOwnedArticle(id, userId);
+        ArticleProgressVO vo = new ArticleProgressVO();
+        vo.setArticleId(article.getId());
+        vo.setStatus(article.getStatus());
+        vo.setAuditMessage(article.getAuditMessage());
+        vo.setPostType(article.getPostType());
+        Task latestTask = taskService.getLatestTask(id, ContentConstants.TaskType.ARTICLE_PUBLISH);
+        vo.setTaskStatus(latestTask == null ? null : latestTask.getStatus());
+        if (latestTask != null && StringUtils.hasText(latestTask.getErrorMsg())) {
+            vo.setTaskErrorMessage(latestTask.getErrorMsg());
+        }
+
+        ArticleAudit latestAudit = articleAuditMapper.selectOne(new LambdaQueryWrapper<ArticleAudit>()
+                .eq(ArticleAudit::getArticleId, id)
+                .orderByDesc(ArticleAudit::getId)
+                .last("LIMIT 1"));
+        if (latestAudit != null) {
+            vo.setAuditStage(latestAudit.getAuditStage());
+            vo.setAuditStageText(auditStageText(latestAudit.getAuditStage()));
+        } else if (Objects.equals(article.getStatus(), ContentConstants.ArticleStatus.PENDING)) {
+            vo.setAuditStageText("排队审核中");
+        } else if (Objects.equals(article.getStatus(), ContentConstants.ArticleStatus.PUBLISHED)) {
+            vo.setAuditStageText("已发布");
+        } else if (Objects.equals(article.getStatus(), ContentConstants.ArticleStatus.REJECTED)) {
+            vo.setAuditStageText("已驳回");
+        } else if (Objects.equals(article.getStatus(), ContentConstants.ArticleStatus.OFFLINE)) {
+            vo.setAuditStageText("已取消上架");
+        } else {
+            vo.setAuditStageText("草稿");
+        }
+
+        List<ChunkUploadStatusVO> uploads = chunkUploadService.listByArticleId(id, userId);
+        List<String> activeIds = new ArrayList<>();
+        Integer uploadPercent = null;
+        String uploadStatus = null;
+        for (ChunkUploadStatusVO upload : uploads) {
+            activeIds.add(upload.getUploadId());
+            if ("UPLOADING".equals(upload.getStatus())) {
+                uploadPercent = upload.getPercent();
+                uploadStatus = upload.getStatus();
+            } else if (uploadPercent == null) {
+                uploadPercent = upload.getPercent();
+                uploadStatus = upload.getStatus();
+            }
+        }
+        if (uploadPercent == null
+                && (StringUtils.hasText(article.getVideoUrl()) || StringUtils.hasText(article.getCoverUrl()))) {
+            uploadPercent = 100;
+            uploadStatus = "MERGED";
+        }
+        vo.setUploadPercent(uploadPercent);
+        vo.setUploadStatus(uploadStatus);
+        vo.setActiveUploadIds(activeIds);
+        return vo;
+    }
+
+    private String auditStageText(Integer stage) {
+        if (stage == null) {
+            return "审核中";
+        }
+        return switch (stage) {
+            case ContentConstants.AuditStage.LOCAL_TEXT -> "本地文本审核";
+            case ContentConstants.AuditStage.AI_TEXT -> "AI 文本审核";
+            case ContentConstants.AuditStage.AI_IMAGE -> "AI 图片审核";
+            default -> "审核中";
+        };
+    }
+
+    private void assertReadable(Article article) {
+        if (!Objects.equals(article.getStatus(), ContentConstants.ArticleStatus.PUBLISHED)) {
+            throw new BusinessException("文章不存在或无权查看");
+        }
+    }
+
+    private ArticleDetailVO buildDetailVo(Article article, boolean resolvePreview) {
+        Long viewerId = UserThreadLocal.getUserId();
+        boolean ownerOrAdmin = (viewerId != null && Objects.equals(viewerId, article.getUserId()))
+                || (UserThreadLocal.getType() != null
+                && UserThreadLocal.getType() == AccountType.ADMIN.getCode());
+        boolean needPreview = resolvePreview && ownerOrAdmin
+                && !Objects.equals(article.getStatus(), ContentConstants.ArticleStatus.PUBLISHED);
+
         ArticleDetailVO vo = new ArticleDetailVO();
         vo.setId(article.getId());
-        vo.setUserId(article.getUserId());
+        vo.setPublicId(article.getPublicId());
         vo.setTitle(article.getTitle());
         vo.setSummary(article.getSummary());
-        vo.setCoverUrl(article.getCoverUrl());
+        vo.setCoverUrl(needPreview ? articleMediaHelper.resolvePreview(article.getCoverUrl()) : article.getCoverUrl());
+        vo.setPostType(article.getPostType());
+        vo.setRefArticleId(article.getRefArticleId());
+        Article refArticle = article.getRefArticleId() == null
+                ? null
+                : getByPublicId(article.getRefArticleId());
+        List<Long> authorIds = new ArrayList<>();
+        if (article.getUserId() != null) {
+            authorIds.add(article.getUserId());
+        }
+        if (refArticle != null && refArticle.getUserId() != null) {
+            authorIds.add(refArticle.getUserId());
+        }
+        Map<Long, UserCardInternalVO> authorMap = fetchUsers(authorIds);
+        UserCardInternalVO author = authorMap.get(article.getUserId());
+        if (author != null) {
+            vo.setAuthorAccountId(author.getAccountId());
+            vo.setUsername(author.getUsername());
+            vo.setAvatar(author.getAvatar());
+        }
+        if (isPublishedRefArticle(refArticle)) {
+            vo.setRefArticle(buildRefVo(refArticle, authorMap));
+        }
+        vo.setVideoUrl(needPreview ? articleMediaHelper.resolvePreview(article.getVideoUrl()) : article.getVideoUrl());
         vo.setCategoryId(article.getCategoryId());
+        vo.setCategoryIds(ArticleCategoryHelper.resolveIds(article));
         vo.setStatus(article.getStatus());
         vo.setAuditMessage(article.getAuditMessage());
         vo.setScheduledPublishTime(article.getScheduledPublishTime());
@@ -173,13 +530,84 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         vo.setCreateTime(article.getCreateTime());
         vo.setUpdateTime(article.getUpdateTime());
 
-        var content = articleContentService.getByArticleId(id);
+        var content = articleContentService.getByArticleId(article.getId());
         if (content != null) {
             vo.setContent(content.getContent());
             vo.setContentParagraphs(content.getContentParagraphs());
-            vo.setImageUrls(content.getImageUrls());
+            if (needPreview && content.getImageUrls() != null) {
+                List<String> previews = new ArrayList<>();
+                for (String image : content.getImageUrls()) {
+                    previews.add(articleMediaHelper.resolvePreview(image));
+                }
+                vo.setImageUrls(previews);
+            } else {
+                vo.setImageUrls(content.getImageUrls());
+            }
         }
+        articleCategoryService.enrichDetailVO(vo);
+        vo.setGameTags(articleGameService.listByArticle(article.getId()));
         return vo;
+    }
+
+    private boolean isPublishedRefArticle(Article refArticle) {
+        return refArticle != null
+                && Objects.equals(refArticle.getStatus(), ContentConstants.ArticleStatus.PUBLISHED);
+    }
+
+    private ArticleRefVO buildRefVo(Article refArticle, Map<Long, UserCardInternalVO> authorMap) {
+        ArticleRefVO refVo = new ArticleRefVO();
+        refVo.setId(refArticle.getPublicId());
+        refVo.setTitle(refArticle.getTitle());
+        refVo.setSummary(refArticle.getSummary());
+        refVo.setCoverUrl(refArticle.getCoverUrl());
+        refVo.setVideoUrl(refArticle.getVideoUrl());
+        refVo.setPostType(refArticle.getPostType());
+        UserCardInternalVO author = authorMap.get(refArticle.getUserId());
+        if (author != null) {
+            refVo.setAuthorAccountId(author.getAccountId());
+            refVo.setUsername(author.getUsername());
+            refVo.setAvatar(author.getAvatar());
+        }
+        return refVo;
+    }
+
+    private Map<Long, UserCardInternalVO> fetchUsers(List<Long> userIds) {
+        List<Long> distinctIds = userIds == null ? List.of() : userIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (distinctIds.isEmpty()) {
+            return Map.of();
+        }
+        try {
+            var result = userFeignClient.getUsersByUserIds(distinctIds);
+            if (result == null || result.getCode() == null || result.getCode() != 200
+                    || result.getData() == null) {
+                return Map.of();
+            }
+            return result.getData().stream()
+                    .filter(item -> item.getUserId() != null)
+                    .collect(Collectors.toMap(UserCardInternalVO::getUserId, item -> item, (a, b) -> a));
+        } catch (Exception e) {
+            log.warn("批量获取用户信息失败: userIds={}", distinctIds, e);
+            return Map.of();
+        }
+    }
+
+    private UserCardInternalVO fetchUserByAccountId(Long accountId) {
+        if (accountId == null) {
+            return null;
+        }
+        try {
+            var result = userFeignClient.getUserByAccountId(accountId);
+            if (result == null || result.getCode() == null || result.getCode() != 200) {
+                return null;
+            }
+            return result.getData();
+        } catch (Exception e) {
+            log.warn("获取用户信息失败: accountId={}", accountId, e);
+            return null;
+        }
     }
 
     @Override
@@ -188,7 +616,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         LambdaQueryWrapper<Article> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(Article::getStatus, ContentConstants.ArticleStatus.PUBLISHED);
         if (categoryId != null) {
-            wrapper.eq(Article::getCategoryId, categoryId);
+            applyCategoryFilter(wrapper, categoryId);
         }
         if (Objects.equals(status, ContentConstants.ArticleStatus.PUBLISHED)) {
             wrapper.eq(Article::getStatus, status);
@@ -206,11 +634,30 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     }
 
     @Override
+    public Page<Article> getUserArticlesPage(Long userId, Integer page, Integer size, String tab) {
+        LambdaQueryWrapper<Article> wrapper = new LambdaQueryWrapper<Article>()
+                .eq(Article::getUserId, userId);
+        if ("published".equals(tab)) {
+            wrapper.eq(Article::getStatus, ContentConstants.ArticleStatus.PUBLISHED);
+        } else if ("draft".equals(tab)) {
+            wrapper.in(Article::getStatus,
+                    ContentConstants.ArticleStatus.DRAFT,
+                    ContentConstants.ArticleStatus.OFFLINE);
+        } else if ("unpublished".equals(tab)) {
+            wrapper.in(Article::getStatus,
+                    ContentConstants.ArticleStatus.PENDING,
+                    ContentConstants.ArticleStatus.REJECTED);
+        }
+        wrapper.orderByDesc(Article::getUpdateTime).orderByDesc(Article::getId);
+        return page(new Page<>(page, size), wrapper);
+    }
+
+    @Override
     public List<Article> getLatestArticles(Long categoryId, Integer size) {
         LambdaQueryWrapper<Article> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(Article::getStatus, ContentConstants.ArticleStatus.PUBLISHED);
         if (categoryId != null) {
-            wrapper.eq(Article::getCategoryId, categoryId);
+            applyCategoryFilter(wrapper, categoryId);
         }
         wrapper.orderByDesc(Article::getPublishedTime)
                 .orderByDesc(Article::getId)
@@ -230,7 +677,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         LambdaQueryWrapper<Article> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(Article::getStatus, ContentConstants.ArticleStatus.PUBLISHED);
         if (categoryId != null) {
-            wrapper.eq(Article::getCategoryId, categoryId);
+            applyCategoryFilter(wrapper, categoryId);
         }
         wrapper.and(q -> q.lt(Article::getPublishedTime, lastArticle.getPublishedTime())
                 .or()
@@ -298,7 +745,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             wrapper.and(w -> w.like(Article::getTitle, keyword).or().like(Article::getSummary, keyword));
         }
         if (categoryId != null) {
-            wrapper.eq(Article::getCategoryId, categoryId);
+            applyCategoryFilter(wrapper, categoryId);
         }
         if (status != null) {
             wrapper.eq(Article::getStatus, status);
@@ -344,7 +791,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     }
 
     @Override
-    public List<Article> listPublishedByAuthorsBefore(List<Long> authorIds, LocalDateTime before, int limit) {
+    public List<Article> listPublishedByAuthorsBefore(List<Long> authorIds, LocalDateTime before, Long beforeArticleId, int limit) {
         if (authorIds == null || authorIds.isEmpty()) {
             return List.of();
         }
@@ -352,7 +799,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         wrapper.in(Article::getUserId, authorIds)
                 .eq(Article::getStatus, ContentConstants.ArticleStatus.PUBLISHED);
         if (before != null) {
-            wrapper.lt(Article::getPublishedTime, before);
+            wrapper.and(nested -> nested.lt(Article::getPublishedTime, before)
+                    .or(equalTime -> equalTime.eq(Article::getPublishedTime, before)
+                            .lt(beforeArticleId != null, Article::getId, beforeArticleId)));
         }
         wrapper.orderByDesc(Article::getPublishedTime)
                 .orderByDesc(Article::getId)
@@ -368,12 +817,25 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     private Article requireOwnedArticle(Long articleId, Long userId) {
         Article article = getById(articleId);
         if (article == null) {
-            throw new IllegalArgumentException("文章不存在");
+            throw new BusinessException("文章不存在");
         }
         if (!Objects.equals(article.getUserId(), userId)) {
-            throw new IllegalArgumentException("无权操作他人文章");
+            throw new BusinessException("无权操作他人文章");
         }
         return article;
+    }
+
+    public Article getByPublicId(String publicId) {
+        if (!StringUtils.hasText(publicId)) {
+            return null;
+        }
+        return getOne(new LambdaQueryWrapper<Article>()
+                .eq(Article::getPublicId, publicId.trim())
+                .last("LIMIT 1"));
+    }
+
+    private String newPublicId() {
+        return UUID.randomUUID().toString().replace("-", "");
     }
 
     private void validatePublishTime(LocalDateTime publishTime) {
@@ -420,12 +882,275 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         return String.join("\n\n", paragraphs.values());
     }
 
-    private void validateContent(String contentText) {
+    private void validateContent(String contentText, int postType) {
+        if (postType == ContentConstants.PostType.REPOST) {
+            if (contentText != null && contentText.length() > MAX_CONTENT_LENGTH) {
+                throw new BusinessException("转发附言不能超过" + MAX_CONTENT_LENGTH + "字");
+            }
+            return;
+        }
+        if (postType == ContentConstants.PostType.VIDEO) {
+            // 视频介绍允许为空，但提交审核时仍建议有简介
+            if (contentText != null && contentText.length() > MAX_CONTENT_LENGTH) {
+                throw new BusinessException("视频介绍不能超过" + MAX_CONTENT_LENGTH + "字");
+            }
+            return;
+        }
         if (!StringUtils.hasText(contentText)) {
             throw new BusinessException("文章内容不能为空");
         }
         if (contentText.length() > MAX_CONTENT_LENGTH) {
-            throw new BusinessException("文章正文不能超过800字");
+            throw new BusinessException("文章正文不能超过" + MAX_CONTENT_LENGTH + "字");
         }
+    }
+
+    private Long requireCurrentUserId() {
+        Long userId = UserThreadLocal.getUserId();
+        if (userId == null) {
+            throw new BusinessException("请先登录");
+        }
+        return userId;
+    }
+
+    private PageResult<ArticleListVO> toListPageResult(Page<Article> page) {
+        return PageResult.of(toEnrichedListVOs(page.getRecords()),
+                page.getCurrent(), page.getSize(), page.getTotal());
+    }
+
+    private List<ArticleListVO> toEnrichedListVOs(List<Article> articles) {
+        List<ArticleListVO> records = ArticleConverter.toListVOs(articles);
+        enrichAuthorAccountIds(articles, records);
+        articleCategoryService.enrichListVOs(records);
+        articleGameService.enrichListVOs(records);
+        return records;
+    }
+
+    private void enrichAuthorAccountIds(List<Article> articles, List<ArticleListVO> records) {
+        if (articles == null || records == null || articles.isEmpty() || records.isEmpty()) {
+            return;
+        }
+        List<Long> userIds = articles.stream()
+                .map(Article::getUserId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (userIds.isEmpty()) {
+            return;
+        }
+        try {
+            var result = userFeignClient.getUsersByUserIds(userIds);
+            if (result == null || result.getCode() == null || result.getCode() != 200 || result.getData() == null) {
+                return;
+            }
+            Map<Long, UserCardInternalVO> userMap = result.getData().stream()
+                    .filter(item -> item.getUserId() != null)
+                    .collect(Collectors.toMap(UserCardInternalVO::getUserId, item -> item, (a, b) -> a));
+            int size = Math.min(articles.size(), records.size());
+            for (int i = 0; i < size; i++) {
+                UserCardInternalVO author = userMap.get(articles.get(i).getUserId());
+                if (author != null) {
+                    records.get(i).setAuthorAccountId(author.getAccountId());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("批量填充作者 accountId 失败", e);
+        }
+    }
+
+    @Override
+    public Result<Long> saveArticleForCurrentUser(ArticleDTO dto) {
+        return Result.success(saveArticle(dto, requireCurrentUserId()));
+    }
+
+    @Override
+    public Result<Long> updateArticleForCurrentUser(Long id, ArticleDTO dto) {
+        dto.setId(id);
+        return Result.success(saveArticle(dto, requireCurrentUserId()));
+    }
+
+    @Override
+    public Result<Void> deleteArticleForCurrentUser(Long id) {
+        Long userId = requireCurrentUserId();
+        Article article = getById(id);
+        if (article == null || !Objects.equals(article.getUserId(), userId)) {
+            return Result.error("文章不存在或无权删除");
+        }
+        deleteArticle(id);
+        return Result.success(null);
+    }
+
+    @Override
+    public Result<ArticleDetailVO> queryArticleDetail(Long id) {
+        return Result.success(getArticleDetail(id));
+    }
+
+    @Override
+    public Result<ArticleDetailVO> queryArticleDetailForOwner(Long id) {
+        return Result.success(getArticleDetailForOwner(id, requireCurrentUserId()));
+    }
+
+    @Override
+    public Result<ArticleContentVO> queryArticleContent(Long id) {
+        assertContentReadable(id);
+        return Result.success(ArticleConverter.toContentVO(articleContentService.getByArticleId(id)));
+    }
+
+    @Override
+    public PageResult<ArticleListVO> queryArticlePage(Integer page, Integer size, Long categoryId, Integer status) {
+        return toListPageResult(getArticlePage(page, size, categoryId, status));
+    }
+
+    @Override
+    public PageResult<ArticleListVO> queryMyArticlesPage(Integer page, Integer size, String tab) {
+        return toListPageResult(getUserArticlesPage(requireCurrentUserId(), page, size, tab));
+    }
+
+    @Override
+    public PageResult<ArticleListVO> queryFollowArticles(Integer page, Integer size) {
+        return toListPageResult(getFollowArticles(requireCurrentUserId(), page, size));
+    }
+
+    @Override
+    public Result<List<ArticleListVO>> queryLatestArticles(Long categoryId, Integer size) {
+        return Result.success(toEnrichedListVOs(getLatestArticles(categoryId, size)));
+    }
+
+    @Override
+    public Result<List<ArticleListVO>> queryMoreArticles(Long categoryId, Long lastId, Integer size) {
+        return Result.success(toEnrichedListVOs(getMoreArticles(categoryId, lastId, size)));
+    }
+
+    @Override
+    public Result<ArticleProgressVO> queryArticleProgress(Long id) {
+        return Result.success(getArticleProgress(id, requireCurrentUserId()));
+    }
+
+    @Override
+    public Result<Void> submitPublish(Long id) {
+        submitForAudit(id, requireCurrentUserId());
+        return Result.success(null);
+    }
+
+    @Override
+    public Result<Void> submitUnpublish(Long id) {
+        unpublishByAuthor(id, requireCurrentUserId());
+        return Result.success(null);
+    }
+
+    @Override
+    public Result<List<ArticleListVO>> queryPublishedList() {
+        return Result.success(toEnrichedListVOs(listPublishedArticles()));
+    }
+
+    @Override
+    public Result<PageResult<ArticleListVO>> queryPublishedPage(Integer page, Integer size) {
+        PageResult<Article> pageResult = listPublishedArticlesPage(page, size);
+        return Result.success(PageResult.of(toEnrichedListVOs(pageResult.getData()),
+                pageResult.getPage(), pageResult.getSize(), pageResult.getTotal()));
+    }
+
+    @Override
+    public Result<List<ArticleListVO>> queryByIds(List<Long> ids) {
+        List<ArticleListVO> records = toEnrichedListVOs(listByIds(ids));
+        return Result.success(records);
+    }
+
+    @Override
+    public Result<List<ArticleListVO>> queryByPublicIds(List<String> publicIds) {
+        if (publicIds == null || publicIds.isEmpty()) {
+            return Result.success(List.of());
+        }
+        List<Article> articles = list(new LambdaQueryWrapper<Article>()
+                .in(Article::getPublicId, publicIds));
+        Map<String, Article> articleMap = articles.stream()
+                .collect(Collectors.toMap(Article::getPublicId, article -> article, (left, right) -> left));
+        List<Article> ordered = publicIds.stream()
+                .map(articleMap::get)
+                .filter(Objects::nonNull)
+                .toList();
+        return Result.success(toEnrichedListVOs(ordered));
+    }
+
+    @Override
+    public Long resolvePublicId(String publicId) {
+        Article article = getByPublicId(publicId);
+        if (article == null) {
+            throw new BusinessException("文章不存在");
+        }
+        return article.getId();
+    }
+
+    @Override
+    public String getPublicId(Long articleId) {
+        Article article = articleId == null ? null : getById(articleId);
+        if (article == null) {
+            throw new BusinessException("文章不存在");
+        }
+        return article.getPublicId();
+    }
+
+    @Override
+    public Result<Map<Long, List<Long>>> queryCategoryIdsByArticleIds(List<Long> articleIds) {
+        return Result.success(articleCategoryService.mapCategoryIdsByArticleIds(articleIds));
+    }
+
+    @Override
+    public Result<List<ArticleListVO>> queryPublishedByAuthor(Long authorId, Integer size) {
+        return Result.success(toEnrichedListVOs(listPublishedByAuthor(authorId, size)));
+    }
+
+    @Override
+    public Result<List<ArticleListVO>> queryPublishedByAccountId(Long accountId, Integer size) {
+        UserCardInternalVO author = fetchUserByAccountId(accountId);
+        if (author == null || author.getUserId() == null) {
+            return Result.success(List.of());
+        }
+        return queryPublishedByAuthor(author.getUserId(), size);
+    }
+
+    @Override
+    public Result<List<ArticleListVO>> queryPublishedByAuthors(List<Long> authorIds, String before, Long beforeArticleId, Integer size) {
+        LocalDateTime beforeTime = before == null || before.isBlank() ? null : LocalDateTime.parse(before);
+        return Result.success(toEnrichedListVOs(
+                listPublishedByAuthorsBefore(authorIds, beforeTime, beforeArticleId, size)));
+    }
+
+    @Override
+    public PageResult<ArticleListVO> queryArticlePageAdmin(Integer page, Integer size, String keyword,
+                                                           Long categoryId, Integer status, Long authorId) {
+        return toListPageResult(getArticlePageAdmin(page, size, keyword, categoryId, status, authorId));
+    }
+
+    @Override
+    public Result<Void> deleteArticleAdminOp(Long articleId) {
+        deleteArticleAdmin(articleId);
+        return Result.success(null);
+    }
+
+    @Override
+    public Result<Void> updateArticleStatusAdmin(Long articleId, Integer status) {
+        updateArticleStatus(articleId, status);
+        return Result.success(null);
+    }
+
+    @Override
+    public Result<Long> countArticles() {
+        return Result.success(countArticle());
+    }
+
+    @Override
+    public Result<ArticleDetailVO> queryArticleDetailInternal(Long id) {
+        return Result.success(getArticleDetailInternal(id));
+    }
+
+    @Override
+    public Result<Void> updateArticleStatusForFeign(Long articleId, Integer status) {
+        updateArticleStatus(articleId, status);
+        return Result.success(null);
+    }
+
+    @Override
+    public Result<PageResult<ArticleListVO>> queryPublishedPageForFeign(Integer page, Integer size) {
+        return queryPublishedPage(page, size);
     }
 }

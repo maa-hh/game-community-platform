@@ -12,7 +12,7 @@ public class CommentVO implements Serializable {
 
     private Long articleId;
 
-    private Long userId;
+    private Long accountId;
 
     private String username;
 

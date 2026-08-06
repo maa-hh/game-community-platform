@@ -27,9 +27,9 @@ public class UserThreadLocal {
         return context == null ? null : context.getType();
     }
 
-    public static String getGameAccount() {
+    public static String getSteamAccount() {
         UserContex context = USER_CONTEXT.get();
-        return context == null ? null : context.getGameAccount();
+        return context == null ? null : context.getSteamAccount();
     }
 
     public static String getSessionId() {

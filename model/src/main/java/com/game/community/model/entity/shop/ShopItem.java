@@ -3,6 +3,7 @@ package com.game.community.model.entity.shop;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.Version;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -19,9 +20,11 @@ public class ShopItem implements Serializable {
 
     private String description;
 
-    private Integer price;
+    private String cosmeticCode;
 
-    private Integer productType;
+    private Long pricePoints;
+
+    private Integer grantQuantity;
 
     private Integer stock;
 
@@ -29,18 +32,17 @@ public class ShopItem implements Serializable {
 
     private Integer status;
 
-    private String businessCode;
-
-    private Long businessId;
-
-    private Integer quantity;
+    private String repurchasePolicy;
 
     private Integer limitCount;
+
+    private Integer limitWindowSeconds;
 
     private LocalDateTime beginTime;
 
     private LocalDateTime endTime;
 
+    @Version
     private Integer version;
 
     private LocalDateTime createTime;

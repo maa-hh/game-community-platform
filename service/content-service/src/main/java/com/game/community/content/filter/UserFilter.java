@@ -25,17 +25,17 @@ public class UserFilter implements Filter {
         HttpServletRequest httpRequest = (HttpServletRequest) request;
         String userIdStr = httpRequest.getHeader(GatewayConstants.USER_ID_HEADER);
         String userTypeStr = httpRequest.getHeader(GatewayConstants.USER_TYPE_HEADER);
-        String gameAccountStr = httpRequest.getHeader(GatewayConstants.GAME_ACCOUNT_HEADER);
+        String steamAccountStr = httpRequest.getHeader(GatewayConstants.STEAM_ACCOUNT_HEADER);
         String sessionId = httpRequest.getHeader(GatewayConstants.SESSION_ID_HEADER);
 
         if (userIdStr != null && !userIdStr.isBlank()) {
             try {
                 Long userId = Long.parseLong(userIdStr);
                 Integer userType = userTypeStr == null || userTypeStr.isBlank() ? 0 : Integer.parseInt(userTypeStr);
-                String gameAccount = gameAccountStr == null ? "" : gameAccountStr;
-                UserContex userContex = new UserContex(userId, userType, gameAccount, sessionId);
+                String steamAccount = steamAccountStr == null ? "" : steamAccountStr;
+                UserContex userContex = new UserContex(userId, userType, steamAccount, sessionId);
                 UserThreadLocal.setUser(userContex);
-                log.debug("设置用户到ThreadLocal: userId={}, type={}, gameAccount={}, sessionId={}", userId, userType, gameAccount, sessionId);
+                log.debug("设置用户到ThreadLocal: userId={}, type={}, steamAccount={}, sessionId={}", userId, userType, steamAccount, sessionId);
             } catch (NumberFormatException e) {
                 log.warn("无效的用户上下文: userId={}, type={}", userIdStr, userTypeStr);
             }

@@ -1,11 +1,13 @@
 package com.game.community.gateway.filter;
 
+import com.game.community.common.constant.AuthErrorCodes;
 import com.game.community.common.constant.Constants;
 import com.game.community.common.constant.gateway.GatewayConstants;
-import com.game.community.common.constant.user.RedisConstants;
+import com.game.community.model.enums.user.SessionStatus;
+import com.game.community.model.enums.user.UserAccountStatus;
 import com.game.community.model.vo.user.UserSessionVO;
 import com.game.community.utils.JwtUtils;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.game.community.utils.session.UserSessionRedisReader;
 import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -13,99 +15,130 @@ import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
 import org.springframework.core.io.buffer.DataBuffer;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.util.StringUtils;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 
 /**
- * JWT全局过滤器：白名单外统一校验 token，并透传用户上下文 Header。
+ * JWT 全局过滤器：
+ * - 认证白名单：直接放行
+ * - 游客可读：无 token 放行；有 token 则校验并透传用户头（liked/favorited）
+ * - 其余：必须登录
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class JwtGlobalFilter implements GlobalFilter, Ordered {
 
-    private static final List<String> WHITE_PATHS = List.of(
-            "/user/sendCode",
-            "/user/register",
-            "/user/login",
-            "/user/token/refresh"
-    );
+    private final UserSessionRedisReader sessionRedisReader;
 
-    private final StringRedisTemplate stringRedisTemplate;
-
-    private final ObjectMapper objectMapper;
+    @Value("${gateway.internal-secret}")
+    private String internalSecret;
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest();
         String path = request.getURI().getPath();
+        String normalized = normalizePath(path);
 
-        if (isWhitePath(path)) {
+        if (isAuthPublicPath(normalized)) {
             return chain.filter(exchange);
         }
 
+        boolean publicRead = isPublicReadPath(normalized);
         String token = getToken(request);
+
         if (!StringUtils.hasText(token)) {
+            if (publicRead) {
+                return chain.filter(exchange);
+            }
             return unauthorized(exchange.getResponse(), "请先登录");
         }
 
         try {
-            Claims claims = JwtUtils.parseToken(Constants.ACCESS_JWT_SECRET, token);
-            if (!"access".equals(claims.get("tokenType", String.class))) {
-                return unauthorized(exchange.getResponse(), "token无效");
+            return chain.filter(exchange.mutate().request(authenticate(request, token)).build());
+        } catch (AuthFailException e) {
+            if (publicRead) {
+                // 坏 token 不阻断游客可读，按未登录继续
+                log.warn("公开读路径 token 无效，降级游客: path={}, err={}", normalized, e.getMessage());
+                return chain.filter(exchange);
             }
-            Long userId = getLongClaim(claims, "userId");
-            Integer userType = getIntegerClaim(claims, "type");
-            String gameAccount = claims.get("gameAccount", String.class);
-            String sessionId = claims.get("sessionId", String.class);
-            if (userId == null || !StringUtils.hasText(sessionId)) {
-                return unauthorized(exchange.getResponse(), "token无效");
-            }
-
-            UserSessionVO session = getSession(sessionId);
-            String activeSessionId = stringRedisTemplate.opsForValue().get(RedisConstants.ACTIVE_SESSION_PREFIX + userId);
-            if (session == null
-                    || session.getUserId() == null
-                    || !userId.equals(session.getUserId())
-                    || !sessionId.equals(activeSessionId)
-                    || !"ONLINE".equals(session.getStatus())) {
-                return unauthorized(exchange.getResponse(), "token已失效");
-            }
-
-            ServerHttpRequest.Builder builder = request.mutate()
-                    .headers(headers -> {
-                        headers.remove(GatewayConstants.USER_ID_HEADER);
-                        headers.remove(GatewayConstants.USER_TYPE_HEADER);
-                        headers.remove(GatewayConstants.GAME_ACCOUNT_HEADER);
-                        headers.remove(GatewayConstants.SESSION_ID_HEADER);
-                    })
-                    .header(GatewayConstants.USER_ID_HEADER, userId.toString())
-                    .header(GatewayConstants.USER_TYPE_HEADER, String.valueOf(userType == null ? 0 : userType))
-                    .header(GatewayConstants.SESSION_ID_HEADER, sessionId);
-            if (StringUtils.hasText(gameAccount)) {
-                builder.header(GatewayConstants.GAME_ACCOUNT_HEADER, gameAccount);
-            }
-
-            return chain.filter(exchange.mutate().request(builder.build()).build());
+            return unauthorized(exchange.getResponse(), e.getMessage());
         } catch (Exception e) {
             log.warn("JWT校验失败: {}", e.getMessage());
+            if (publicRead) {
+                return chain.filter(exchange);
+            }
             return unauthorized(exchange.getResponse(), "token验证失败");
         }
     }
 
-    private boolean isWhitePath(String path) {
-        return WHITE_PATHS.stream().anyMatch(path::startsWith);
+    private ServerHttpRequest authenticate(ServerHttpRequest request, String token) {
+        Claims claims = JwtUtils.parseToken(Constants.ACCESS_JWT_SECRET, token);
+        if (!"access".equals(claims.get("tokenType", String.class))) {
+            throw new AuthFailException("token无效");
+        }
+        Long accountId = getLongClaim(claims, "accountId");
+        Integer userType = getIntegerClaim(claims, "type");
+        String steamAccount = claims.get("steamAccount", String.class);
+        String sessionId = claims.get("sessionId", String.class);
+        if (accountId == null || !StringUtils.hasText(sessionId)) {
+            throw new AuthFailException("token无效");
+        }
+
+        UserSessionVO session = sessionRedisReader.loadActiveSession(sessionId);
+        if (session == null
+                || session.getUserId() == null
+                || session.getStatus() != SessionStatus.ONLINE) {
+            throw new AuthFailException("token已失效");
+        }
+        Long userId = session.getUserId();
+        if (session.getAccountId() != null && !accountId.equals(session.getAccountId())) {
+            throw new AuthFailException("token无效");
+        }
+
+        if (session.getAccountStatus() != null
+                && (session.getAccountStatus() == UserAccountStatus.BANNED
+                || session.getAccountStatus() == UserAccountStatus.CANCELLED)) {
+            throw new AuthFailException("账号状态异常");
+        }
+
+        ServerHttpRequest.Builder builder = request.mutate()
+                .headers(headers -> {
+                    headers.remove(GatewayConstants.USER_ID_HEADER);
+                    headers.remove(GatewayConstants.USER_TYPE_HEADER);
+                    headers.remove(GatewayConstants.STEAM_ACCOUNT_HEADER);
+                    headers.remove(GatewayConstants.SESSION_ID_HEADER);
+                })
+                .header(GatewayConstants.USER_ID_HEADER, userId.toString())
+                .header(GatewayConstants.USER_TYPE_HEADER, String.valueOf(userType == null ? 0 : userType))
+                .header(GatewayConstants.SESSION_ID_HEADER, sessionId)
+                .header(GatewayConstants.INTERNAL_SECRET_HEADER, internalSecret);
+        if (StringUtils.hasText(steamAccount)) {
+            builder.header(GatewayConstants.STEAM_ACCOUNT_HEADER, steamAccount);
+        }
+        return builder.build();
+    }
+
+    private String normalizePath(String path) {
+        return path.startsWith("/api") ? path.substring(4) : path;
+    }
+
+    private boolean isAuthPublicPath(String normalized) {
+        return GatewayConstants.AUTH_PUBLIC_PATH_PREFIXES.stream().anyMatch(normalized::startsWith);
+    }
+
+    private boolean isPublicReadPath(String normalized) {
+        return GatewayConstants.PUBLIC_READ_PATH_PREFIXES.stream().anyMatch(normalized::startsWith);
     }
 
     private String getToken(ServerHttpRequest request) {
@@ -118,19 +151,6 @@ public class JwtGlobalFilter implements GlobalFilter, Ordered {
             return queryToken;
         }
         return null;
-    }
-
-    private UserSessionVO getSession(String sessionId) {
-        String sessionText = stringRedisTemplate.opsForValue().get(RedisConstants.SESSION_PREFIX + sessionId);
-        if (!StringUtils.hasText(sessionText)) {
-            return null;
-        }
-        try {
-            return objectMapper.readValue(sessionText, UserSessionVO.class);
-        } catch (Exception e) {
-            log.warn("会话解析失败: sessionId={}, error={}", sessionId, e.getMessage());
-            return null;
-        }
     }
 
     private Long getLongClaim(Claims claims, String key) {
@@ -156,9 +176,13 @@ public class JwtGlobalFilter implements GlobalFilter, Ordered {
     }
 
     private Mono<Void> unauthorized(ServerHttpResponse response, String message) {
+        return unauthorized(response, AuthErrorCodes.ACCESS_EXPIRED, message);
+    }
+
+    private Mono<Void> unauthorized(ServerHttpResponse response, int code, String message) {
         response.setStatusCode(HttpStatus.UNAUTHORIZED);
         response.getHeaders().setContentType(MediaType.APPLICATION_JSON);
-        String body = "{\"code\":401,\"message\":\"" + message + "\",\"data\":null}";
+        String body = "{\"code\":" + code + ",\"message\":\"" + message + "\",\"data\":null}";
         DataBuffer buffer = response.bufferFactory().wrap(body.getBytes(StandardCharsets.UTF_8));
         return response.writeWith(Mono.just(buffer));
     }
@@ -166,5 +190,11 @@ public class JwtGlobalFilter implements GlobalFilter, Ordered {
     @Override
     public int getOrder() {
         return -100;
+    }
+
+    private static final class AuthFailException extends RuntimeException {
+        private AuthFailException(String message) {
+            super(message);
+        }
     }
 }

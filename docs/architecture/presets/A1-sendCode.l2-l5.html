@@ -1,0 +1,364 @@
+        <ul class="tree">
+          <li class="node" data-depth="2">
+            <div class="node-head" onclick="toggleNode(this)">
+              <span class="chevron">▶</span><span class="badge b2">L2</span>
+              <span class="title">流转过程（9 步，含含义说明）</span>
+            </div>
+            <div class="node-body">
+              <table>
+                <tr><th>步骤</th><th>动作</th><th>解释</th></tr>
+                <tr><td>1</td><td>网关白名单</td><td><code>JwtGlobalFilter</code> 匹配 <code>/user/sendCode</code>，<strong>不校验 JWT</strong>，未登录可发码</td></tr>
+                <tr><td>2</td><td>DTO 校验</td><td><code>@Valid SendCodeDTO</code>：phone 格式、bizType 非空</td></tr>
+                <tr><td>3</td><td>查 sms:verify:lock</td><td>验码失败锁定 30 分钟内<strong>禁止再发码</strong></td></tr>
+                <tr><td>4</td><td>查 sms:cooldown:{biz}:{phone}</td><td>同 bizType <strong>5 分钟 1 条</strong>，存在则拒</td></tr>
+                <tr><td>5</td><td>查 sms:daily:{biz}:{phone}</td><td>当日同 bizType <strong>≥5 次</strong>则拒，TTL 到 0 点</td></tr>
+                <tr><td>6</td><td>生成写码</td><td>6 位 Random；DEL fail 计数；SET sms:code:{phone} <strong>TTL 300s</strong></td></tr>
+                <tr><td>7</td><td>写频控</td><td>SET cooldown 300s；daily count+1 至午夜</td></tr>
+                <tr><td>8</td><td>发短信</td><td>SmsService → mock 号仅日志 / 否则阿里云 SendSmsVerifyCode</td></tr>
+                <tr><td>9</td><td>返回</td><td>Result.success(null)，响应<strong>不含验证码</strong></td></tr>
+              </table>
+
+              <ul class="tree">
+                <li class="node" data-depth="3">
+                  <div class="node-head" onclick="toggleNode(this)">
+                    <span class="chevron">▶</span><span class="badge b3">L3</span>
+                    <span class="title">函数调用链（L4→L5 按调用关系嵌套，非平铺）</span>
+                  </div>
+                  <div class="node-body">
+                    <p class="chain-summary">HTTP 入口 <code>AuthController.sendCode</code> → 业务层 <code>UserAuthServiceImpl.sendCode</code> → 短信层 <code>SmsServiceImpl.sendVerificationCode</code> → 内部 <code>getTemplateCode</code> / <code>buildTemplateParam</code> → 阿里云 SDK</p>
+                    <ul class="tree">
+                      <!-- ===== ① AuthController.sendCode ===== -->
+                      <li class="node" data-depth="4">
+                        <div class="node-head" onclick="toggleNode(this)"><span class="chevron">▶</span><span class="badge b4">L4</span><span class="title">① AuthController.sendCode <span class="nest-hint">· HTTP 入口</span></span></div>
+                        <div class="node-body">
+                          <table class="io-table">
+                            <tr><th>完整签名</th><td><code>public Result&lt;Void&gt; sendCode(@Valid @RequestBody SendCodeDTO dto)</code></td></tr>
+                            <tr><th>所在类</th><td><code>AuthController</code> · <code>@RequestMapping("/user")</code> → 完整路径 <code>POST /user/sendCode</code></td></tr>
+                            <tr><th>职责</th><td>接收前端 JSON，做参数格式校验，把「发码」委托给 <code>UserAuthService</code>，再把结果包装成统一 HTTP 响应。<strong>本层不碰 Redis、不生成验证码、不发短信。</strong></td></tr>
+                            <tr><th>返回值</th><td><code>Result&lt;Void&gt;</code> · HTTP 200 时 <code>data=null</code> · 失败由全局异常处理器转 BusinessException 消息</td></tr>
+                          </table>
+                          <table class="param-table">
+                            <tr><th>参数名</th><th>类型</th><th>来源</th><th>约束 / 含义</th></tr>
+                            <tr><td><code>dto</code></td><td><code>SendCodeDTO</code></td><td>HTTP Body JSON</td><td>Spring 用 Jackson 反序列化；<code>@Valid</code> 触发 Bean Validation</td></tr>
+                            <tr><td><code>dto.phone</code></td><td><code>String</code></td><td>JSON 字段 phone</td><td><code>@NotBlank</code> 非空；<code>@Pattern("^1[3-9]\\d{9}$")</code> 大陆 11 位手机号</td></tr>
+                            <tr><td><code>dto.bizType</code></td><td><code>String</code></td><td>JSON 字段 bizType</td><td><code>@NotBlank</code>；取值 REGISTER / LOGIN / CHANGE_PHONE / RESET_PASSWORD / BIND_PHONE / VERIFY_PHONE，决定频控命名空间与短信模板</td></tr>
+                          </table>
+                          <ul class="tree">
+                            <li class="node" data-depth="5">
+                              <div class="node-head" onclick="toggleNode(this)"><span class="chevron">▶</span><span class="badge b5">L5</span><span class="title">① 行级讲解 · AuthController.java L33-37</span></div>
+                              <div class="node-body">
+                                <div class="l5-panel"><div class="l5-grid">
+                                  <div><div class="l5-col-title">执行流程（每步含入参/含义）</div><div class="flow-chart">
+                                    <div class="flow-node start">
+                                      <div class="flow-title">①-1 HTTP 请求进入</div>
+                                      <div class="flow-desc">客户端 POST <code>/user/sendCode</code>，Body 示例：<code>{"phone":"13800138000","bizType":"REGISTER"}</code></div>
+                                    </div>
+                                    <div class="flow-arrow">↓</div>
+                                    <div class="flow-node process">
+                                      <div class="flow-title">①-2 Spring 绑定请求体</div>
+                                      <div class="flow-params">
+                                        <div><strong>dto</strong> · SendCodeDTO · Spring 把 JSON 两个字段填入对象</div>
+                                        <div><strong>dto.phone</strong> · String · 待接收验证码的手机号</div>
+                                        <div><strong>dto.bizType</strong> · String · 业务场景，后续 Redis Key 与短信模板都依赖它</div>
+                                      </div>
+                                      <span class="flow-ref">L35 · @RequestBody 负责反序列化；@Valid 负责校验</span>
+                                    </div>
+                                    <div class="flow-arrow">↓</div>
+                                    <div class="flow-node decision">
+                                      <div class="flow-title">①-3 Bean Validation 是否全部通过？</div>
+                                      <div class="flow-desc">phone 为空/格式错，或 bizType 为空 → Spring 直接 400，<strong>不会进入 sendCode 方法体</strong></div>
+                                    </div>
+                                    <div class="flow-branch"><div><div class="flow-branch-label">否</div><div class="flow-node error">400 + 字段错误信息</div></div><div><div class="flow-branch-label">是 ↓</div>
+                                    <div class="flow-node call">
+                                      <div class="flow-title">①-4 调用业务层发码</div>
+                                      <div class="flow-params">
+                                        <div><strong>phone</strong> · String · <code>dto.getPhone()</code> 传给 Service</div>
+                                        <div><strong>bizType</strong> · String · <code>dto.getBizType()</code> 传给 Service</div>
+                                      </div>
+                                      <div class="flow-desc">委托 <code>UserAuthServiceImpl.sendCode</code> 完成频控、写 Redis、发短信（见嵌套 L4-②）</div>
+                                      <span class="flow-ref">L36 · userAuthService.sendCode(...)</span>
+                                    </div></div></div>
+                                    <div class="flow-arrow">↓</div>
+                                    <div class="flow-node process">
+                                      <div class="flow-title">①-5 包装统一响应</div>
+                                      <div class="flow-desc">Service 正常返回 void → 构造 <code>Result.success(null)</code>，<strong>响应 body 不含验证码</strong>（安全要求）</div>
+                                      <span class="flow-ref">L37</span>
+                                    </div>
+                                    <div class="flow-arrow">↓</div>
+                                    <div class="flow-node end"><div class="flow-title">①-6 返回 HTTP 200</div><div class="flow-desc">前端只得到「发送成功」语义，验证码仅通过短信通道送达</div></div>
+                                  </div></div>
+                                  <div><div class="l5-col-title">源码 · 老师讲读（逐行）</div><div class="source-panel">
+                                    <div class="source-header">AuthController.java · sendCode · L33-37</div>
+                                    <table class="source-table">
+                                      <tr><td class="ln">33</td><td class="code"><span class="ann">@PostMapping("/sendCode")</span></td><td class="cmt"><span class="tag">映射</span>声明此方法处理 POST。类上有 <code>@RequestMapping("/user")</code>，两者拼接成完整 URL <code>/user/sendCode</code>。网关白名单放行此路径，无需登录。</td></tr>
+                                      <tr><td class="ln">35</td><td class="code"><span class="ann">public Result&lt;Void&gt; sendCode(</span><br><span class="ann">&nbsp;&nbsp;@Valid @RequestBody</span> SendCodeDTO dto<span class="ann">)</span></td><td class="cmt"><span class="tag">签名</span><code>@RequestBody</code>：从 HTTP Body 读 JSON 并转成 <code>SendCodeDTO</code>。<code>@Valid</code>：在方法执行前校验 DTO 上注解（phone 正则、bizType 非空）。返回类型 <code>Result&lt;Void&gt;</code> 表示成功时无业务 data。</td></tr>
+                                      <tr><td class="ln">36</td><td class="code">userAuthService.sendCode(<br>&nbsp;&nbsp;dto.getPhone(), dto.getBizType());</td><td class="cmt"><span class="tag">委托</span>Controller 只做「传参」：把两个 String 交给 Service。<strong>不在 Controller 写 Redis、Random、短信</strong>，符合单一职责。若 Service 抛 <code>BusinessException</code>（频控/锁定），全局处理器转为 JSON 错误响应。</td></tr>
+                                      <tr><td class="ln">37</td><td class="code">return Result.success(null);</td><td class="cmt"><span class="tag">响应</span><code>Result</code> 是项目统一包装（code/message/data）。这里 <code>data=null</code> 是故意的：<strong>验证码绝不能出现在 HTTP 响应</strong>，只能经短信下发；否则任何人抓包都能拿到码。</td></tr>
+                                    </table></div></div>
+                                </div></div>
+                              </div>
+                            </li>
+                            <!-- ===== ② 嵌套在 ① 的调用之下 ===== -->
+                            <li class="node" data-depth="4">
+                              <div class="node-head" onclick="toggleNode(this)"><span class="chevron">▶</span><span class="badge b4">L4</span><span class="title">② UserAuthServiceImpl.sendCode <span class="nest-hint">↳ 被 ①-L36 调用</span></span></div>
+                              <div class="node-body">
+                                <table class="io-table">
+                                  <tr><th>完整签名</th><td><code>public void sendCode(String phone, String bizType)</code></td></tr>
+                                  <tr><th>职责</th><td>发码<strong>业务核心</strong>：三层频控（验码锁 / 冷却 / 日限）→ 服务端生成 6 位码 → 写 Redis → 调短信服务。任一步失败抛 <code>BusinessException</code>，Controller 不会执行到 <code>return success</code>。</td></tr>
+                                  <tr><th>返回值</th><td><code>void</code> · 成功无返回值 · 失败抛异常</td></tr>
+                                  <tr><th>副作用</th><td>读写 Redis 多个 Key；调用 <code>SmsService</code> 可能触发阿里云 API</td></tr>
+                                </table>
+                                <table class="param-table">
+                                  <tr><th>参数名</th><th>类型</th><th>含义 / 用途</th></tr>
+                                  <tr><td><code>phone</code></td><td><code>String</code></td><td>目标手机号；用于拼接所有 Redis Key（<code>sms:code:{phone}</code> 等）；传给短信 API 的 <code>phoneNumber</code></td></tr>
+                                  <tr><td><code>bizType</code></td><td><code>String</code></td><td>业务类型字符串；参与 cooldown/daily Key（<code>...:{bizType}:{phone}</code>）；传给 SmsService 选阿里云模板</td></tr>
+                                </table>
+                                <ul class="tree">
+                                  <li class="node" data-depth="5">
+                                    <div class="node-head" onclick="toggleNode(this)"><span class="chevron">▶</span><span class="badge b5">L5</span><span class="title">② 行级讲解 · UserAuthServiceImpl.java L68-110</span></div>
+                                    <div class="node-body">
+                                      <div class="l5-panel"><div class="l5-grid">
+                                        <div><div class="l5-col-title">执行流程</div><div class="flow-chart">
+                                          <div class="flow-node start">
+                                            <div class="flow-title">②-0 方法入口</div>
+                                            <div class="flow-params">
+                                              <div><strong>phone</strong> · String · 已校验格式的手机号</div>
+                                              <div><strong>bizType</strong> · String · 如 REGISTER，决定 Redis 子 Key 与短信模板</div>
+                                            </div>
+                                          </div>
+                                          <div class="flow-arrow">↓</div>
+                                          <div class="flow-node redis">
+                                            <div class="flow-title">②-1 检查验码失败锁</div>
+                                            <div class="flow-desc">读 <code>sms:verify:lock:{phone}</code>。若存在：说明该号 30 分钟内验码错满 5 次，<strong>禁止再发新码</strong>（防刷短信）</div>
+                                            <span class="flow-ref">L70-74 · GET Redis</span>
+                                          </div>
+                                          <div class="flow-node decision"><div class="flow-title">lock Key 存在？</div></div>
+                                          <div class="flow-branch"><div><div class="flow-branch-label">是</div><div class="flow-node error">抛异常：请 30 分钟后重试</div></div><div><div class="flow-branch-label">否 ↓</div><div class="flow-node redis"><div class="flow-title">②-2 检查发送冷却</div><div class="flow-desc">读 <code>sms:cooldown:{bizType}:{phone}</code>。同一场景 5 分钟内只能发 1 条</div><span class="flow-ref">L77-80</span></div></div></div>
+                                          <div class="flow-node decision"><div class="flow-title">cooldown Key 存在？</div></div>
+                                          <div class="flow-branch"><div><div class="flow-branch-label">是</div><div class="flow-node error">抛异常：验证码未过期</div></div><div><div class="flow-branch-label">否 ↓</div><div class="flow-node redis"><div class="flow-title">②-3 检查日发送上限</div><div class="flow-desc">读 <code>sms:daily:{bizType}:{phone}</code> 计数，≥5 则拒</div><span class="flow-ref">L83-91</span></div></div></div>
+                                          <div class="flow-arrow">↓</div>
+                                          <div class="flow-node process">
+                                            <div class="flow-title">②-4 生成并持久化验证码</div>
+                                            <div class="flow-params">
+                                              <div><strong>code</strong> · String · <code>String.format("%06d", random)</code>，000000–999999</div>
+                                            </div>
+                                            <div class="flow-desc">DEL fail 计数 → SET <code>sms:code:{phone}=code</code> TTL 300s。注意 Key <strong>不含 bizType</strong>，同号后发码会覆盖前码</div>
+                                            <span class="flow-ref">L94-96</span>
+                                          </div>
+                                          <div class="flow-arrow">↓</div>
+                                          <div class="flow-node redis">
+                                            <div class="flow-title">②-5 写入频控标记</div>
+                                            <div class="flow-desc">SET cooldown TTL 300s；daily 计数 +1，TTL 到当日 0 点</div>
+                                            <span class="flow-ref">L99-106</span>
+                                          </div>
+                                          <div class="flow-arrow">↓</div>
+                                          <div class="flow-node call">
+                                            <div class="flow-title">②-6 调用短信层（见嵌套 L4-③）</div>
+                                            <div class="flow-params">
+                                              <div><strong>phone</strong> · String · 收件人</div>
+                                              <div><strong>code</strong> · String · 刚生成的 6 位码，将通过短信模板变量下发</div>
+                                              <div><strong>bizType</strong> · String · 选阿里云模板 100001–100005</div>
+                                            </div>
+                                            <span class="flow-ref">L109 · smsService.sendVerificationCode(...)</span>
+                                          </div>
+                                          <div class="flow-arrow">↓</div>
+                                          <div class="flow-node end"><div class="flow-title">②-7 正常返回 void</div><div class="flow-desc">无异常则 Controller 继续包装 Result.success</div></div>
+                                        </div></div>
+                                        <div><div class="l5-col-title">源码 · 老师讲读</div><div class="source-panel">
+                                          <div class="source-header">UserAuthServiceImpl.java · sendCode · L68-110</div>
+                                          <table class="source-table">
+                                            <tr><td class="ln">68</td><td class="code">public void sendCode(String phone, String bizType)</td><td class="cmt"><span class="tag">入口</span>实现 <code>UserAuthService</code> 接口。两个参数均来自 Controller，此处<strong>不再做 HTTP 层校验</strong>，假定格式已由 DTO 保证。</td></tr>
+                                            <tr><td class="ln">70</td><td class="code">verifyLockKey = CODE_VERIFY_LOCK_PREFIX + phone</td><td class="cmt"><span class="tag">拼 Key</span>常量前缀 <code>sms:verify:lock:</code> + phone → 例如 <code>sms:verify:lock:13800138000</code>。与「发码冷却」不同，这是<strong>验码失败</strong>触发的锁。</td></tr>
+                                            <tr><td class="ln">71</td><td class="code">if (redisUtils.get(verifyLockKey) != null)</td><td class="cmt"><span class="tag">读 Redis</span><code>get</code> 返回 null 表示 Key 不存在（未锁定）。非 null 说明 verifyCode 失败累计达阈值后写入了 lock。</td></tr>
+                                            <tr><td class="ln">72-73</td><td class="code">throw new BusinessException("..."+ CODE_VERIFY_LOCK_DURATION_MINUTES +"...")</td><td class="cmt"><span class="tag">失败</span>业务异常，前端可见.message。30 来自 <code>UserConstants.CODE_VERIFY_LOCK_DURATION_MINUTES</code>。</td></tr>
+                                            <tr><td class="ln">77</td><td class="code">cooldownKey = SEND_CODE_COOLDOWN_PREFIX + bizType + ":" + phone</td><td class="cmt"><span class="tag">拼 Key</span>形如 <code>sms:cooldown:REGISTER:13800138000</code>。<strong>bizType 入 Key</strong>：注册冷却不影响登录发码。</td></tr>
+                                            <tr><td class="ln">78-79</td><td class="code">if (get(cooldownKey) != null) throw ...</td><td class="cmt"><span class="tag">冷却</span>上次发码 L99 写入的 Key 仍在（TTL 300s）→ 拒绝重复发送。</td></tr>
+                                            <tr><td class="ln">83-88</td><td class="code">dailyKey = ...; dailyCount = parseInt(get) or 0</td><td class="cmt"><span class="tag">日限</span>Key <code>sms:daily:{bizType}:{phone}</code> 存字符串数字。无 Key 当 0 次。</td></tr>
+                                            <tr><td class="ln">89-90</td><td class="code">if (dailyCount >= SEND_CODE_DAILY_LIMIT) throw ...</td><td class="cmt"><span class="tag">上限</span><code>SEND_CODE_DAILY_LIMIT=5</code>，按 bizType 独立计数，防单日短信轰炸。</td></tr>
+                                            <tr><td class="ln">94</td><td class="code">code = String.format("%06d", new Random().nextInt(1000000))</td><td class="cmt"><span class="tag">生成</span><code>nextInt(1000000)</code> 得 0–999999；<code>%06d</code> 补零成 6 位。<strong>验证码在服务端生成</strong>，不依赖客户端或阿里云生成。</td></tr>
+                                            <tr><td class="ln">95</td><td class="code">redisUtils.del(CODE_VERIFY_FAIL_PREFIX + phone)</td><td class="cmt"><span class="tag">重置</span>删除 <code>sms:verify:fail:{phone}</code>。用户重新获取验证码时，验码失败次数清零，避免旧失败记录误伤。</td></tr>
+                                            <tr><td class="ln">96</td><td class="code">setEx(CODE_PREFIX + phone, code, CODE_EXPIRE)</td><td class="cmt"><span class="tag">存码</span>SET <code>sms:code:{phone}</code> = code，TTL <code>CODE_EXPIRE=300</code> 秒。注册/登录时 <code>verifyCode</code> 读此 Key 与用户输入比对。<strong>设计点</strong>：Key 仅 phone，不含 bizType。</td></tr>
+                                            <tr><td class="ln">99</td><td class="code">setEx(cooldownKey, "1", SEND_CODE_COOLDOWN)</td><td class="cmt"><span class="tag">冷却写</span>值 <code>"1"</code> 仅占位；存在即表示冷却中。TTL <code>SEND_CODE_COOLDOWN=300</code> 秒。</td></tr>
+                                            <tr><td class="ln">102-105</td><td class="code">secondsUntilMidnight = Duration.between(now, 明日0点)</td><td class="cmt"><span class="tag">算 TTL</span>用 Java 8 时间 API 算「到当天 24:00 还剩多少秒」，作为 daily Key 过期时间，实现<strong>自然日重置</strong>而非固定 24h。</td></tr>
+                                            <tr><td class="ln">106</td><td class="code">setEx(dailyKey, String.valueOf(dailyCount+1), secondsUntilMidnight)</td><td class="cmt"><span class="tag">计数</span>把今日次数 +1 写回 Redis。例如第 1 次发码后值为 <code>"1"</code>。</td></tr>
+                                            <tr><td class="ln">109</td><td class="code">smsService.sendVerificationCode(phone, code, bizType)</td><td class="cmt"><span class="tag">出站调用</span>注入的 <code>SmsService</code> 接口。传入三个已就绪参数；短信失败可能抛 <code>RuntimeException</code> 导致整个发码失败（Redis 已写入，需注意补偿策略）。</td></tr>
+                                          </table></div></div>
+                                      </div><div class="eval-box"><strong>评价：</strong>频控三层清晰。<strong>可扩展：</strong><code>sms:code:{bizType}:{phone}</code> 避免覆盖；发码与发短信可拆事务/补偿。</div></div>
+                                    </div>
+                                  </li>
+                                  <!-- ===== ③ 嵌套在 ② 之下 ===== -->
+                                  <li class="node" data-depth="4">
+                                    <div class="node-head" onclick="toggleNode(this)"><span class="chevron">▶</span><span class="badge b4">L4</span><span class="title">③ SmsServiceImpl.sendVerificationCode <span class="nest-hint">↳ 被 ②-L109 调用</span></span></div>
+                                    <div class="node-body">
+                                      <table class="io-table">
+                                        <tr><th>完整签名</th><td><code>public void sendVerificationCode(String phone, String code, String bizType)</code></td></tr>
+                                        <tr><th>职责</th><td>决定 mock / 降级 / 真实发送；组装阿里云请求；同步等待 SDK 响应；失败抛 <code>RuntimeException</code></td></tr>
+                                      </table>
+                                      <table class="param-table">
+                                        <tr><th>参数名</th><th>类型</th><th>含义</th></tr>
+                                        <tr><td><code>phone</code></td><td><code>String</code></td><td>短信接收号码 → 映射为 <code>SendSmsVerifyCodeRequest.phoneNumber</code></td></tr>
+                                        <tr><td><code>code</code></td><td><code>String</code></td><td>6 位验证码 → 填入模板 JSON 的 <code>code</code> 字段（${code}）</td></tr>
+                                        <tr><td><code>bizType</code></td><td><code>String</code></td><td>选模板 + 打日志标签；传给 <code>getTemplateCode(bizType)</code></td></tr>
+                                      </table>
+                                      <ul class="tree">
+                                        <li class="node" data-depth="5">
+                                          <div class="node-head" onclick="toggleNode(this)"><span class="chevron">▶</span><span class="badge b5">L5</span><span class="title">③ 行级讲解 · SmsServiceImpl.java L117-166</span></div>
+                                          <div class="node-body">
+                                            <div class="l5-panel"><div class="l5-grid">
+                                              <div><div class="l5-col-title">执行流程</div><div class="flow-chart">
+                                                <div class="flow-node start"><div class="flow-title">③-0 入口</div><div class="flow-params"><div><strong>phone</strong> · String</div><div><strong>code</strong> · String · 6 位</div><div><strong>bizType</strong> · String</div></div></div>
+                                                <div class="flow-arrow">↓</div>
+                                                <div class="flow-node decision"><div class="flow-title">③-1 shouldMockSend(phone)？</div><div class="flow-desc">配置 <code>sms.alibaba.mock-phones</code>（默认 15245537300）且未 force-real → 只打日志不调云</div><span class="flow-ref">L118-120</span></div>
+                                                <div class="flow-branch"><div><div class="flow-branch-label">是</div><div class="flow-node process"><div class="flow-title">模拟发送</div><div class="flow-desc">日志含 phone/code/min，<strong>return 结束</strong></div></div></div><div><div class="flow-branch-label">否 ↓</div><div class="flow-node decision"><div class="flow-title">③-2 client == null？</div><div class="flow-desc">启动时无 AK，init 未创建 AsyncClient</div></div></div></div>
+                                                <div class="flow-branch"><div><div class="flow-branch-label">是</div><div class="flow-node process">warn 降级日志 return</div></div><div><div class="flow-branch-label">否 ↓</div>
+                                                <div class="flow-node call"><div class="flow-title">③-3 getTemplateCode(bizType)</div><div class="flow-params"><div><strong>入参 bizType</strong> · String · 决定模板 100001–100005</div><div><strong>返回 templateCode</strong> · String · 阿里云模板 CODE</div></div><span class="flow-ref">L129 → 嵌套 L4-④</span></div></div></div>
+                                                <div class="flow-arrow">↓</div>
+                                                <div class="flow-node call"><div class="flow-title">③-4 buildTemplateParam(code)</div><div class="flow-params"><div><strong>入参 code</strong> · String</div><div><strong>返回</strong> · String JSON · <code>{"code":"…","min":"5"}</code></div></div><span class="flow-ref">L130 → 嵌套 L4-⑤</span></div>
+                                                <div class="flow-arrow">↓</div>
+                                                <div class="flow-node process"><div class="flow-title">③-5 组装 SendSmsVerifyCodeRequest</div><div class="flow-params"><div><strong>signName</strong> · String · 短信签名</div><div><strong>templateCode</strong> · String · 来自 ④</div><div><strong>templateParam</strong> · String · 来自 ⑤</div><div><strong>phoneNumber</strong> · String · = phone</div></div><span class="flow-ref">L133-138</span></div>
+                                                <div class="flow-arrow">↓</div>
+                                                <div class="flow-node call"><div class="flow-title">③-6 client.sendSmsVerifyCode(request)</div><div class="flow-desc">阿里云 dypnsapi 异步 SDK；<code>future.get()</code> 同步阻塞等待（见 L4-⑥）</div><span class="flow-ref">L143-144</span></div>
+                                                <div class="flow-arrow">↓</div>
+                                                <div class="flow-node decision"><div class="flow-title">response.body.code == "OK"？</div></div>
+                                                <div class="flow-branch"><div><div class="flow-branch-label">否</div><div class="flow-node error">RuntimeException 短信发送失败</div></div><div><div class="flow-branch-label">是</div><div class="flow-node end">log 成功，return</div></div></div>
+                                              </div></div>
+                                              <div><div class="l5-col-title">源码 · 老师讲读</div><div class="source-panel">
+                                                <div class="source-header">SmsServiceImpl.java · sendVerificationCode · L117-166</div>
+                                                <table class="source-table">
+                                                  <tr><td class="ln">117</td><td class="code">public void sendVerificationCode(String phone, String code, String bizType)</td><td class="cmt"><span class="tag">入口</span>实现 <code>SmsService</code> 接口。三个参数与 Service 层传入一一对应，本方法<strong>不再访问 Redis</strong>，只负责「投递」已生成的 code。</td></tr>
+                                                  <tr><td class="ln">118</td><td class="code">if (shouldMockSend(phone)) { log.info(...); return; }</td><td class="cmt"><span class="tag">Mock</span><code>shouldMockSend</code>：非 force-real 且 phone 在 mock 集合内。日志会打印 code（仅开发机），生产 mock 名单应受限。</td></tr>
+                                                  <tr><td class="ln">123-126</td><td class="code">if (client == null) { log.warn(...); return; }</td><td class="cmt"><span class="tag">降级</span>无阿里云凭证时<strong>吞掉发送但不抛错</strong>，避免本地/CI 因缺 AK 启动失败；但 Redis 里已有 code，用户收不到短信——测试环境依赖 mock 号。</td></tr>
+                                                  <tr><td class="ln">129</td><td class="code">templateCode = getTemplateCode(bizType)</td><td class="cmt"><span class="tag">子调用</span>私有方法，见嵌套 L4-④。把业务字符串映射为配置项中的模板 ID（默认 100001 等）。</td></tr>
+                                                  <tr><td class="ln">130</td><td class="code">templateParam = buildTemplateParam(code)</td><td class="cmt"><span class="tag">子调用</span>见 L4-⑤。生成阿里云要求的 JSON 字符串，填充模板变量。</td></tr>
+                                                  <tr><td class="ln">133-138</td><td class="code">SendSmsVerifyCodeRequest.builder()...build()</td><td class="cmt"><span class="tag">组包</span>Builder 模式设置四字段：签名、模板 CODE、模板参数 JSON、手机号。类型为阿里云 SDK 生成类。</td></tr>
+                                                  <tr><td class="ln">143</td><td class="code">CompletableFuture future = client.sendSmsVerifyCode(request)</td><td class="cmt"><span class="tag">RPC</span>SDK 异步发起 HTTP；返回 Future 尚未包含最终结果。</td></tr>
+                                                  <tr><td class="ln">144</td><td class="code">response = future.get()</td><td class="cmt"><span class="tag">阻塞</span>当前线程等待阿里云响应。生产可考虑超时配置；阻塞期间占用 Tomcat 线程。</td></tr>
+                                                  <tr><td class="ln">147-154</td><td class="code">resultCode = body.getCode(); if (!"OK") throw ...</td><td class="cmt"><span class="tag">判错</span>阿里云业务成功码是字符串 <code>OK</code>，非 HTTP 200。失败抛 RuntimeException 向上传播。</td></tr>
+                                                </table></div></div>
+                                            </div></div>
+                                          </div>
+                                        </li>
+                                        <!-- ④ getTemplateCode -->
+                                        <li class="node" data-depth="4">
+                                          <div class="node-head" onclick="toggleNode(this)"><span class="chevron">▶</span><span class="badge b4">L4</span><span class="title">④ getTemplateCode(bizType) <span class="nest-hint">↳ 被 ③-L129 调用 · private</span></span></div>
+                                          <div class="node-body">
+                                            <table class="io-table">
+                                              <tr><th>签名</th><td><code>private String getTemplateCode(String bizType)</code></td></tr>
+                                              <tr><th>入参</th><td><code>bizType</code> · String · 可为 null</td></tr>
+                                              <tr><th>返回</th><td><code>String</code> · 阿里云模板 CODE（如 100001）</td></tr>
+                                              <tr><th>作用</th><td>把业务场景字符串映射到 yml 配置的模板编号，不同场景短信文案不同</td></tr>
+                                            </table>
+                                            <ul class="tree"><li class="node" data-depth="5">
+                                              <div class="node-head" onclick="toggleNode(this)"><span class="chevron">▶</span><span class="badge b5">L5</span><span class="title">④ 行级讲解 · L171-190</span></div>
+                                              <div class="node-body">
+                                                <div class="l5-panel"><div class="l5-grid">
+                                                  <div><div class="l5-col-title">执行流程</div><div class="flow-chart">
+                                                    <div class="flow-node start"><div class="flow-title">④-0 入参 bizType</div><div class="flow-params"><div><strong>bizType</strong> · String · 来自 ③ 的同一参数</div></div></div>
+                                                    <div class="flow-arrow">↓</div>
+                                                    <div class="flow-node decision"><div class="flow-title">bizType == null？</div><div class="flow-desc">防御性：null 直接返回登录模板 100001</div></div>
+                                                    <div class="flow-arrow">↓</div>
+                                                    <div class="flow-node process"><div class="flow-title">toUpperCase() 后 switch</div><div class="flow-desc">REGISTER/LOGIN→100001 · CHANGE_PHONE→100002 · RESET_PASSWORD→100003 · BIND_PHONE→100004 · VERIFY_PHONE→100005 · default→100001</div></div>
+                                                    <div class="flow-arrow">↓</div>
+                                                    <div class="flow-node end"><div class="flow-title">返回 templateCode 字符串</div><div class="flow-desc">供 ③ 写入 Request.templateCode</div></div>
+                                                  </div></div>
+                                                  <div><div class="l5-col-title">源码 · 老师讲读</div><div class="source-panel">
+                                                    <div class="source-header">SmsServiceImpl.java · getTemplateCode · L171-190</div>
+                                                    <table class="source-table">
+                                                      <tr><td class="ln">171</td><td class="code">private String getTemplateCode(String bizType)</td><td class="cmt"><span class="tag">私有</span>仅本类 sendVerificationCode 使用，不暴露到接口层。</td></tr>
+                                                      <tr><td class="ln">172-173</td><td class="code">if (bizType == null) return templateCodeLogin;</td><td class="cmt"><span class="tag">兜底</span><code>templateCodeLogin</code> 来自 <code>@Value("${sms.alibaba.template-code.login:100001}")</code>，可配置。</td></tr>
+                                                      <tr><td class="ln">175</td><td class="code">switch (bizType.toUpperCase())</td><td class="cmt"><span class="tag">规范化</span>前端传 register 或 REGISTER 都能匹配；避免大小写导致走 default。</td></tr>
+                                                      <tr><td class="ln">176-178</td><td class="code">case "REGISTER": case "LOGIN": return templateCodeLogin;</td><td class="cmt"><span class="tag">映射</span>注册与登录共用「登录/注册」类模板，阿里云控制台需已审核通过。</td></tr>
+                                                      <tr><td class="ln">179-186</td><td class="code">CHANGE_PHONE / RESET_PASSWORD / BIND_PHONE / VERIFY_PHONE</td><td class="cmt"><span class="tag">映射</span>各场景独立模板，对应 yml 中 change-phone、reset-password 等配置项。</td></tr>
+                                                      <tr><td class="ln">187-188</td><td class="code">default: return templateCodeLogin;</td><td class="cmt"><span class="tag">兜底</span>未知 bizType 不抛错，避免发码整体失败；可能发错模板文案，后续可改枚举校验。</td></tr>
+                                                    </table></div></div>
+                                                </div></div>
+                                              </div>
+                                            </li></ul>
+                                          </div>
+                                        </li>
+                                        <!-- ⑤ buildTemplateParam -->
+                                        <li class="node" data-depth="4">
+                                          <div class="node-head" onclick="toggleNode(this)"><span class="chevron">▶</span><span class="badge b4">L4</span><span class="title">⑤ buildTemplateParam(code) <span class="nest-hint">↳ 被 ③-L130 调用 · private</span></span></div>
+                                          <div class="node-body">
+                                            <table class="io-table">
+                                              <tr><th>签名</th><td><code>private String buildTemplateParam(String code)</code></td></tr>
+                                              <tr><th>入参</th><td><code>code</code> · String · 6 位数字字符串</td></tr>
+                                              <tr><th>返回</th><td><code>String</code> · 合法 JSON 文本，非 JSONObject 对象</td></tr>
+                                              <tr><th>作用</th><td>填充阿里云短信模板中的 <code>${code}</code> 与 <code>${min}</code> 占位符</td></tr>
+                                            </table>
+                                            <ul class="tree"><li class="node" data-depth="5">
+                                              <div class="node-head" onclick="toggleNode(this)"><span class="chevron">▶</span><span class="badge b5">L5</span><span class="title">⑤ 行级讲解 · L196-198</span></div>
+                                              <div class="node-body">
+                                                <div class="l5-panel"><div class="l5-grid">
+                                                  <div><div class="l5-col-title">执行流程</div><div class="flow-chart">
+                                                    <div class="flow-node start"><div class="flow-title">⑤-0 入参 code</div><div class="flow-params"><div><strong>code</strong> · String · 如 "042817"</div></div></div>
+                                                    <div class="flow-arrow">↓</div>
+                                                    <div class="flow-node process"><div class="flow-title">读取 codeExpireMinutes</div><div class="flow-desc">成员字段，<code>@Value</code> 默认 5，与 Redis CODE_EXPIRE 应对齐</div></div>
+                                                    <div class="flow-arrow">↓</div>
+                                                    <div class="flow-node end"><div class="flow-title">拼接并返回 JSON 字符串</div><div class="flow-desc">示例：<code>{"code":"042817","min":"5"}</code></div></div>
+                                                  </div></div>
+                                                  <div><div class="l5-col-title">源码 · 老师讲读</div><div class="source-panel">
+                                                    <div class="source-header">SmsServiceImpl.java · buildTemplateParam · L196-198</div>
+                                                    <table class="source-table">
+                                                      <tr><td class="ln">196</td><td class="code">private String buildTemplateParam(String code)</td><td class="cmt"><span class="tag">私有</span>单一职责：只负责模板参数字符串，不处理 phone/bizType。</td></tr>
+                                                      <tr><td class="ln">197</td><td class="code">return "{\"code\":\""+code+"\",\"min\":\""+codeExpireMinutes+"\"}";</td><td class="cmt"><span class="tag">拼 JSON</span>手动字符串拼接（未用 Jackson）。<code>code</code> 插入验证码；<code>min</code> 告诉用户「几分钟内有效」，需与 Redis TTL、短信文案一致。若 code 含引号会有注入风险——当前仅数字无此问题。</td></tr>
+                                                    </table></div></div>
+                                                </div></div>
+                                              </div>
+                                            </li></ul>
+                                          </div>
+                                        </li>
+                                        <!-- ⑥ SDK -->
+                                        <li class="node" data-depth="4">
+                                          <div class="node-head" onclick="toggleNode(this)"><span class="chevron">▶</span><span class="badge b4">L4</span><span class="title">⑥ AsyncClient.sendSmsVerifyCode <span class="nest-hint">↳ 被 ③-L143 调用 · 阿里云 SDK</span></span></div>
+                                          <div class="node-body">
+                                            <table class="io-table">
+                                              <tr><th>类型</th><td><code>com.aliyun.sdk.service.dypnsapi20170525.AsyncClient</code></td></tr>
+                                              <tr><th>初始化</th><td><code>@PostConstruct init()</code> · L69-102 · AK 为空则 client=null</td></tr>
+                                              <tr><th>运行时入参</th><td><code>SendSmsVerifyCodeRequest</code> · 含 signName, templateCode, templateParam, phoneNumber</td></tr>
+                                              <tr><th>返回</th><td><code>CompletableFuture&lt;SendSmsVerifyCodeResponse&gt;</code> · body.code="OK" 表示成功</td></tr>
+                                            </table>
+                                            <ul class="tree"><li class="node" data-depth="5">
+                                              <div class="node-head" onclick="toggleNode(this)"><span class="chevron">▶</span><span class="badge b5">L5</span><span class="title">⑥ 行级讲解 · init L69-102 + 调用 L143-144</span></div>
+                                              <div class="node-body">
+                                                <div class="l5-panel"><div class="l5-grid">
+                                                  <div><div class="l5-col-title">执行流程</div><div class="flow-chart">
+                                                    <div class="flow-node start"><div class="flow-title">启动阶段 init()</div><div class="flow-desc">解析 mock 名单 → 检查 AK → 构建 AsyncClient</div></div>
+                                                    <div class="flow-arrow">↓</div>
+                                                    <div class="flow-node process"><div class="flow-title">endpoint dypnsapi.aliyuncs.com</div><div class="flow-desc">号码认证服务 API，非普通 dysmsapi</div></div>
+                                                    <div class="flow-arrow">↓</div>
+                                                    <div class="flow-node call"><div class="flow-title">运行时 sendSmsVerifyCode(request)</div><div class="flow-params"><div><strong>request</strong> · SendSmsVerifyCodeRequest · 由 ③ 组装</div></div><div class="flow-desc">阿里云向 phoneNumber 下发含 ${code} 的短信</div></div>
+                                                    <div class="flow-arrow">↓</div>
+                                                    <div class="flow-node end"><div class="flow-title">@PreDestroy destroy() 关闭 client</div></div>
+                                                  </div></div>
+                                                  <div><div class="l5-col-title">源码 · 老师讲读</div><div class="source-panel">
+                                                    <div class="source-header">SmsServiceImpl.java · init + SDK · L69-102, L143-144</div>
+                                                    <table class="source-table">
+                                                      <tr><td class="ln">71</td><td class="code">mockPhoneSet = parseMockPhones(mockPhones)</td><td class="cmt"><span class="tag">配置</span>逗号分隔手机号转 Set；启动时打日志便于确认 mock 范围。</td></tr>
+                                                      <tr><td class="ln">75-77</td><td class="code">if (accessKeyId blank) { warn; return; }</td><td class="cmt"><span class="tag">无 AK</span>client 保持 null，后续走降级分支；应用仍可启动。</td></tr>
+                                                      <tr><td class="ln">81-86</td><td class="code">StaticCredentialProvider.create(Credential...)</td><td class="cmt"><span class="tag">凭证</span>从 yml/环境变量读 AK/SK，注入阿里云 SDK 凭证提供者。</td></tr>
+                                                      <tr><td class="ln">88-95</td><td class="code">AsyncClient.builder().region(...).setEndpointOverride(...)</td><td class="cmt"><span class="tag">客户端</span>region cn-hangzhou；endpoint 覆盖为 dypnsapi，与控制台开通的产品一致。</td></tr>
+                                                      <tr><td class="ln">143</td><td class="code">client.sendSmsVerifyCode(request)</td><td class="cmt"><span class="tag">外呼</span>真正把验证码推到运营商/手机；Redis 中的 code 必须与模板变量一致，验码仍读 Redis 而非阿里云。</td></tr>
+                                                      <tr><td class="ln">144</td><td class="code">response = future.get()</td><td class="cmt"><span class="tag">等待</span>获取同步结果；异常包装为 RuntimeException 在 ③ 的 catch 中处理。</td></tr>
+                                                    </table></div></div>
+                                                </div></div>
+                                              </div>
+                                            </li></ul>
+                                          </div>
+                                        </li>
+                                      </ul>
+                                    </div>
+                                  </li>
+                                </ul>
+                              </div>
+                            </li>
+                          </ul>
+                        </div>
+                      </li>
+                    </ul>
+                  </div>
+                </li>
+              </ul>
+            </div>
+          </li>
+        </ul>

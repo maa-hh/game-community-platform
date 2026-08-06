@@ -1,13 +1,18 @@
 package com.game.community.notification.service.impl;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.game.community.common.constant.notification.NotificationConstants;
 import com.game.community.model.vo.notification.NotificationMessageVO;
 import com.game.community.model.vo.notification.NotificationSseEventVO;
 import com.game.community.model.vo.notification.NotificationSummaryVO;
+import com.game.community.notification.config.NotificationRedisConfig;
 import com.game.community.notification.service.SseService;
+import com.game.community.notification.sse.NotificationSseBroadcast;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
@@ -21,6 +26,15 @@ import java.util.concurrent.ConcurrentHashMap;
 public class SseServiceImpl implements SseService {
 
     private final Map<Long, Set<SseEmitter>> emitters = new ConcurrentHashMap<>();
+
+    private final StringRedisTemplate redisTemplate;
+
+    private final ObjectMapper objectMapper;
+
+    public SseServiceImpl(StringRedisTemplate redisTemplate, ObjectMapper objectMapper) {
+        this.redisTemplate = redisTemplate;
+        this.objectMapper = objectMapper;
+    }
 
     @Override
     public SseEmitter connect(Long userId) {
@@ -39,7 +53,8 @@ public class SseServiceImpl implements SseService {
                 summary,
                 message
         );
-        send(userId, NotificationConstants.SseEventType.NOTIFICATION_CREATED, payload);
+        publish(new NotificationSseBroadcast(userId,
+                NotificationConstants.SseEventType.NOTIFICATION_CREATED, payload));
     }
 
     @Override
@@ -49,7 +64,8 @@ public class SseServiceImpl implements SseService {
                 summary,
                 null
         );
-        send(userId, NotificationConstants.SseEventType.NOTIFICATION_SUMMARY, payload);
+        publish(new NotificationSseBroadcast(userId,
+                NotificationConstants.SseEventType.NOTIFICATION_SUMMARY, payload));
     }
 
     @Override
@@ -59,7 +75,8 @@ public class SseServiceImpl implements SseService {
                 summary,
                 null
         );
-        send(userId, NotificationConstants.SseEventType.FEED_UNREAD, payload);
+        publish(new NotificationSseBroadcast(userId,
+                NotificationConstants.SseEventType.FEED_UNREAD, payload));
     }
 
     @Scheduled(fixedDelay = 25000L)
@@ -70,11 +87,31 @@ public class SseServiceImpl implements SseService {
                 null
         );
         for (Long userId : emitters.keySet()) {
-            send(userId, NotificationConstants.SseEventType.HEARTBEAT, payload);
+            sendLocal(new NotificationSseBroadcast(userId,
+                    NotificationConstants.SseEventType.HEARTBEAT, payload));
         }
     }
 
-    private void send(Long userId, String eventName, NotificationSseEventVO payload) {
+    public void sendLocal(NotificationSseBroadcast broadcast) {
+        if (broadcast == null || broadcast.getUserId() == null) {
+            return;
+        }
+        sendLocal(broadcast.getUserId(), broadcast.getEventName(), broadcast.getPayload());
+    }
+
+    private void publish(NotificationSseBroadcast broadcast) {
+        try {
+            redisTemplate.convertAndSend(
+                    NotificationRedisConfig.SSE_CHANNEL,
+                    objectMapper.writeValueAsString(broadcast));
+        } catch (JsonProcessingException | RuntimeException e) {
+            log.warn("通知 SSE Redis 广播失败，回退本机推送: userId={}, event={}",
+                    broadcast.getUserId(), broadcast.getEventName(), e);
+            sendLocal(broadcast);
+        }
+    }
+
+    private void sendLocal(Long userId, String eventName, NotificationSseEventVO payload) {
         Set<SseEmitter> connections = emitters.get(userId);
         if (connections == null || connections.isEmpty()) {
             return;
@@ -83,15 +120,24 @@ public class SseServiceImpl implements SseService {
         while (iterator.hasNext()) {
             SseEmitter emitter = iterator.next();
             try {
-                emitter.send(SseEmitter.event().name(eventName).data(payload));
-            } catch (IOException e) {
+                synchronized (emitter) {
+                    SseEmitter.SseEventBuilder builder = SseEmitter.event()
+                            .name(eventName)
+                            .data(payload);
+                    if (payload != null && payload.getMessage() != null
+                            && payload.getMessage().getId() != null) {
+                        builder.id(String.valueOf(payload.getMessage().getId()));
+                    }
+                    emitter.send(builder);
+                }
+            } catch (IOException | RuntimeException e) {
                 log.warn("SSE发送失败, userId={}, event={}, error={}", userId, eventName, e.getMessage());
                 iterator.remove();
                 safeComplete(emitter);
             }
         }
         if (connections.isEmpty()) {
-            emitters.remove(userId);
+            emitters.remove(userId, connections);
         }
     }
 

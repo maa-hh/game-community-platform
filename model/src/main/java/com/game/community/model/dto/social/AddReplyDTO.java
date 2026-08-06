@@ -15,6 +15,8 @@ public class AddReplyDTO implements Serializable {
 
     private Long replyToUserId;
 
+    private Long replyToAccountId;
+
     @NotBlank(message = "回复内容不能为空")
     @Size(max = 1000, message = "回复内容不能超过1000字")
     private String content;

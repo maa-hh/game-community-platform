@@ -16,8 +16,26 @@ public final class NotificationConstants {
         public static final int REPORT_RESULT = 8;
         public static final int PENALTY_RESULT = 9;
         public static final int FEED_UNREAD = 10;
+        /** 资料字段审核通过 */
+        public static final int PROFILE_AUDIT_PASSED = 11;
+        /** 资料字段审核拒绝 */
+        public static final int PROFILE_AUDIT_REJECTED = 12;
+        /** 资料字段进入人工复核 */
+        public static final int PROFILE_AUDIT_HUMAN_REVIEW = 13;
+        /** 帖子被收藏 */
+        public static final int ARTICLE_FAVORITE = 14;
+        /** 帖子审核不通过 */
+        public static final int ARTICLE_AUDIT_REJECTED = 15;
+        /** 帖子人工审核通过 */
+        public static final int ARTICLE_AUDIT_PASSED = 16;
+        /** 帖子进入人工审核 */
+        public static final int ARTICLE_AUDIT_HUMAN_REVIEW = 17;
 
         private EventType() {
+        }
+
+        public static boolean isSupported(Integer eventType) {
+            return eventType != null && eventType >= ARTICLE_LIKE && eventType <= ARTICLE_AUDIT_HUMAN_REVIEW;
         }
     }
 

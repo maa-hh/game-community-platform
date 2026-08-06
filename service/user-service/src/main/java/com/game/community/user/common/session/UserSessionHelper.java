@@ -1,0 +1,176 @@
+package com.game.community.user.common.session;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.game.community.common.constant.Constants;
+import com.game.community.common.constant.user.RedisConstants;
+import com.game.community.common.exception.BusinessException;
+import com.game.community.model.entity.user.User;
+import com.game.community.model.entity.user.UserAccount;
+import com.game.community.model.enums.user.SessionStatus;
+import com.game.community.model.enums.user.UserStrings;
+import com.game.community.model.vo.user.LoginUserVO;
+import com.game.community.model.vo.user.LoginVO;
+import com.game.community.model.vo.user.UserSessionVO;
+import com.game.community.utils.JwtUtils;
+import com.game.community.utils.RedisUtils;
+import com.game.community.utils.session.UserSessionRedisReader;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * 用户会话与令牌组件（本服务领域能力，非通用工具）
+ * <p>
+ * 会话读写、双令牌生成、令牌哈希；供认证 / 账户等业务 Service 共用。
+ */
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class UserSessionHelper {
+
+    private static final String TOKEN_TYPE_ACCESS = "access";
+    private static final String TOKEN_TYPE_REFRESH = "refresh";
+
+    private final RedisUtils redisUtils;
+    private final ObjectMapper objectMapper;
+    private final UserSessionRedisReader sessionRedisReader;
+
+    /**
+     * 构建登录响应：创建会话 + 生成双令牌
+     */
+    public LoginVO buildLoginVO(User user, UserAccount account, String sessionId) {
+        String refreshToken = generateRefreshToken(sessionId);
+
+        UserSessionVO session = new UserSessionVO();
+        session.setUserId(user.getId());
+        session.setAccountId(user.getAccountId());
+        session.setType(account.getType());
+        session.setSteamAccount(UserStrings.orEmpty(user.getSteamAccount()));
+        session.setAccountStatus(account.getStatus());
+        session.setRefreshTokenHash(hashToken(refreshToken));
+        session.setStatus(SessionStatus.ONLINE);
+        session.setLoginTime(LocalDateTime.now());
+        session.setLastRefreshTime(LocalDateTime.now());
+        saveSession(sessionId, user.getId(), session);
+
+        String accessToken = generateAccessToken(user, account, sessionId);
+
+        LoginVO vo = new LoginVO();
+        vo.setAccessToken(accessToken);
+        vo.setAccessExpiresIn(Constants.ACCESS_TOKEN_EXPIRE_TIME);
+        vo.setRefreshToken(refreshToken);
+
+        LoginUserVO loginUser = new LoginUserVO();
+        loginUser.setUserId(user.getId());
+        loginUser.setAccountId(user.getAccountId());
+        loginUser.setEmail(user.getEmail());
+        loginUser.setUsername(user.getUsername());
+        loginUser.setAvatar(user.getAvatar());
+        vo.setUser(loginUser);
+        return vo;
+    }
+
+    public String generateAccessToken(User user, UserAccount account, String sessionId) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("accountId", user.getAccountId());
+        claims.put("type", account.getType().getCode());
+        claims.put("steamAccount", UserStrings.orEmpty(user.getSteamAccount()));
+        claims.put("sessionId", sessionId);
+        claims.put("tokenType", TOKEN_TYPE_ACCESS);
+        return JwtUtils.generateToken(Constants.ACCESS_JWT_SECRET, claims, Constants.ACCESS_TOKEN_EXPIRE_TIME * 1000);
+    }
+
+    public String generateRefreshToken(String sessionId) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("sessionId", sessionId);
+        claims.put("tokenType", TOKEN_TYPE_REFRESH);
+        return JwtUtils.generateToken(Constants.REFRESH_JWT_SECRET, claims, Constants.REFRESH_TOKEN_EXPIRE_TIME * 1000);
+    }
+
+    public void saveSession(String sessionId, Long userId, UserSessionVO session) {
+        redisUtils.set(RedisConstants.SESSION_PREFIX + sessionId,
+                writeSession(session),
+                Constants.REFRESH_TOKEN_EXPIRE_TIME,
+                TimeUnit.SECONDS);
+        redisUtils.set(RedisConstants.SESSION_ACTIVE_PREFIX + sessionId,
+                "1",
+                Constants.REFRESH_TOKEN_EXPIRE_TIME,
+                TimeUnit.SECONDS);
+        redisUtils.set(RedisConstants.ACTIVE_SESSION_PREFIX + userId,
+                sessionId,
+                Constants.REFRESH_TOKEN_EXPIRE_TIME,
+                TimeUnit.SECONDS);
+    }
+
+    /** 鉴权热路径：MGET session + session-active，一次往返 */
+    public UserSessionVO loadSessionForAuth(String sessionId) {
+        try {
+            return sessionRedisReader.loadActiveSession(sessionId);
+        } catch (IllegalStateException e) {
+            throw new BusinessException("会话数据异常");
+        }
+    }
+
+    public UserSessionVO getSession(String sessionId) {
+        try {
+            return sessionRedisReader.loadSession(sessionId);
+        } catch (IllegalStateException e) {
+            throw new BusinessException("会话数据异常");
+        }
+    }
+
+    /** 使用户的所有会话失效（用于封禁、注销、改密码等场景） */
+    public void invalidateUserSession(Long userId) {
+        String activeSessionId = redisUtils.get(RedisConstants.ACTIVE_SESSION_PREFIX + userId);
+        invalidateSession(activeSessionId, userId);
+    }
+
+    /** 使指定会话失效 */
+    public void invalidateSession(String sessionId, Long userId) {
+        if (sessionId != null && !sessionId.isBlank()) {
+            redisUtils.del(RedisConstants.SESSION_PREFIX + sessionId);
+            redisUtils.del(RedisConstants.SESSION_ACTIVE_PREFIX + sessionId);
+        }
+        if (userId != null) {
+            String activeSessionId = redisUtils.get(RedisConstants.ACTIVE_SESSION_PREFIX + userId);
+            if (sessionId == null || sessionId.isBlank() || sessionId.equals(activeSessionId)) {
+                redisUtils.del(RedisConstants.ACTIVE_SESSION_PREFIX + userId);
+            }
+        }
+    }
+
+    public String hashToken(String token) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] bytes = digest.digest((token + Constants.REFRESH_JWT_SECRET).getBytes(StandardCharsets.UTF_8));
+            StringBuilder builder = new StringBuilder();
+            for (byte current : bytes) {
+                builder.append(String.format("%02x", current));
+            }
+            return builder.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new BusinessException("令牌摘要失败");
+        }
+    }
+
+    public boolean isSessionOnline(UserSessionVO session) {
+        return session != null && SessionStatus.ONLINE == session.getStatus();
+    }
+
+    private String writeSession(UserSessionVO session) {
+        try {
+            return objectMapper.writeValueAsString(session);
+        } catch (JsonProcessingException e) {
+            throw new BusinessException("会话数据异常");
+        }
+    }
+}

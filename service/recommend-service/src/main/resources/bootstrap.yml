@@ -1,59 +1,9 @@
-server:
-  port: 8086
-
 spring:
   application:
     name: recommend-service
-  ai:
-    dashscope:
-      api-key: sk-fdc61462aa6c4a4c83e33b0125d4fc8d
   cloud:
     nacos:
-      discovery:
-        enabled: ${NACOS_DISCOVERY_ENABLED:true}
-        server-addr: localhost:8848
       config:
         enabled: ${NACOS_CONFIG_ENABLED:false}
-        server-addr: localhost:8848
-    sentinel:
-      eager: true
-  data:
-    redis:
-      host: localhost
-      port: ${REDIS_PORT:6380}
-  kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9093}
-    consumer:
-      auto-offset-reset: latest
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-      properties:
-        spring.json.trusted.packages: com.game.community.model.message
-    producer:
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
-    streams:
-      application-id: recommend-service-hot-score-stream
-      properties:
-        processing.guarantee: at_least_once
-        default.key.serde: org.apache.kafka.common.serialization.Serdes$StringSerde
-        default.value.serde: org.springframework.kafka.support.serializer.JsonSerde
-
-xxl:
-  job:
-    admin-addresses: ${XXL_JOB_ADMIN_ADDRESSES:http://localhost:8088/xxl-job-admin}
-    access-token: ${XXL_JOB_ACCESS_TOKEN:default_token}
-    appname: recommend-service
-    port: 9996
-    log-path: logs/xxl-job/recommend-service
-    log-retention-days: 30
-
-recommend:
-  kafka:
-    window-seconds: ${RECOMMEND_KAFKA_WINDOW_SECONDS:10}
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: '*'
+        server-addr: ${NACOS_ADDR:localhost:8848}
+        file-extension: yml

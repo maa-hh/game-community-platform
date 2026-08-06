@@ -14,9 +14,11 @@ public class ShopItemVO implements Serializable {
 
     private String description;
 
-    private Integer price;
+    private String cosmeticCode;
 
-    private Integer productType;
+    private Long pricePoints;
+
+    private Integer grantQuantity;
 
     private Integer stock;
 
@@ -24,15 +26,23 @@ public class ShopItemVO implements Serializable {
 
     private Integer status;
 
-    private String businessCode;
-
-    private Long businessId;
-
-    private Integer quantity;
+    private String repurchasePolicy;
 
     private Integer limitCount;
+
+    private Integer limitWindowSeconds;
 
     private LocalDateTime beginTime;
 
     private LocalDateTime endTime;
+
+    private Boolean owned;
+
+    private Boolean equipped;
+
+    private Boolean canBuy;
+
+    private String cannotBuyReason;
+
+    private LocalDateTime nextBuyAt;
 }

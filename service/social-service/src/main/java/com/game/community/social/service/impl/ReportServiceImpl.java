@@ -12,7 +12,8 @@ import com.game.community.model.entity.social.SocialComment;
 import com.game.community.model.entity.social.SocialReport;
 import com.game.community.model.entity.social.SocialReply;
 import com.game.community.model.vo.social.ReportVO;
-import com.game.community.model.vo.user.UserVO;
+import com.game.community.model.vo.user.UserCardInternalVO;
+import com.game.community.feign.DanmakuFeignClient;
 import com.game.community.social.client.SocialRemoteClient;
 import com.game.community.social.event.NotificationEventProducer;
 import com.game.community.social.event.ReportAuditProducer;
@@ -40,6 +41,8 @@ public class ReportServiceImpl implements ReportService {
 
     private final SocialRemoteClient remoteClient;
 
+    private final DanmakuFeignClient danmakuFeignClient;
+
     private final ReportAuditProducer reportAuditProducer;
 
     private final NotificationEventProducer notificationEventProducer;
@@ -48,13 +51,15 @@ public class ReportServiceImpl implements ReportService {
     @Transactional(rollbackFor = Exception.class)
     public Long createReport(Long userId, CreateReportDTO dto) {
         validateTargetType(dto.getTargetType());
-        Long reportedUserId = resolveReportedUserId(userId, dto.getTargetType(), dto.getTargetId());
+        Long targetId = resolveInternalTargetId(dto.getTargetType(), dto.getTargetId());
+        dto.setInternalTargetId(targetId);
+        Long reportedUserId = resolveReportedUserId(userId, dto.getTargetType(), targetId);
         if (reportedUserId != null && reportedUserId.equals(userId)) {
             throw new BusinessException("不能举报自己发布的内容");
         }
         SocialReport report = new SocialReport();
         report.setTargetType(dto.getTargetType());
-        report.setTargetId(dto.getTargetId());
+        report.setTargetId(targetId);
         report.setReporterId(userId);
         report.setReportedUserId(reportedUserId);
         report.setReason(dto.getReason().trim());
@@ -141,7 +146,8 @@ public class ReportServiceImpl implements ReportService {
                 || targetType != SocialConstants.ReportTargetType.ARTICLE
                 && targetType != SocialConstants.ReportTargetType.COMMENT
                 && targetType != SocialConstants.ReportTargetType.REPLY
-                && targetType != SocialConstants.ReportTargetType.USER) {
+                && targetType != SocialConstants.ReportTargetType.USER
+                && targetType != SocialConstants.ReportTargetType.DANMAKU) {
             throw new BusinessException("举报目标类型不合法");
         }
     }
@@ -163,7 +169,7 @@ public class ReportServiceImpl implements ReportService {
             if (article == null) {
                 throw new BusinessException("文章不存在");
             }
-            return article.getUserId();
+            return remoteClient.articleAuthorUserId(article);
         }
         if (targetType == SocialConstants.ReportTargetType.COMMENT) {
             SocialComment comment = commentMapper.selectById(targetId);
@@ -182,13 +188,51 @@ public class ReportServiceImpl implements ReportService {
             return reply.getUserId();
         }
         if (targetType == SocialConstants.ReportTargetType.USER) {
-            UserVO targetUser = remoteClient.listUsersByIds(List.of(targetId)).stream().findFirst().orElse(null);
+            UserCardInternalVO targetUser = remoteClient.listUsersByIds(List.of(targetId)).stream().findFirst().orElse(null);
             if (targetUser == null) {
                 throw new BusinessException("用户不存在");
             }
             return targetId;
         }
+        if (targetType == SocialConstants.ReportTargetType.DANMAKU) {
+            var result = danmakuFeignClient.getMessage(targetId);
+            if (result == null || result.getData() == null) {
+                throw new BusinessException("弹幕不存在");
+            }
+            return result.getData().getUserId();
+        }
         throw new BusinessException("举报目标类型不合法");
+    }
+
+    private Long resolveInternalTargetId(Integer targetType, String targetId) {
+        if (targetId == null || targetId.isBlank()) {
+            throw new BusinessException("举报目标不存在");
+        }
+        String normalized = targetId.trim();
+        if (targetType == SocialConstants.ReportTargetType.ARTICLE) {
+            var article = remoteClient.getArticleByPublicId(normalized);
+            if (article == null || article.getId() == null) {
+                throw new BusinessException("文章不存在");
+            }
+            return article.getId();
+        }
+        if (targetType == SocialConstants.ReportTargetType.USER) {
+            Long accountId = parseTargetId(normalized);
+            UserCardInternalVO targetUser = remoteClient.getUserByAccountId(accountId);
+            if (targetUser == null || targetUser.getUserId() == null) {
+                throw new BusinessException("用户不存在");
+            }
+            return targetUser.getUserId();
+        }
+        return parseTargetId(normalized);
+    }
+
+    private Long parseTargetId(String targetId) {
+        try {
+            return Long.valueOf(targetId);
+        } catch (NumberFormatException e) {
+            throw new BusinessException("举报目标不存在");
+        }
     }
 
     private ReportVO toVO(SocialReport report) {

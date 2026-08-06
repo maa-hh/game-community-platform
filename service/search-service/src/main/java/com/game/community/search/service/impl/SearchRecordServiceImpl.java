@@ -1,12 +1,13 @@
 package com.game.community.search.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.game.community.model.entity.search.SearchHistory;
+import com.game.community.common.constant.search.SearchConstants;
 import com.game.community.search.mapper.SearchHistoryMapper;
 import com.game.community.search.service.SearchRecordService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -17,11 +18,10 @@ import java.util.List;
 @RequiredArgsConstructor
 public class SearchRecordServiceImpl implements SearchRecordService {
 
-    private static final int MAX_RECORD_COUNT = 10;
-
     private final SearchHistoryMapper searchHistoryMapper;
 
     @Override
+    @Async("taskExecutor")
     @Transactional(rollbackFor = Exception.class)
     public void addRecord(Long userId, String keyword) {
         if (userId == null || !StringUtils.hasText(keyword)) {
@@ -29,18 +29,7 @@ public class SearchRecordServiceImpl implements SearchRecordService {
         }
         String normalized = keyword.trim();
         LocalDateTime now = LocalDateTime.now();
-        int updated = searchHistoryMapper.update(null, new LambdaUpdateWrapper<SearchHistory>()
-                .eq(SearchHistory::getUserId, userId)
-                .eq(SearchHistory::getKeyword, normalized)
-                .set(SearchHistory::getUpdateTime, now));
-        if (updated == 0) {
-            SearchHistory history = new SearchHistory();
-            history.setUserId(userId);
-            history.setKeyword(normalized);
-            history.setCreateTime(now);
-            history.setUpdateTime(now);
-            searchHistoryMapper.insert(history);
-        }
+        searchHistoryMapper.upsert(userId, normalized, now);
         trimOldRecords(userId);
     }
 
@@ -53,7 +42,7 @@ public class SearchRecordServiceImpl implements SearchRecordService {
                 .eq(SearchHistory::getUserId, userId)
                 .orderByDesc(SearchHistory::getUpdateTime)
                 .orderByDesc(SearchHistory::getId)
-                .last("LIMIT " + MAX_RECORD_COUNT));
+                .last("LIMIT " + SearchConstants.SEARCH_HISTORY_MAX_RECORDS));
     }
 
     @Override
@@ -76,13 +65,6 @@ public class SearchRecordServiceImpl implements SearchRecordService {
     }
 
     private void trimOldRecords(Long userId) {
-        List<SearchHistory> oldRecords = searchHistoryMapper.selectList(new LambdaQueryWrapper<SearchHistory>()
-                .eq(SearchHistory::getUserId, userId)
-                .orderByDesc(SearchHistory::getUpdateTime)
-                .orderByDesc(SearchHistory::getId)
-                .last("LIMIT 100 OFFSET " + MAX_RECORD_COUNT));
-        for (SearchHistory record : oldRecords) {
-            searchHistoryMapper.deleteById(record.getId());
-        }
+        searchHistoryMapper.deleteExcess(userId, SearchConstants.SEARCH_HISTORY_MAX_RECORDS);
     }
 }

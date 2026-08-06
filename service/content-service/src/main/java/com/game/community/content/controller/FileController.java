@@ -1,64 +1,73 @@
 package com.game.community.content.controller;
 
 import com.game.community.common.annotation.LoginCheck;
-import com.game.community.common.exception.BusinessException;
+import com.game.community.content.service.FileUploadService;
 import com.game.community.model.base.Result;
-import com.game.community.utils.MinIOUtils;
+import com.game.community.model.dto.file.ChunkUploadAbortDTO;
+import com.game.community.model.dto.file.ChunkUploadBindDTO;
+import com.game.community.model.dto.file.ChunkUploadInitDTO;
+import com.game.community.model.dto.file.ChunkUploadMergeDTO;
+import com.game.community.model.vo.file.ChunkUploadInitVO;
+import com.game.community.model.vo.file.ChunkUploadStatusVO;
+import com.game.community.model.vo.file.MediaUploadVO;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 文件上传控制器
+ * 文件上传：图片直传私有桶；视频走分片会话。
  */
 @RestController
 @RequestMapping("/file")
 @RequiredArgsConstructor
 public class FileController {
 
-    private static final int MAX_ARTICLE_IMAGE_COUNT = 10;
+    private final FileUploadService fileUploadService;
 
-    private static final long MAX_ARTICLE_IMAGE_SIZE = 2L * 1024 * 1024;
-
-    private final MinIOUtils minIOUtils;
-
-    /**
-     * 批量上传文件，返回URL列表
-     */
     @LoginCheck
     @PostMapping("/upload")
-    public Result<List<String>> upload(@RequestParam("files") List<MultipartFile> files) {
-        validateArticleImages(files);
-        List<String> urls = new ArrayList<>();
-        for (MultipartFile file : files) {
-            String url = minIOUtils.uploadPublicFile(file, file.getOriginalFilename(), "content");
-            urls.add(url);
-        }
-        return Result.success(urls);
+    public Result<List<MediaUploadVO>> upload(@RequestParam("files") List<MultipartFile> files) {
+        return fileUploadService.uploadImages(files);
     }
 
-    private void validateArticleImages(List<MultipartFile> files) {
-        if (files == null || files.isEmpty()) {
-            throw new BusinessException("请选择要上传的图片");
-        }
-        if (files.size() > MAX_ARTICLE_IMAGE_COUNT) {
-            throw new BusinessException("文章图片最多支持10张");
-        }
-        for (MultipartFile file : files) {
-            if (file == null || file.isEmpty()) {
-                throw new BusinessException("图片不能为空");
-            }
-            if (file.getSize() > MAX_ARTICLE_IMAGE_SIZE) {
-                throw new BusinessException("单张图片大小不能超过2MB");
-            }
-            String contentType = file.getContentType();
-            if (!StringUtils.hasText(contentType) || !contentType.startsWith("image/")) {
-                throw new BusinessException("仅支持上传图片文件");
-            }
-        }
+    @LoginCheck
+    @PostMapping("/upload/init")
+    public Result<ChunkUploadInitVO> initUpload(@Valid @RequestBody ChunkUploadInitDTO dto) {
+        return fileUploadService.initUpload(dto);
+    }
+
+    @LoginCheck
+    @PostMapping("/upload/chunk")
+    public Result<ChunkUploadStatusVO> uploadChunk(@RequestParam("uploadId") String uploadId,
+                                                   @RequestParam("chunkIndex") Integer chunkIndex,
+                                                   @RequestParam("file") MultipartFile file) {
+        return fileUploadService.uploadChunk(uploadId, chunkIndex, file);
+    }
+
+    @LoginCheck
+    @PostMapping("/upload/merge")
+    public Result<MediaUploadVO> mergeUpload(@Valid @RequestBody ChunkUploadMergeDTO dto) {
+        return fileUploadService.mergeUpload(dto);
+    }
+
+    @LoginCheck
+    @PostMapping("/upload/bind")
+    public Result<Void> bindUpload(@Valid @RequestBody ChunkUploadBindDTO dto) {
+        return fileUploadService.bindUpload(dto);
+    }
+
+    @LoginCheck
+    @PostMapping("/upload/abort")
+    public Result<Void> abortUpload(@Valid @RequestBody ChunkUploadAbortDTO dto) {
+        return fileUploadService.abortUpload(dto);
+    }
+
+    @LoginCheck
+    @GetMapping("/upload/{uploadId}/status")
+    public Result<ChunkUploadStatusVO> uploadStatus(@PathVariable("uploadId") String uploadId) {
+        return fileUploadService.uploadStatus(uploadId);
     }
 }

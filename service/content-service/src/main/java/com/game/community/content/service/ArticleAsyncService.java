@@ -24,4 +24,8 @@ public interface ArticleAsyncService {
      */
     void auditAndPublish(Long articleId, Long userId, ArticleDTO articleDTO,
                          String coverUrl, List<String> imageUrls);
+
+    void publishAfterManualApproval(Long articleId);
+
+    void rejectAfterManualApproval(Long articleId, String reason);
 }

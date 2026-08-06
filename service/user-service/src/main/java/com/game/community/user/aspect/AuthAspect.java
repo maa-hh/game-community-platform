@@ -1,7 +1,8 @@
 package com.game.community.user.aspect;
 
-import com.game.community.common.constant.user.UserConstants;
+import com.game.community.common.constant.ApiErrorCodes;
 import com.game.community.model.base.Result;
+import com.game.community.model.enums.user.AccountType;
 import com.game.community.utils.ThreadLocal.UserThreadLocal;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -22,7 +23,7 @@ public class AuthAspect {
         Long userId = UserThreadLocal.getUserId();
         if (userId == null) {
             log.warn("登录校验失败: 用户未登录");
-            return Result.error("请先登录");
+            return Result.error(ApiErrorCodes.UNAUTHORIZED, "请先登录");
         }
         return joinPoint.proceed();
     }
@@ -32,12 +33,12 @@ public class AuthAspect {
         Long userId = UserThreadLocal.getUserId();
         if (userId == null) {
             log.warn("管理员校验失败: 用户未登录");
-            return Result.error("请先登录");
+            return Result.error(ApiErrorCodes.UNAUTHORIZED, "请先登录");
         }
         Integer type = UserThreadLocal.getType();
-        if (type == null || type != UserConstants.UserType.ADMIN) {
+        if (type == null || type != AccountType.ADMIN.getCode()) {
             log.warn("管理员校验失败: userId={}, type={}", userId, type);
-            return Result.error("无权限，需要管理员权限");
+            return Result.error(ApiErrorCodes.FORBIDDEN, "无权限，需要管理员权限");
         }
         return joinPoint.proceed();
     }

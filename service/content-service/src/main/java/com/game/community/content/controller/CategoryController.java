@@ -4,7 +4,9 @@ import com.game.community.common.annotation.AdminCheck;
 import com.game.community.content.service.CategoryService;
 import com.game.community.model.base.PageResult;
 import com.game.community.model.base.Result;
-import com.game.community.model.entity.article.Category;
+import com.game.community.model.dto.article.CategoryDTO;
+import com.game.community.model.vo.article.CategoryVO;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -21,46 +23,43 @@ public class CategoryController {
     private final CategoryService categoryService;
 
     @GetMapping("/list")
-    public PageResult<Category> listEnabled(@RequestParam(value = "page", defaultValue = "1") Integer page,
-                                            @RequestParam(value = "size", defaultValue = "10") Integer size) {
-        return categoryService.listEnabledByPage(page, size);
+    public PageResult<CategoryVO> listEnabled(@RequestParam(value = "page", defaultValue = "1") Integer page,
+                                              @RequestParam(value = "size", defaultValue = "10") Integer size) {
+        return categoryService.listEnabledByPageApi(page, size);
     }
 
     @AdminCheck
     @GetMapping("/all")
-    public PageResult<Category> listAll(@RequestParam(value = "page", defaultValue = "1") Integer page,
-                                        @RequestParam(value = "size", defaultValue = "10") Integer size) {
-        return categoryService.listAllByPage(page, size);
+    public PageResult<CategoryVO> listAll(@RequestParam(value = "page", defaultValue = "1") Integer page,
+                                          @RequestParam(value = "size", defaultValue = "10") Integer size) {
+        return categoryService.listAllByPageApi(page, size);
     }
 
     @GetMapping("/{id}")
-    public Result<Category> getById(@PathVariable("id") Long id) {
-        return Result.success(categoryService.getById(id));
+    public Result<CategoryVO> getById(@PathVariable("id") Long id) {
+        return categoryService.getCategoryByIdApi(id);
     }
 
     @AdminCheck
     @PostMapping
-    public Result<Void> save(@RequestBody Category category) {
-        categoryService.save(category);
-        return Result.success(null);
+    public Result<Void> save(@Valid @RequestBody CategoryDTO dto) {
+        return categoryService.saveCategory(dto);
     }
 
     @AdminCheck
     @PutMapping
-    public Result<Void> update(@RequestBody Category category) {
-        categoryService.update(category);
-        return Result.success(null);
+    public Result<Void> update(@Valid @RequestBody CategoryDTO dto) {
+        return categoryService.updateCategory(dto);
     }
 
     @AdminCheck
     @DeleteMapping("/{id}")
     public Result<Void> delete(@PathVariable("id") Long id) {
-        categoryService.delete(id);
-        return Result.success(null);
+        return categoryService.deleteCategory(id);
     }
 
     @GetMapping("/listEnabled")
-    public Result<List<Category>> listEnabled() {
-        return Result.success(categoryService.listEnabled());
+    public Result<List<CategoryVO>> listEnabled() {
+        return categoryService.listEnabledApi();
     }
 }

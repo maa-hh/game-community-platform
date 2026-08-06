@@ -1,22 +1,22 @@
 package com.game.community.content.controller;
 
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.game.community.common.annotation.AdminCheck;
 import com.game.community.common.annotation.LoginCheck;
-import com.game.community.content.service.ArticleContentService;
+import com.fasterxml.jackson.annotation.JsonView;
+import com.game.community.content.service.ArticleByGameService;
 import com.game.community.content.service.ArticleService;
 import com.game.community.model.base.PageResult;
 import com.game.community.model.base.Result;
 import com.game.community.model.dto.article.ArticleDTO;
-import com.game.community.model.entity.article.Article;
-import com.game.community.model.mongo.ArticleContent;
+import com.game.community.model.json.ApiJsonViews;
+import com.game.community.model.vo.article.ArticleContentVO;
 import com.game.community.model.vo.article.ArticleDetailVO;
-import com.game.community.utils.ThreadLocal.UserThreadLocal;
+import com.game.community.model.vo.article.ArticleListVO;
+import com.game.community.model.vo.article.ArticleProgressVO;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -28,153 +28,185 @@ import java.util.List;
 public class ArticleController {
 
     private final ArticleService articleService;
+    private final ArticleByGameService articleByGameService;
 
-    private final ArticleContentService articleContentService;
+    @GetMapping("/by-game/{appId}")
+    @JsonView(ApiJsonViews.Public.class)
+    public PageResult<ArticleListVO> listByGame(@PathVariable("appId") Long appId,
+                                                @RequestParam(value = "page", defaultValue = "1") Long page,
+                                                @RequestParam(value = "size", defaultValue = "10") Long size) {
+        return articleByGameService.pageByGame(appId, page, size);
+    }
 
     @LoginCheck
     @PostMapping
-    public Result<Long> saveArticle(@Valid @RequestBody ArticleDTO articleDTO) {
-        return Result.success(articleService.saveArticle(articleDTO, UserThreadLocal.getUserId()));
+    public Result<String> saveArticle(@Valid @RequestBody ArticleDTO articleDTO) {
+        Long articleId = articleService.saveArticleForCurrentUser(articleDTO).getData();
+        return Result.success(articleService.getPublicId(articleId));
     }
 
     @LoginCheck
     @PutMapping("/{id}")
-    public Result<Long> updateArticle(@PathVariable("id") Long id, @Valid @RequestBody ArticleDTO articleDTO) {
-        articleDTO.setId(id);
-        return Result.success(articleService.saveArticle(articleDTO, UserThreadLocal.getUserId()));
+    public Result<String> updateArticle(@PathVariable("id") String publicId,
+                                        @Valid @RequestBody ArticleDTO articleDTO) {
+        Long articleId = articleService.resolvePublicId(publicId);
+        Long savedId = articleService.updateArticleForCurrentUser(articleId, articleDTO).getData();
+        return Result.success(articleService.getPublicId(savedId));
     }
 
     @LoginCheck
     @DeleteMapping("/{id}")
-    public Result<Void> deleteArticle(@PathVariable("id") Long id) {
-        Article article = articleService.getById(id);
-        if (article == null || !article.getUserId().equals(UserThreadLocal.getUserId())) {
-            return Result.error("文章不存在或无权删除");
-        }
-        articleService.deleteArticle(id);
-        return Result.success(null);
+    public Result<Void> deleteArticle(@PathVariable("id") String publicId) {
+        return articleService.deleteArticleForCurrentUser(articleService.resolvePublicId(publicId));
     }
 
     @GetMapping("/{id}")
-    public Result<ArticleDetailVO> getArticleDetail(@PathVariable("id") Long id) {
-        return Result.success(articleService.getArticleDetail(id));
+    @JsonView(ApiJsonViews.Public.class)
+    public Result<ArticleDetailVO> getArticleDetail(@PathVariable("id") String publicId) {
+        return articleService.queryArticleDetail(articleService.resolvePublicId(publicId));
+    }
+
+    @LoginCheck
+    @GetMapping("/{id}/mine")
+    @JsonView(ApiJsonViews.Public.class)
+    public Result<ArticleDetailVO> getMyArticleDetail(@PathVariable("id") String publicId) {
+        return articleService.queryArticleDetailForOwner(articleService.resolvePublicId(publicId));
     }
 
     @GetMapping("/{id}/content")
-    public Result<ArticleContent> getArticleContent(@PathVariable("id") Long id) {
-        return Result.success(articleContentService.getByArticleId(id));
+    public Result<ArticleContentVO> getArticleContent(@PathVariable("id") String publicId) {
+        return articleService.queryArticleContent(articleService.resolvePublicId(publicId));
     }
 
     @GetMapping("/page")
-    public PageResult<Article> getArticlePage(@RequestParam(value = "page", defaultValue = "1") Integer page,
-                                              @RequestParam(value = "size", defaultValue = "10") Integer size,
-                                              @RequestParam(value = "categoryId", required = false) Long categoryId,
-                                              @RequestParam(value = "status", required = false) Integer status) {
-        Page<Article> result = articleService.getArticlePage(page, size, categoryId, status);
-        return PageResult.of(result.getRecords(), result.getCurrent(), result.getSize(), result.getTotal());
+    @JsonView(ApiJsonViews.Public.class)
+    public PageResult<ArticleListVO> getArticlePage(@RequestParam(value = "page", defaultValue = "1") Integer page,
+                                                    @RequestParam(value = "size", defaultValue = "10") Integer size,
+                                                    @RequestParam(value = "categoryId", required = false) Long categoryId,
+                                                    @RequestParam(value = "status", required = false) Integer status) {
+        return articleService.queryArticlePage(page, size, categoryId, status);
     }
 
     @LoginCheck
     @GetMapping("/my")
-    public Result<List<Article>> getMyArticles() {
-        return Result.success(articleService.getUserArticles(UserThreadLocal.getUserId()));
+    @JsonView(ApiJsonViews.Public.class)
+    public PageResult<ArticleListVO> getMyArticles(@RequestParam(value = "page", defaultValue = "1") Integer page,
+                                                   @RequestParam(value = "size", defaultValue = "20") Integer size,
+                                                   @RequestParam(value = "tab", required = false) String tab) {
+        return articleService.queryMyArticlesPage(page, size, tab);
     }
 
     @LoginCheck
     @GetMapping("/follow")
-    public PageResult<Article> getFollowArticles(@RequestParam(value = "page", defaultValue = "1") Integer page,
-                                                 @RequestParam(value = "size", defaultValue = "10") Integer size) {
-        Page<Article> result = articleService.getFollowArticles(UserThreadLocal.getUserId(), page, size);
-        return PageResult.of(result.getRecords(), result.getCurrent(), result.getSize(), result.getTotal());
+    @JsonView(ApiJsonViews.Public.class)
+    public PageResult<ArticleListVO> getFollowArticles(@RequestParam(value = "page", defaultValue = "1") Integer page,
+                                                       @RequestParam(value = "size", defaultValue = "10") Integer size) {
+        return articleService.queryFollowArticles(page, size);
     }
 
     @GetMapping("/latest")
-    public Result<List<Article>> getLatestArticles(@RequestParam(value = "categoryId", required = false) Long categoryId,
-                                                   @RequestParam(value = "size", defaultValue = "10") Integer size) {
-        return Result.success(articleService.getLatestArticles(categoryId, size));
+    @JsonView(ApiJsonViews.Public.class)
+    public Result<List<ArticleListVO>> getLatestArticles(@RequestParam(value = "categoryId", required = false) Long categoryId,
+                                                         @RequestParam(value = "size", defaultValue = "10") Integer size) {
+        return articleService.queryLatestArticles(categoryId, size);
     }
 
     @GetMapping("/more")
-    public Result<List<Article>> getMoreArticles(@RequestParam(value = "categoryId", required = false) Long categoryId,
-                                                 @RequestParam("lastId") Long lastId,
-                                                 @RequestParam(value = "size", defaultValue = "10") Integer size) {
-        return Result.success(articleService.getMoreArticles(categoryId, lastId, size));
+    @JsonView(ApiJsonViews.Public.class)
+    public Result<List<ArticleListVO>> getMoreArticles(@RequestParam(value = "categoryId", required = false) Long categoryId,
+                                                     @RequestParam("lastId") String lastId,
+                                                     @RequestParam(value = "size", defaultValue = "10") Integer size) {
+        return articleService.queryMoreArticles(categoryId, articleService.resolvePublicId(lastId), size);
+    }
+
+    @LoginCheck
+    @GetMapping("/{id}/progress")
+    public Result<ArticleProgressVO> getArticleProgress(@PathVariable("id") String publicId) {
+        return articleService.queryArticleProgress(articleService.resolvePublicId(publicId));
     }
 
     @LoginCheck
     @PutMapping("/{id}/publish")
-    public Result<Void> publishArticle(@PathVariable("id") Long id) {
-        articleService.updateArticleStatus(id, 1);
-        return Result.success(null);
+    public Result<Void> publishArticle(@PathVariable("id") String publicId) {
+        return articleService.submitPublish(articleService.resolvePublicId(publicId));
     }
 
     @LoginCheck
     @PutMapping("/{id}/unpublish")
-    public Result<Void> unpublishArticle(@PathVariable("id") Long id) {
-        articleService.updateArticleStatus(id, 3);
-        return Result.success(null);
+    public Result<Void> unpublishArticle(@PathVariable("id") String publicId) {
+        return articleService.submitUnpublish(articleService.resolvePublicId(publicId));
     }
 
     @GetMapping("/listPublished")
-    public Result<List<Article>> listPublishedArticles() {
-        return Result.success(articleService.listPublishedArticles());
+    @JsonView(ApiJsonViews.Public.class)
+    public Result<List<ArticleListVO>> listPublishedArticles() {
+        return articleService.queryPublishedList();
     }
 
     @GetMapping("/listPublishedPage")
-    public Result<PageResult<Article>> listPublishedArticlesPage(@RequestParam("page") Integer page,
-                                                                 @RequestParam("size") Integer size) {
-        return Result.success(articleService.listPublishedArticlesPage(page, size));
+    @JsonView(ApiJsonViews.Public.class)
+    public Result<PageResult<ArticleListVO>> listPublishedArticlesPage(@RequestParam("page") Integer page,
+                                                                     @RequestParam("size") Integer size) {
+        return articleService.queryPublishedPage(page, size);
     }
 
     @PostMapping("/listByIds")
-    public Result<List<Article>> listByIds(@RequestBody List<Long> ids) {
-        return Result.success(articleService.listByIds(ids));
+    @JsonView(ApiJsonViews.Public.class)
+    public Result<List<ArticleListVO>> listByIds(@RequestBody List<String> publicIds) {
+        return articleService.queryByPublicIds(publicIds);
     }
 
     @GetMapping("/author/{authorId}/published")
-    public Result<List<Article>> listPublishedByAuthor(@PathVariable("authorId") Long authorId,
-                                                       @RequestParam(value = "size", defaultValue = "20") Integer size) {
-        return Result.success(articleService.listPublishedByAuthor(authorId, size));
+    @JsonView(ApiJsonViews.Public.class)
+    public Result<List<ArticleListVO>> listPublishedByAuthor(@PathVariable("authorId") Long authorId,
+                                                           @RequestParam(value = "size", defaultValue = "20") Integer size) {
+        return articleService.queryPublishedByAuthor(authorId, size);
+    }
+
+    @GetMapping("/author/account/{accountId}/published")
+    @JsonView(ApiJsonViews.Public.class)
+    public Result<List<ArticleListVO>> listPublishedByAccount(@PathVariable("accountId") Long accountId,
+                                                              @RequestParam(value = "size", defaultValue = "20") Integer size) {
+        return articleService.queryPublishedByAccountId(accountId, size);
     }
 
     @PostMapping("/authors/published")
-    public Result<List<Article>> listPublishedByAuthors(@RequestBody List<Long> authorIds,
-                                                        @RequestParam(value = "before", required = false) String before,
-                                                        @RequestParam(value = "size", defaultValue = "20") Integer size) {
-        LocalDateTime beforeTime = before == null || before.isBlank() ? null : LocalDateTime.parse(before);
-        return Result.success(articleService.listPublishedByAuthorsBefore(authorIds, beforeTime, size));
+    @JsonView(ApiJsonViews.Public.class)
+    public Result<List<ArticleListVO>> listPublishedByAuthors(@RequestBody List<Long> authorIds,
+                                                              @RequestParam(value = "before", required = false) String before,
+                                                              @RequestParam(value = "beforeArticleId", required = false) Long beforeArticleId,
+                                                              @RequestParam(value = "size", defaultValue = "20") Integer size) {
+        return articleService.queryPublishedByAuthors(authorIds, before, beforeArticleId, size);
     }
 
     @AdminCheck
     @GetMapping("/admin/page")
-    public PageResult<Article> getArticlePageAdmin(@RequestParam(value = "page", defaultValue = "1") Integer page,
-                                                   @RequestParam(value = "size", defaultValue = "10") Integer size,
-                                                   @RequestParam(value = "keyword", required = false) String keyword,
-                                                   @RequestParam(value = "categoryId", required = false) Long categoryId,
-                                                   @RequestParam(value = "status", required = false) Integer status,
-                                                   @RequestParam(value = "authorId", required = false) Long authorId) {
-        Page<Article> result = articleService.getArticlePageAdmin(page, size, keyword, categoryId, status, authorId);
-        return PageResult.of(result.getRecords(), result.getCurrent(), result.getSize(), result.getTotal());
+    @JsonView(ApiJsonViews.Public.class)
+    public PageResult<ArticleListVO> getArticlePageAdmin(@RequestParam(value = "page", defaultValue = "1") Integer page,
+                                                       @RequestParam(value = "size", defaultValue = "10") Integer size,
+                                                       @RequestParam(value = "keyword", required = false) String keyword,
+                                                       @RequestParam(value = "categoryId", required = false) Long categoryId,
+                                                       @RequestParam(value = "status", required = false) Integer status,
+                                                       @RequestParam(value = "authorId", required = false) Long authorId) {
+        return articleService.queryArticlePageAdmin(page, size, keyword, categoryId, status, authorId);
     }
 
     @AdminCheck
     @DeleteMapping("/admin/{articleId}")
     public Result<Void> deleteArticleAdmin(@PathVariable("articleId") Long articleId) {
-        articleService.deleteArticleAdmin(articleId);
-        return Result.success(null);
+        return articleService.deleteArticleAdminOp(articleId);
     }
 
     @AdminCheck
     @PutMapping("/admin/{articleId}/status")
     public Result<Void> updateArticleStatusAdmin(@PathVariable("articleId") Long articleId,
                                                  @RequestParam("status") Integer status) {
-        articleService.updateArticleStatus(articleId, status);
-        return Result.success(null);
+        return articleService.updateArticleStatusAdmin(articleId, status);
     }
 
     @AdminCheck
     @GetMapping("/admin/count")
     public Result<Long> countArticle() {
-        return Result.success(articleService.countArticle());
+        return articleService.countArticles();
     }
 }

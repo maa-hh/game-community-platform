@@ -6,21 +6,23 @@ import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
-import org.apache.ibatis.annotations.Update;
+
+import java.time.LocalDateTime;
 
 @Mapper
 public interface ShopPurchaseLimitMapper extends BaseMapper<ShopPurchaseLimit> {
 
-    @Insert("INSERT INTO t_shop_purchase_limit(user_id, item_id, purchased_count, create_time, update_time) " +
-            "VALUES(#{userId}, #{itemId}, #{quantity}, NOW(), NOW()) " +
-            "ON DUPLICATE KEY UPDATE purchased_count = purchased_count + #{quantity}, update_time = NOW()")
-    int increase(@Param("userId") Long userId, @Param("itemId") Long itemId, @Param("quantity") Integer quantity);
+    @Select("SELECT * FROM t_shop_purchase_limit WHERE user_id = #{userId} AND item_id = #{itemId} LIMIT 1 FOR UPDATE")
+    ShopPurchaseLimit selectForUpdate(@Param("userId") Long userId, @Param("itemId") Long itemId);
 
-    @Update("UPDATE t_shop_purchase_limit SET purchased_count = GREATEST(0, purchased_count - #{quantity}), update_time = NOW() " +
-            "WHERE user_id = #{userId} AND item_id = #{itemId}")
-    int decrease(@Param("userId") Long userId, @Param("itemId") Long itemId, @Param("quantity") Integer quantity);
+    @Insert("INSERT IGNORE INTO t_shop_purchase_limit(user_id, item_id, purchased_count, reserved_count, "
+            + "last_purchase_at, window_start_at, create_time, update_time) "
+            + "VALUES(#{userId}, #{itemId}, 0, 0, #{lastPurchaseAt}, #{windowStartAt}, NOW(), NOW())")
+    int insertIfAbsent(@Param("userId") Long userId,
+                       @Param("itemId") Long itemId,
+                       @Param("lastPurchaseAt") LocalDateTime lastPurchaseAt,
+                       @Param("windowStartAt") LocalDateTime windowStartAt);
 
-    @Select("SELECT COALESCE(MAX(purchased_count), 0) FROM t_shop_purchase_limit " +
-            "WHERE user_id = #{userId} AND item_id = #{itemId}")
-    int selectPurchasedCount(@Param("userId") Long userId, @Param("itemId") Long itemId);
+    @Select("SELECT * FROM t_shop_purchase_limit WHERE user_id = #{userId} AND item_id = #{itemId} LIMIT 1")
+    ShopPurchaseLimit selectByUserAndItem(@Param("userId") Long userId, @Param("itemId") Long itemId);
 }

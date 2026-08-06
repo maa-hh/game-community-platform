@@ -1,18 +1,23 @@
 package com.game.community.search.service.impl;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.elasticsearch._types.SortOrder;
 import co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import co.elastic.clients.elasticsearch.core.SearchRequest;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
+import com.game.community.common.constant.content.ContentConstants;
 import com.game.community.model.dto.search.SearchCorrectVO;
 import com.game.community.model.dto.search.SearchResult;
 import com.game.community.model.dto.search.SuggestionPageDTO;
 import com.game.community.model.elasticsearch.SuggestDocument;
-import com.game.community.search.initIndex.InitElasticsearchIndex;
+import com.game.community.model.vo.search.SuggestItemVO;
 import com.game.community.search.service.ElasticsearchService;
 import com.game.community.search.service.SuggestService;
+import com.game.community.search.service.SuggestTermService;
+import com.game.community.search.service.SuggestTermService.TermSeed;
+import com.game.community.common.constant.search.SearchConstants;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.Cell;
@@ -39,29 +44,32 @@ public class SuggestServiceImpl implements SuggestService {
 
     private final ElasticsearchService elasticsearchService;
     private final ElasticsearchClient elasticsearchClient;
+    private final SuggestTermService suggestTermService;
 
     @Override
-    public List<SuggestDocument> suggest(String prefix) {
+    public List<SuggestItemVO> suggest(String prefix) {
         if (!StringUtils.hasText(prefix)) {
             return List.of();
         }
         try {
             SearchRequest request = SearchRequest.of(s -> s
-                    .index(InitElasticsearchIndex.SUGGEST_INDEX)
+                    .index(SearchConstants.SUGGEST_INDEX)
                     .query(q -> q.bool(b -> b
                             .should(Query.of(sq -> sq.matchPhrasePrefix(m -> m.field("suggest").query(prefix.trim()))))
                             .should(Query.of(sq -> sq.match(m -> m.field("suggestNgram").query(prefix.trim()).fuzziness("AUTO"))))
                             .minimumShouldMatch("1")
                     ))
-                    .size(10)
+                    .sort(so -> so.field(f -> f.field("weight").order(SortOrder.Desc)))
+                    .size(SearchConstants.SUGGEST_MAX_RESULTS)
             );
             SearchResponse<SuggestDocument> response = elasticsearchClient.search(request, SuggestDocument.class);
-            Map<String, SuggestDocument> dedup = new LinkedHashMap<>();
+            Map<String, SuggestItemVO> dedup = new LinkedHashMap<>();
             for (Hit<SuggestDocument> hit : response.hits().hits()) {
                 SuggestDocument doc = hit.source();
-                if (doc != null && StringUtils.hasText(doc.getSuggest())) {
-                    dedup.putIfAbsent(doc.getSuggest(), doc);
+                if (doc == null || !StringUtils.hasText(doc.getSuggest())) {
+                    continue;
                 }
+                dedup.putIfAbsent(doc.getSuggest(), toItemVO(doc));
             }
             return new ArrayList<>(dedup.values());
         } catch (Exception e) {
@@ -75,10 +83,10 @@ public class SuggestServiceImpl implements SuggestService {
         if (!StringUtils.hasText(keyword)) {
             return SearchCorrectVO.noNeed();
         }
-        List<SuggestDocument> candidates = suggest(keyword.trim());
-        return candidates.stream()
-                .filter(item -> StringUtils.hasText(item.getSuggest()))
-                .map(item -> SearchCorrectVO.of(keyword, item.getSuggest(), "FUZZY", levenshteinDistance(keyword, item.getSuggest())))
+        return suggest(keyword.trim()).stream()
+                .map(SuggestItemVO::getTerm)
+                .filter(StringUtils::hasText)
+                .map(item -> SearchCorrectVO.of(keyword, item, "FUZZY", levenshteinDistance(keyword, item)))
                 .filter(item -> item.getDistance() != null && item.getDistance() <= 2)
                 .min(Comparator.comparing(SearchCorrectVO::getDistance))
                 .orElse(SearchCorrectVO.noNeed());
@@ -86,8 +94,10 @@ public class SuggestServiceImpl implements SuggestService {
 
     @Override
     public SearchResult getSuggestions(SuggestionPageDTO pageDTO) {
-        int page = Math.max(pageDTO.getPage() == null ? 1 : pageDTO.getPage(), 1);
-        int size = Math.min(Math.max(pageDTO.getSize() == null ? 10 : pageDTO.getSize(), 1), 50);
+        int page = Math.min(Math.max(pageDTO.getPage() == null ? 1 : pageDTO.getPage(), 1),
+                SearchConstants.SEARCH_MAX_PAGE_NUMBER);
+        int size = Math.min(Math.max(pageDTO.getSize() == null ? SearchConstants.SEARCH_PAGE_DEFAULT_SIZE : pageDTO.getSize(), 1),
+                SearchConstants.SEARCH_PAGE_MAX_SIZE);
         try {
             BoolQuery.Builder boolQuery = new BoolQuery.Builder();
             if (StringUtils.hasText(pageDTO.getKeyword())) {
@@ -96,8 +106,9 @@ public class SuggestServiceImpl implements SuggestService {
                 boolQuery.must(Query.of(q -> q.matchAll(m -> m)));
             }
             SearchResponse<SuggestDocument> response = elasticsearchClient.search(SearchRequest.of(s -> s
-                    .index(InitElasticsearchIndex.SUGGEST_INDEX)
+                    .index(SearchConstants.SUGGEST_INDEX)
                     .query(Query.of(q -> q.bool(boolQuery.build())))
+                    .sort(so -> so.field(f -> f.field("weight").order(SortOrder.Desc)))
                     .from((page - 1) * size)
                     .size(size)
             ), SuggestDocument.class);
@@ -105,7 +116,11 @@ public class SuggestServiceImpl implements SuggestService {
             result.setPage((long) page);
             result.setSize((long) size);
             result.setTotal(response.hits().total() == null ? 0L : response.hits().total().value());
-            result.setList(response.hits().hits().stream().map(Hit::source).filter(item -> item != null).toList());
+            result.setList(response.hits().hits().stream()
+                    .map(Hit::source)
+                    .filter(item -> item != null)
+                    .map(this::toItemVO)
+                    .toList());
             return result;
         } catch (IOException e) {
             SearchResult result = new SearchResult();
@@ -119,16 +134,22 @@ public class SuggestServiceImpl implements SuggestService {
         if (documents == null || documents.isEmpty()) {
             return;
         }
-        List<SuggestDocument> validDocuments = documents.stream()
-                .filter(item -> item != null && StringUtils.hasText(item.getSuggest()))
-                .peek(item -> item.setSuggestNgram(item.getSuggest().trim()))
-                .toList();
-        elasticsearchService.batchAddSuggestions(validDocuments);
+        for (SuggestDocument document : documents) {
+            if (document == null || !StringUtils.hasText(document.getSuggest())) {
+                continue;
+            }
+            suggestTermService.upsertActive(new TermSeed(
+                    document.getSuggest().trim(),
+                    SearchConstants.SUGGEST_SOURCE_UPLOAD,
+                    null,
+                    SearchConstants.WEIGHT_UPLOAD,
+                    false));
+        }
     }
 
     @Override
     public void deleteSuggestion(Long id) {
-        elasticsearchService.deleteSuggestion(id);
+        suggestTermService.disableTerm(id);
     }
 
     @Override
@@ -152,6 +173,15 @@ public class SuggestServiceImpl implements SuggestService {
         } catch (Exception e) {
             throw new IllegalStateException("从xls文件加载建议词失败", e);
         }
+    }
+
+    private SuggestItemVO toItemVO(SuggestDocument doc) {
+        SuggestItemVO vo = new SuggestItemVO();
+        vo.setId(doc.getTermId() != null ? doc.getTermId() : doc.getId());
+        vo.setTerm(doc.getSuggest());
+        vo.setWeight(doc.getWeight());
+        vo.setSourceType(doc.getSourceType());
+        return vo;
     }
 
     private String getCellValue(Cell cell) {

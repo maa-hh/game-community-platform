@@ -32,6 +32,10 @@ public class SocialArticleStats implements Serializable {
 
     private Long viewCount;
 
+    private Long favoriteCount;
+
+    private Long shareCount;
+
     @Version
     private Integer version;
 

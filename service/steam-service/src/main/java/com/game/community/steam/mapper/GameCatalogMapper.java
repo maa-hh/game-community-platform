@@ -1,0 +1,9 @@
+package com.game.community.steam.mapper;
+
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.game.community.model.entity.game.GameCatalog;
+import org.apache.ibatis.annotations.Mapper;
+
+@Mapper
+public interface GameCatalogMapper extends BaseMapper<GameCatalog> {
+}

@@ -14,13 +14,13 @@ public class ReplyVO implements Serializable {
 
     private Long articleId;
 
-    private Long userId;
+    private Long accountId;
 
     private String username;
 
     private String avatar;
 
-    private Long replyToUserId;
+    private Long replyToAccountId;
 
     private String replyToUsername;
 

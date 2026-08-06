@@ -4,8 +4,11 @@ import com.game.community.common.exception.BusinessException;
 import com.game.community.feign.ContentFeignClient;
 import com.game.community.feign.UserFeignClient;
 import com.game.community.model.base.Result;
-import com.game.community.model.entity.article.Article;
-import com.game.community.model.vo.user.UserVO;
+import com.game.community.model.vo.article.ArticleListVO;
+import com.game.community.model.vo.user.UserCardInternalVO;
+import io.github.resilience4j.bulkhead.annotation.Bulkhead;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -21,42 +24,96 @@ public class SocialRemoteClient {
 
     private final UserFeignClient userFeignClient;
 
-    public Article getArticle(Long articleId) {
-        List<Article> articles = listArticlesByIds(Collections.singletonList(articleId));
+    public ArticleListVO getArticle(Long articleId) {
+        List<ArticleListVO> articles = listArticlesByIds(Collections.singletonList(articleId));
         if (articles == null || articles.isEmpty()) {
             return null;
         }
         return articles.get(0);
     }
 
-    public List<Article> listArticlesByIds(List<Long> articleIds) {
+    @CircuitBreaker(name = "socialRemote")
+    @Retry(name = "socialRemoteRetry")
+    @Bulkhead(name = "socialRemote", type = Bulkhead.Type.SEMAPHORE)
+    public ArticleListVO getArticleByPublicId(String publicId) {
+        if (publicId == null || publicId.isBlank()) {
+            return null;
+        }
+        return unwrap(contentFeignClient.getArticleByPublicId(publicId), "文章服务暂不可用");
+    }
+
+    @CircuitBreaker(name = "socialRemote")
+    @Retry(name = "socialRemoteRetry")
+    @Bulkhead(name = "socialRemote", type = Bulkhead.Type.SEMAPHORE)
+    public List<ArticleListVO> listArticlesByPublicIds(List<String> publicIds) {
+        if (publicIds == null || publicIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<ArticleListVO> articles = unwrap(
+                contentFeignClient.listArticlesByPublicIds(publicIds), "文章服务暂不可用");
+        return articles == null ? Collections.emptyList() : articles;
+    }
+
+    @CircuitBreaker(name = "socialRemote")
+    @Retry(name = "socialRemoteRetry")
+    @Bulkhead(name = "socialRemote", type = Bulkhead.Type.SEMAPHORE)
+    public List<ArticleListVO> listArticlesByIds(List<Long> articleIds) {
         if (articleIds == null || articleIds.isEmpty()) {
             return Collections.emptyList();
         }
-        List<Article> articles = unwrap(contentFeignClient.listArticlesByIds(articleIds), "文章服务暂不可用");
+        List<ArticleListVO> articles = unwrap(contentFeignClient.listArticlesByIds(articleIds), "文章服务暂不可用");
         return articles == null ? Collections.emptyList() : articles;
     }
 
-    public List<Article> listPublishedByAuthor(Long authorId, int size) {
-        List<Article> articles = unwrap(contentFeignClient.listPublishedByAuthor(authorId, size), "文章服务暂不可用");
+    @CircuitBreaker(name = "socialRemote")
+    @Retry(name = "socialRemoteRetry")
+    @Bulkhead(name = "socialRemote", type = Bulkhead.Type.SEMAPHORE)
+    public List<ArticleListVO> listPublishedByAuthor(Long authorId, int size) {
+        List<ArticleListVO> articles = unwrap(contentFeignClient.listPublishedByAuthor(authorId, size), "文章服务暂不可用");
         return articles == null ? Collections.emptyList() : articles;
     }
 
-    public List<Article> listPublishedByAuthorsBefore(List<Long> authorIds, LocalDateTime before, int size) {
+    @CircuitBreaker(name = "socialRemote")
+    @Retry(name = "socialRemoteRetry")
+    @Bulkhead(name = "socialRemote", type = Bulkhead.Type.SEMAPHORE)
+    public List<ArticleListVO> listPublishedByAuthorsBefore(List<Long> authorIds, LocalDateTime before,
+                                                             Long beforeArticleId, int size) {
         if (authorIds == null || authorIds.isEmpty()) {
             return Collections.emptyList();
         }
         String beforeText = before == null ? null : before.toString();
-        List<Article> articles = unwrap(contentFeignClient.listPublishedByAuthors(authorIds, beforeText, size), "文章服务暂不可用");
+        List<ArticleListVO> articles = unwrap(contentFeignClient.listPublishedByAuthors(
+                authorIds, beforeText, beforeArticleId, size), "文章服务暂不可用");
         return articles == null ? Collections.emptyList() : articles;
     }
 
-    public List<UserVO> listUsersByIds(List<Long> userIds) {
+    @CircuitBreaker(name = "socialRemote")
+    @Retry(name = "socialRemoteRetry")
+    @Bulkhead(name = "socialRemote", type = Bulkhead.Type.SEMAPHORE)
+    public List<UserCardInternalVO> listUsersByIds(List<Long> userIds) {
         if (userIds == null || userIds.isEmpty()) {
             return Collections.emptyList();
         }
-        List<UserVO> users = unwrap(userFeignClient.getUsersByIds(userIds), "用户服务暂不可用");
+        List<UserCardInternalVO> users = unwrap(userFeignClient.getUsersByUserIds(userIds), "用户服务暂不可用");
         return users == null ? Collections.emptyList() : users;
+    }
+
+    @CircuitBreaker(name = "socialRemote")
+    @Retry(name = "socialRemoteRetry")
+    @Bulkhead(name = "socialRemote", type = Bulkhead.Type.SEMAPHORE)
+    public UserCardInternalVO getUserByAccountId(Long accountId) {
+        if (accountId == null) {
+            return null;
+        }
+        return unwrap(userFeignClient.getUserByAccountId(accountId), "用户服务暂不可用");
+    }
+
+    public Long articleAuthorUserId(ArticleListVO article) {
+        if (article == null || article.getAuthorAccountId() == null) {
+            return null;
+        }
+        UserCardInternalVO author = getUserByAccountId(article.getAuthorAccountId());
+        return author == null ? null : author.getUserId();
     }
 
     private <T> T unwrap(Result<T> result, String defaultMessage) {

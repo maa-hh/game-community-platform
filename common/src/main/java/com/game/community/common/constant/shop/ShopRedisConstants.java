@@ -6,21 +6,43 @@ public final class ShopRedisConstants {
 
     public static final String LIMIT_KEY_PREFIX = "shop:limit:";
 
-    public static final String REQUEST_KEY_PREFIX = "shop:request:";
+    public static final String LIMIT_LAST_KEY_PREFIX = "shop:limit:last:";
+
+    public static final String LIMIT_WINDOW_KEY_PREFIX = "shop:limit:window:";
+
+    public static final String LIMIT_RESERVATION_KEY_PREFIX = "shop:limit:reservation:";
 
     public static final String ORDER_STATE_KEY_PREFIX = "shop:order:state:";
-
-    public static final String ORDER_CREATE_QUEUE = "shop:order:create:queue";
 
     public static final String ORDER_EXPIRE_QUEUE = "shop:order:expire:queue";
 
     public static final long STOCK_TTL_SECONDS = 3600;
 
-    public static final long REQUEST_TTL_SECONDS = 900;
+    public static final long RESERVATION_TTL_SECONDS = 900;
 
     public static final long ORDER_STATE_TTL_SECONDS = 1800;
 
     public static final long LIMIT_TTL_SECONDS = 86400;
+
+    public static String stockKey(Long itemId) {
+        return STOCK_KEY_PREFIX + "{" + itemId + "}";
+    }
+
+    public static String limitKey(Long itemId, Long userId) {
+        return LIMIT_KEY_PREFIX + "{" + itemId + "}:" + userId;
+    }
+
+    public static String limitLastKey(Long itemId, Long userId) {
+        return LIMIT_LAST_KEY_PREFIX + "{" + itemId + "}:" + userId;
+    }
+
+    public static String limitWindowKey(Long itemId, Long userId) {
+        return LIMIT_WINDOW_KEY_PREFIX + "{" + itemId + "}:" + userId;
+    }
+
+    public static String limitReservationKey(Long itemId, Long userId, String orderNo) {
+        return LIMIT_RESERVATION_KEY_PREFIX + "{" + itemId + "}:" + userId + ":" + orderNo;
+    }
 
     private ShopRedisConstants() {
     }

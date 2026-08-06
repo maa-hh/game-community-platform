@@ -21,6 +21,12 @@ public class ShopPurchaseLimit implements Serializable {
 
     private Integer purchasedCount;
 
+    private Integer reservedCount;
+
+    private LocalDateTime lastPurchaseAt;
+
+    private LocalDateTime windowStartAt;
+
     private LocalDateTime createTime;
 
     private LocalDateTime updateTime;

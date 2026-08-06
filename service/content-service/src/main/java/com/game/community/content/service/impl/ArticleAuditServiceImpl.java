@@ -99,7 +99,7 @@ public class ArticleAuditServiceImpl implements ArticleAuditService {
             audit.setUpdateTime(LocalDateTime.now());
             articleAuditMapper.insert(audit);
         } catch (Exception e) {
-            log.warn("保存文章审核流水失败: articleId={}, stage={}, error={}", articleId, stage, e.getMessage());
+            throw new IllegalStateException("保存文章审核流水失败: articleId=" + articleId + ", stage=" + stage, e);
         }
     }
 }

@@ -1,0 +1,121 @@
+server:
+  port: 8087
+
+spring:
+  application:
+    name: search-service
+  # AI 配置
+  ai:
+    dashscope:
+      enabled: ${SEARCH_DASHSCOPE_ENABLED:false}
+      api-key: ${DASHSCOPE_API_KEY:}
+      chat:
+        options:
+          model: ${DASHSCOPE_CHAT_MODEL:qwen-plus}
+  # 数据源配置
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3307}/${MYSQL_DB:game_community}?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:root123}
+  # Elasticsearch 配置
+  elasticsearch:
+    uris: ${ELASTICSEARCH_URIS:http://localhost:9201}
+  # Nacos 配置
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:localhost:8848}
+      config:
+        server-addr: ${NACOS_ADDR:localhost:8848}
+        file-extension: yml
+    sentinel:
+      transport:
+        dashboard: ${SENTINEL_DASHBOARD:localhost:8859}
+      eager: true
+  # Kafka 配置
+  kafka:
+    bootstrap-servers: ${KAFKA_SERVERS:localhost:9093}
+    consumer:
+      group-id: search-service-sync
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      max-poll-records: 100
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: com.game.community.model.message
+        isolation.level: read_committed
+    listener:
+      ack-mode: record
+      concurrency: ${SEARCH_KAFKA_CONCURRENCY:3}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+# MyBatis-Plus 配置
+mybatis-plus:
+  mapper-locations: classpath*:mapper/*.xml
+  type-aliases-package: com.game.community.model.entity
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: auto
+
+# 日志配置
+logging:
+  level:
+    com.game.community: debug
+
+# API 文档
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+
+# 搜索同步 / AI
+search:
+  sync:
+    on-startup: ${SEARCH_SYNC_ON_STARTUP:true}
+  ai:
+    enabled: ${SEARCH_AI_ENABLED:false}
+    semantic-enabled: ${SEARCH_SEMANTIC_ENABLED:false}
+    hybrid-enabled: ${SEARCH_HYBRID_ENABLED:false}
+    ai-suggest-enabled: ${SEARCH_AI_SUGGEST_ENABLED:false}
+    embedding-endpoint: https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings
+    chat-endpoint: https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
+    embedding-model: ${DASHSCOPE_EMBEDDING_MODEL:text-embedding-v4}
+    chat-model: ${DASHSCOPE_CHAT_MODEL:qwen-plus}
+    hybrid-candidate-k: ${SEARCH_HYBRID_CANDIDATE_K:50}
+    hybrid-num-candidates: ${SEARCH_HYBRID_NUM_CANDIDATES:100}
+    connect-timeout-ms: ${SEARCH_AI_CONNECT_TIMEOUT_MS:500}
+    read-timeout-ms: ${SEARCH_AI_READ_TIMEOUT_MS:1500}
+  elasticsearch:
+    connect-timeout-ms: ${SEARCH_ES_CONNECT_TIMEOUT_MS:1000}
+    socket-timeout-ms: ${SEARCH_ES_SOCKET_TIMEOUT_MS:3000}
+    connection-request-timeout-ms: ${SEARCH_ES_CONNECTION_REQUEST_TIMEOUT_MS:1000}
+    max-conn-total: ${SEARCH_ES_MAX_CONN_TOTAL:100}
+    max-conn-per-route: ${SEARCH_ES_MAX_CONN_PER_ROUTE:50}
+    username: ${SEARCH_ES_USERNAME:}
+    password: ${SEARCH_ES_PASSWORD:}
+  index:
+    article-shards: ${SEARCH_ARTICLE_SHARDS:3}
+    article-replicas: ${SEARCH_ARTICLE_REPLICAS:1}
+    suggest-shards: ${SEARCH_SUGGEST_SHARDS:1}
+    suggest-replicas: ${SEARCH_SUGGEST_REPLICAS:1}
+    game-shards: ${SEARCH_GAME_SHARDS:2}
+    game-replicas: ${SEARCH_GAME_REPLICAS:1}
+
+# 管理端点
+management:
+  endpoints:
+    web:
+      exposure:
+        include: '*'
+  endpoint:
+    health:
+      show-details: always

@@ -1,0 +1,106 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: steam-service
+  # steam-service 不使用 AI；排除 DashScope 全部自动配置，避免无 DASHSCOPE_API_KEY 时启动失败
+  autoconfigure:
+    exclude:
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAgentAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAudioSpeechAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAudioTranscriptionAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeChatAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeEmbeddingAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeImageAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeRerankAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeVideoAutoConfiguration
+  ai:
+    dashscope:
+      api-key: ${DASHSCOPE_API_KEY:}
+      chat:
+        options:
+          model: ${DASHSCOPE_CHAT_MODEL:qwen-plus}
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3307}/${MYSQL_DB:game_community}?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:root123}
+  data:
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://localhost:27018/game_community?connectTimeoutMS=3000&serverSelectionTimeoutMS=3000&socketTimeoutMS=15000&maxPoolSize=50&minPoolSize=5&waitQueueTimeoutMS=3000}
+      auto-index-creation: true
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6380}
+      database: 0
+      timeout: 5000ms
+  kafka:
+    bootstrap-servers: ${KAFKA_SERVERS:localhost:9093}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      properties:
+        enable.idempotence: true
+        delivery.timeout.ms: ${KAFKA_DELIVERY_TIMEOUT_MS:30000}
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:localhost:8848}
+        ip: ${NACOS_DISCOVERY_IP:127.0.0.1}
+      config:
+        server-addr: ${NACOS_ADDR:localhost:8848}
+        file-extension: yml
+    sentinel:
+      transport:
+        dashboard: ${SENTINEL_DASHBOARD:localhost:8859}
+      eager: true
+
+mybatis-plus:
+  mapper-locations: classpath*:mapper/*.xml
+  type-aliases-package: com.game.community.model.entity
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+      id-type: auto
+
+logging:
+  level:
+    com.game.community: debug
+
+# Steam Web API + Store API（合并配置）
+steam:
+  web-api-key: ${STEAM_WEB_API_KEY:}
+  openid-realm: ${STEAM_OPENID_REALM:http://localhost:8080}
+  openid-return-to: ${STEAM_OPENID_RETURN_TO:http://localhost:8080/steam/callback}
+  api-lang: ${STEAM_API_LANG:schinese}
+  api-cc: ${STEAM_API_CC:cn}
+  frontend-redirect: ${STEAM_FRONTEND_REDIRECT:http://localhost:3000/profile}
+
+# MinIO 配置：共享 utils 会在服务启动时初始化客户端
+minio:
+  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  public-endpoint: ${MINIO_PUBLIC_ENDPOINT:http://localhost:9000}
+  accessKey: ${MINIO_ACCESS_KEY:minioadmin}
+  secretKey: ${MINIO_SECRET_KEY:minioadmin123}
+  public-bucket-name: ${MINIO_PUBLIC_BUCKET:game-community-public}
+  private-bucket-name: ${MINIO_PRIVATE_BUCKET:game-community-private}
+  public-file-prefix: ${MINIO_PUBLIC_FILE_PREFIX:user-files/public}
+  private-file-prefix: ${MINIO_PRIVATE_FILE_PREFIX:user-files/pending}
+  presigned-expire-seconds: ${MINIO_PRESIGNED_EXPIRE_SECONDS:900}
+  max-read-bytes: ${MINIO_MAX_READ_BYTES:16777216}
+  max-hash-bytes: ${MINIO_MAX_HASH_BYTES:0}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: '*'
+  endpoint:
+    health:
+      show-details: always

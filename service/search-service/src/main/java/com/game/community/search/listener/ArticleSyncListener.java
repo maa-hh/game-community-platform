@@ -15,7 +15,9 @@ public class ArticleSyncListener {
 
     private final ArticleSyncService articleSyncService;
 
-    @KafkaListener(topics = KafkaTopicConstants.ARTICLE_SEARCH_SYNC_TOPIC, groupId = "search-service-sync")
+    @KafkaListener(topics = KafkaTopicConstants.ARTICLE_SEARCH_SYNC_TOPIC,
+            groupId = "search-service-sync",
+            concurrency = "${spring.kafka.listener.concurrency:3}")
     public void onMessage(ArticleSearchSyncMessage message) {
         if (message == null || message.getArticleId() == null) {
             return;
