@@ -8,8 +8,6 @@ import java.time.LocalDateTime;
 @Data
 public class FollowUserVO implements Serializable {
 
-    private Long userId;
-
     private Long accountId;
 
     private String username;

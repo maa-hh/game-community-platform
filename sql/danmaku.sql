@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS t_danmaku_message (
     display_time_ms BIGINT NOT NULL COMMENT '展示时间，支持服务端后续调度',
     seq BIGINT NOT NULL COMMENT '视频内顺序号',
     user_id BIGINT NOT NULL,
+    account_id BIGINT NOT NULL COMMENT '对外账号ID',
     username_snapshot VARCHAR(128) DEFAULT NULL,
     avatar_snapshot VARCHAR(512) DEFAULT NULL,
     content VARCHAR(200) NOT NULL,
@@ -18,5 +19,6 @@ CREATE TABLE IF NOT EXISTS t_danmaku_message (
     UNIQUE KEY uk_danmaku_event_id (event_id),
     UNIQUE KEY uk_danmaku_client_message (user_id, video_public_id, client_message_id),
     KEY idx_danmaku_video_time (video_public_id, display_time_ms, seq),
-    KEY idx_danmaku_user_time (user_id, create_time)
+    KEY idx_danmaku_user_time (user_id, create_time),
+    KEY idx_danmaku_account_time (account_id, create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='视频弹幕历史与审核事实表';

@@ -32,6 +32,9 @@ spring:
     listener:
       auto-startup: false
 
+gateway:
+  internal-secret: test-internal-secret
+
 minio:
   endpoint: http://localhost:9000
   public-endpoint: http://localhost:9000

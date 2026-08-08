@@ -10,7 +10,7 @@ public class UserAuditTaskBriefVO implements Serializable {
 
     private Long id;
 
-    private Long userId;
+    private Long accountId;
 
     private String fieldType;
 

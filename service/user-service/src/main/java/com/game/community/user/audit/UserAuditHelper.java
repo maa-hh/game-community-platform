@@ -21,6 +21,7 @@ import com.game.community.utils.audit.AuditModeProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -64,7 +65,11 @@ public class UserAuditHelper {
         if (audit != null) {
             return audit;
         }
-        initProfileAudit(userId);
+        try {
+            initProfileAudit(userId);
+        } catch (DuplicateKeyException ignored) {
+            // 并发首次访问由唯一主键裁决，直接读取已创建行。
+        }
         return profileAuditMapper.selectById(userId);
     }
 
@@ -110,25 +115,28 @@ public class UserAuditHelper {
                 .set(UserProfileAudit::getUpdateTime, LocalDateTime.now())) > 0;
     }
 
-    public void clearUsernameAudit(Long userId) {
+    public void clearUsernameAudit(Long userId, String pendingUsername) {
         profileAuditMapper.update(null, new LambdaUpdateWrapper<UserProfileAudit>()
                 .eq(UserProfileAudit::getUserId, userId)
+                .eq(UserProfileAudit::getPendingUsername, pendingUsername)
                 .set(UserProfileAudit::getUsernameAuditStatus, FieldAuditStatus.NONE)
                 .set(UserProfileAudit::getPendingUsername, UserStrings.EMPTY)
                 .set(UserProfileAudit::getUpdateTime, LocalDateTime.now()));
     }
 
-    public void clearSignatureAudit(Long userId) {
+    public void clearSignatureAudit(Long userId, String pendingSignature) {
         profileAuditMapper.update(null, new LambdaUpdateWrapper<UserProfileAudit>()
                 .eq(UserProfileAudit::getUserId, userId)
+                .eq(UserProfileAudit::getPendingSignature, pendingSignature)
                 .set(UserProfileAudit::getSignatureAuditStatus, FieldAuditStatus.NONE)
                 .set(UserProfileAudit::getPendingSignature, UserStrings.EMPTY)
                 .set(UserProfileAudit::getUpdateTime, LocalDateTime.now()));
     }
 
-    public void clearAvatarAudit(Long userId) {
+    public void clearAvatarAudit(Long userId, String pendingAvatar) {
         profileAuditMapper.update(null, new LambdaUpdateWrapper<UserProfileAudit>()
                 .eq(UserProfileAudit::getUserId, userId)
+                .eq(UserProfileAudit::getPendingAvatar, pendingAvatar)
                 .set(UserProfileAudit::getAvatarAuditStatus, FieldAuditStatus.NONE)
                 .set(UserProfileAudit::getPendingAvatar, UserStrings.EMPTY)
                 .set(UserProfileAudit::getUpdateTime, LocalDateTime.now()));
@@ -159,54 +167,85 @@ public class UserAuditHelper {
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public boolean applyUsernamePassed(Long userId, String username) {
+    public boolean applyUsernamePassed(Long userId, Integer expectedUserVersion, String username) {
+        if (expectedUserVersion == null) {
+            return false;
+        }
+        int userRows = userMapper.update(null, new LambdaUpdateWrapper<User>()
+                .eq(User::getId, userId)
+                .eq(User::getVersion, expectedUserVersion)
+                .set(User::getUsername, username)
+                .set(User::getVersion, expectedUserVersion + 1)
+                .set(User::getUpdateTime, LocalDateTime.now()));
+        if (userRows == 0) {
+            return false;
+        }
         int auditRows = profileAuditMapper.update(null, new LambdaUpdateWrapper<UserProfileAudit>()
                 .eq(UserProfileAudit::getUserId, userId)
                 .eq(UserProfileAudit::getUsernameAuditStatus, FieldAuditStatus.AUDITING)
+                .eq(UserProfileAudit::getPendingUsername, username)
                 .set(UserProfileAudit::getPendingUsername, UserStrings.EMPTY)
                 .set(UserProfileAudit::getUsernameAuditStatus, FieldAuditStatus.NONE)
                 .set(UserProfileAudit::getUpdateTime, LocalDateTime.now()));
         if (auditRows == 0) {
-            return false;
+            throw new BusinessException("审核状态已变化");
         }
-        return userMapper.update(null, new LambdaUpdateWrapper<User>()
-                .eq(User::getId, userId)
-                .set(User::getUsername, username)
-                .set(User::getUpdateTime, LocalDateTime.now())) > 0;
+        return true;
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public boolean applySignaturePassed(Long userId, String signature) {
+    public boolean applySignaturePassed(Long userId, Integer expectedUserVersion, String signature) {
+        if (expectedUserVersion == null) {
+            return false;
+        }
+        int userRows = userMapper.update(null, new LambdaUpdateWrapper<User>()
+                .eq(User::getId, userId)
+                .eq(User::getVersion, expectedUserVersion)
+                .set(User::getSignature, signature)
+                .set(User::getVersion, expectedUserVersion + 1)
+                .set(User::getUpdateTime, LocalDateTime.now()));
+        if (userRows == 0) {
+            return false;
+        }
         int auditRows = profileAuditMapper.update(null, new LambdaUpdateWrapper<UserProfileAudit>()
                 .eq(UserProfileAudit::getUserId, userId)
                 .eq(UserProfileAudit::getSignatureAuditStatus, FieldAuditStatus.AUDITING)
+                .eq(UserProfileAudit::getPendingSignature, signature)
                 .set(UserProfileAudit::getPendingSignature, UserStrings.EMPTY)
                 .set(UserProfileAudit::getSignatureAuditStatus, FieldAuditStatus.NONE)
                 .set(UserProfileAudit::getUpdateTime, LocalDateTime.now()));
         if (auditRows == 0) {
-            return false;
+            throw new BusinessException("审核状态已变化");
         }
-        return userMapper.update(null, new LambdaUpdateWrapper<User>()
-                .eq(User::getId, userId)
-                .set(User::getSignature, signature)
-                .set(User::getUpdateTime, LocalDateTime.now())) > 0;
+        return true;
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public boolean applyAvatarPassed(Long userId, String publicAvatarUrl) {
+    public boolean applyAvatarPassed(Long userId, Integer expectedUserVersion,
+                                     String pendingAvatar, String publicAvatarUrl) {
+        if (expectedUserVersion == null) {
+            return false;
+        }
+        int userRows = userMapper.update(null, new LambdaUpdateWrapper<User>()
+                .eq(User::getId, userId)
+                .eq(User::getVersion, expectedUserVersion)
+                .set(User::getAvatar, publicAvatarUrl)
+                .set(User::getVersion, expectedUserVersion + 1)
+                .set(User::getUpdateTime, LocalDateTime.now()));
+        if (userRows == 0) {
+            return false;
+        }
         int auditRows = profileAuditMapper.update(null, new LambdaUpdateWrapper<UserProfileAudit>()
                 .eq(UserProfileAudit::getUserId, userId)
                 .eq(UserProfileAudit::getAvatarAuditStatus, FieldAuditStatus.AUDITING)
+                .eq(UserProfileAudit::getPendingAvatar, pendingAvatar)
                 .set(UserProfileAudit::getPendingAvatar, UserStrings.EMPTY)
                 .set(UserProfileAudit::getAvatarAuditStatus, FieldAuditStatus.NONE)
                 .set(UserProfileAudit::getUpdateTime, LocalDateTime.now()));
         if (auditRows == 0) {
-            return false;
+            throw new BusinessException("审核状态已变化");
         }
-        return userMapper.update(null, new LambdaUpdateWrapper<User>()
-                .eq(User::getId, userId)
-                .set(User::getAvatar, publicAvatarUrl)
-                .set(User::getUpdateTime, LocalDateTime.now())) > 0;
+        return true;
     }
 
     public Long createFieldAuditTask(Long userId, AuditFieldType taskType, String pendingContent,

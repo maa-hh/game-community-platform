@@ -25,7 +25,6 @@ import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 /**
  * 用户会话与令牌组件（本服务领域能力，非通用工具）
@@ -70,7 +69,6 @@ public class UserSessionHelper {
         vo.setRefreshToken(refreshToken);
 
         LoginUserVO loginUser = new LoginUserVO();
-        loginUser.setUserId(user.getId());
         loginUser.setAccountId(user.getAccountId());
         loginUser.setEmail(user.getEmail());
         loginUser.setUsername(user.getUsername());
@@ -97,18 +95,16 @@ public class UserSessionHelper {
     }
 
     public void saveSession(String sessionId, Long userId, UserSessionVO session) {
-        redisUtils.set(RedisConstants.SESSION_PREFIX + sessionId,
+        boolean saved = redisUtils.saveSession(
+                RedisConstants.SESSION_PREFIX + sessionId,
+                RedisConstants.SESSION_ACTIVE_PREFIX + sessionId,
+                RedisConstants.ACTIVE_SESSION_PREFIX + userId,
                 writeSession(session),
-                Constants.REFRESH_TOKEN_EXPIRE_TIME,
-                TimeUnit.SECONDS);
-        redisUtils.set(RedisConstants.SESSION_ACTIVE_PREFIX + sessionId,
-                "1",
-                Constants.REFRESH_TOKEN_EXPIRE_TIME,
-                TimeUnit.SECONDS);
-        redisUtils.set(RedisConstants.ACTIVE_SESSION_PREFIX + userId,
                 sessionId,
-                Constants.REFRESH_TOKEN_EXPIRE_TIME,
-                TimeUnit.SECONDS);
+                Constants.REFRESH_TOKEN_EXPIRE_TIME);
+        if (!saved) {
+            throw new BusinessException("会话保存失败");
+        }
     }
 
     /** 鉴权热路径：MGET session + session-active，一次往返 */

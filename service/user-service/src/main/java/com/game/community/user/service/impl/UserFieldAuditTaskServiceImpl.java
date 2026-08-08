@@ -259,15 +259,16 @@ public class UserFieldAuditTaskServiceImpl implements UserFieldAuditTaskService 
 
     private boolean applyPassed(AuditFieldType taskType, Long userId, FieldAuditPayload payload) {
         return switch (taskType) {
-            case USERNAME -> auditHelper.applyUsernamePassed(userId, payload.getContent());
-            case SIGNATURE -> auditHelper.applySignaturePassed(userId, payload.getContent());
+            case USERNAME -> auditHelper.applyUsernamePassed(userId, payload.getUserVersion(), payload.getContent());
+            case SIGNATURE -> auditHelper.applySignaturePassed(userId, payload.getUserVersion(), payload.getContent());
             case AVATAR -> applyAvatarPassed(userId, payload);
         };
     }
 
     private boolean applyAvatarPassed(Long userId, FieldAuditPayload payload) {
         String publicUrl = minIOUtils.publishPrivateAvatar(payload.getPendingObjectName());
-        boolean updated = auditHelper.applyAvatarPassed(userId, publicUrl);
+        boolean updated = auditHelper.applyAvatarPassed(
+                userId, payload.getUserVersion(), payload.getPendingObjectName(), publicUrl);
         if (!updated) {
             minIOUtils.deletePrivateAvatar(payload.getPendingObjectName());
             minIOUtils.deletePublicAvatarByUrl(publicUrl);
@@ -280,10 +281,13 @@ public class UserFieldAuditTaskServiceImpl implements UserFieldAuditTaskService 
 
     private void rollbackField(AuditFieldType taskType, Long userId, FieldAuditPayload payload) {
         switch (taskType) {
-            case USERNAME -> auditHelper.clearUsernameAudit(userId);
-            case SIGNATURE -> auditHelper.clearSignatureAudit(userId);
+            case USERNAME -> auditHelper.clearUsernameAudit(userId,
+                    payload == null ? null : payload.getContent());
+            case SIGNATURE -> auditHelper.clearSignatureAudit(userId,
+                    payload == null ? null : payload.getContent());
             case AVATAR -> {
-                auditHelper.clearAvatarAudit(userId);
+                auditHelper.clearAvatarAudit(userId,
+                        payload == null ? null : payload.getPendingObjectName());
                 if (payload != null && StringUtils.hasText(payload.getPendingObjectName())) {
                     try {
                         minIOUtils.deletePrivateAvatar(payload.getPendingObjectName());
@@ -421,7 +425,8 @@ public class UserFieldAuditTaskServiceImpl implements UserFieldAuditTaskService 
         }
         UserAuditTaskBriefVO vo = new UserAuditTaskBriefVO();
         vo.setId(task.getId());
-        vo.setUserId(task.getUserId());
+        User user = userMapper.selectById(task.getUserId());
+        vo.setAccountId(user == null ? null : user.getAccountId());
         vo.setFieldType(task.getTaskType() == null ? null : task.getTaskType().label());
         vo.setStatus(task.getStatus() == null ? null : task.getStatus().name());
         vo.setUpdateTime(task.getUpdateTime());

@@ -32,6 +32,9 @@ public class DanmakuMessage implements Serializable {
 
     private Long userId;
 
+    /** 对外返回使用的账号 ID，内部 userId 只用于本表关联。 */
+    private Long accountId;
+
     private String usernameSnapshot;
 
     private String avatarSnapshot;

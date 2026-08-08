@@ -10,5 +10,6 @@ import java.util.List;
 public class BatchUserIdsDTO implements Serializable {
 
     @NotEmpty(message = "用户ID列表不能为空")
-    private List<Long> userIds;
+    /** 对外只接收 accountId，服务内再解析 t_user.id。 */
+    private List<Long> accountIds;
 }

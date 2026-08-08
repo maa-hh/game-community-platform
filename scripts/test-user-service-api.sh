@@ -85,9 +85,9 @@ curl -s -X POST "$API/user/login/account" -H 'Content-Type: application/json' -c
   -d "{\"accountId\":$ACCOUNT_ID,\"password\":\"$PASS\"}" >"$TMP"
 [[ "$(json_code <"$TMP")" == "200" ]] || fail "A3 login: $(cat "$TMP")"
 TOKEN="$(python3 -c "import sys,json; print(json.load(sys.stdin)['data']['accessToken'])" <"$TMP")"
-USER_ID="$(python3 -c "import sys,json; print(json.load(sys.stdin)['data']['userId'])" <"$TMP")"
+ACCOUNT_ID="$(python3 -c "import sys,json; print(json.load(sys.stdin)['data']['accountId'])" <"$TMP")"
 AUTH_HEADER="Authorization: Bearer $TOKEN"
-pass "A3 login → userId=$USER_ID"
+pass "A3 login → accountId=$ACCOUNT_ID"
 
 # B1 me
 curl_json GET /user/me >/dev/null
@@ -104,7 +104,7 @@ pass "B2 updateSignature"
 curl_json GET "/user/$ACCOUNT_ID" >/dev/null && [[ "$(json_code <"$TMP")" == "200" ]] && pass "C1 getUser" || fail "C1"
 curl_json GET "/user/simple/$ACCOUNT_ID" >/dev/null && [[ "$(json_code <"$TMP")" == "200" ]] && pass "C2 getSimpleUser" || fail "C2"
 curl_json GET "/user/simple/search?username=a&page=1&size=5" >/dev/null && [[ "$(json_code <"$TMP")" == "200" ]] && pass "C4 search" || fail "C4"
-curl_json GET "/user/ids?ids=$USER_ID" >/dev/null && [[ "$(json_code <"$TMP")" == "200" ]] && pass "C3 getUsersByIds" || fail "C3"
+curl_json GET "/user/ids?ids=$ACCOUNT_ID" >/dev/null && [[ "$(json_code <"$TMP")" == "200" ]] && pass "C3 getUsersByAccountIds" || fail "C3"
 
 # A4 refresh
 curl -s -X POST "$API/user/token/refresh" -b "$COOKIE_JAR" -c "$COOKIE_JAR" >"$TMP"
@@ -148,4 +148,4 @@ fi
 
 echo ""
 echo "=== user-service HTTP 联调完成 ==="
-echo "accountId=$ACCOUNT_ID userId=$USER_ID"
+echo "accountId=$ACCOUNT_ID"

@@ -1,5 +1,7 @@
 # SQL 同步顺序（按业务依赖排列）
 user.sql
+user-service-v2-migration.sql
+user-notification-outbox-migration.sql
 cosmetic.sql
 cosmetic-performance.sql
 user-audit-reject-log.sql
@@ -8,6 +10,7 @@ content-public-id.sql
 content-production-hardening.sql
 content-category-seed.sql
 danmaku.sql
+danmaku-account-id-migration.sql
 social.sql
 social-production-hardening.sql
 social-outbox-migration.sql
@@ -15,8 +18,10 @@ recommend-hot-rank-behavior.sql
 recommend-hot-rank.sql
 recommend-hot-rank-idempotency-migration.sql
 notification.sql
+notification-v2-migration.sql
 shop.sql
 shop-v3-migration.sql
+shop-v3-postfix-migration.sql
 profile-bg-shop-seed.sql
 avatar-frame-shop-seed.sql
 moderation-task.sql

@@ -35,6 +35,30 @@ public class RedisUtils {
                     + "else return 0 end",
             Long.class);
 
+    private static final DefaultRedisScript<Long> SAVE_SESSION_SCRIPT = new DefaultRedisScript<>(
+            "redis.call('set', KEYS[1], ARGV[1], 'EX', ARGV[3]); "
+                    + "redis.call('set', KEYS[2], '1', 'EX', ARGV[3]); "
+                    + "redis.call('set', KEYS[3], ARGV[2], 'EX', ARGV[3]); return 1",
+            Long.class);
+
+    private static final DefaultRedisScript<Long> RESERVE_VERIFY_CODE_SCRIPT = new DefaultRedisScript<>(
+            "if redis.call('exists', KEYS[1]) == 1 then return 0 end; "
+                    + "local count = tonumber(redis.call('get', KEYS[2]) or '0'); "
+                    + "if count >= tonumber(ARGV[5]) then return 2 end; "
+                    + "redis.call('set', KEYS[3], ARGV[1], 'EX', ARGV[2]); "
+                    + "redis.call('set', KEYS[1], '1', 'EX', ARGV[3]); "
+                    + "redis.call('set', KEYS[2], tostring(count + 1), 'EX', ARGV[4]); "
+                    + "redis.call('del', KEYS[4]); return 1",
+            Long.class);
+
+    private static final DefaultRedisScript<Long> RECORD_VERIFY_FAILURE_SCRIPT = new DefaultRedisScript<>(
+            "local count = redis.call('incr', KEYS[1]); "
+                    + "if count == 1 then redis.call('expire', KEYS[1], ARGV[1]); end; "
+                    + "if count >= tonumber(ARGV[2]) then "
+                    + "redis.call('set', KEYS[2], '1', 'EX', ARGV[3]); "
+                    + "redis.call('del', KEYS[1]); end; return count",
+            Long.class);
+
     private static final DefaultRedisScript<Double> Z_INCREMENT_AND_TRIM_SCRIPT = new DefaultRedisScript<>(
             "local score = redis.call('ZINCRBY', KEYS[1], ARGV[1], ARGV[2]); "
                     + "if tonumber(score) <= 0 then "
@@ -124,6 +148,36 @@ public class RedisUtils {
         Long result = stringRedisTemplate.execute(COMPARE_SET_SCRIPT,
                 Collections.singletonList(key), expected, value, String.valueOf(seconds));
         return result != null && result == 1L;
+    }
+
+    /** 一次 Lua 执行写入会话正文、活跃标记和用户当前会话指针。 */
+    public boolean saveSession(String sessionKey, String activeKey, String userActiveKey,
+                               String sessionJson, String sessionId, long seconds) {
+        Long result = stringRedisTemplate.execute(
+                SAVE_SESSION_SCRIPT,
+                Arrays.asList(sessionKey, activeKey, userActiveKey),
+                sessionJson, sessionId, String.valueOf(seconds));
+        return result != null && result == 1L;
+    }
+
+    public long reserveVerificationCode(String cooldownKey, String dailyKey, String codeKey,
+                                        String failureKey, String code, long codeSeconds,
+                                        long cooldownSeconds, long dailySeconds, int dailyLimit) {
+        Long result = stringRedisTemplate.execute(
+                RESERVE_VERIFY_CODE_SCRIPT,
+                Arrays.asList(cooldownKey, dailyKey, codeKey, failureKey),
+                code, String.valueOf(codeSeconds), String.valueOf(cooldownSeconds),
+                String.valueOf(dailySeconds), String.valueOf(dailyLimit));
+        return result == null ? -1L : result;
+    }
+
+    public long recordVerificationFailure(String failureKey, String lockKey,
+                                          long failureSeconds, int threshold, long lockSeconds) {
+        Long result = stringRedisTemplate.execute(
+                RECORD_VERIFY_FAILURE_SCRIPT,
+                Arrays.asList(failureKey, lockKey),
+                String.valueOf(failureSeconds), String.valueOf(threshold), String.valueOf(lockSeconds));
+        return result == null ? -1L : result;
     }
 
     public Long getExpireSeconds(String key) {

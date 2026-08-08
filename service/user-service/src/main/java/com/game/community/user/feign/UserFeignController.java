@@ -56,17 +56,17 @@ public class UserFeignController {
     }
 
     /** 封禁用户（供审核服务等调用） */
-    @PostMapping("/{userId}/ban")
-    public Result<Void> banUser(@PathVariable("userId") Long userId,
+    @PostMapping("/account/{accountId}/ban")
+    public Result<Void> banUser(@PathVariable("accountId") Long accountId,
                                 @RequestParam("reason") String reason,
                                 @RequestParam(value = "durationHours", required = false) Integer durationHours) {
-        return userAccountService.banUser(userId, reason, durationHours, null);
+        return userAccountService.banUserByAccountId(accountId, reason, durationHours, null);
     }
 
     /** 解封用户 */
-    @PostMapping("/{userId}/unban")
-    public Result<Void> unbanUser(@PathVariable("userId") Long userId) {
-        return userAccountService.unbanUser(userId, null);
+    @PostMapping("/account/{accountId}/unban")
+    public Result<Void> unbanUser(@PathVariable("accountId") Long accountId) {
+        return userAccountService.unbanUserByAccountId(accountId, null);
     }
 
     /** 查询用户账户状态 */
@@ -110,7 +110,7 @@ public class UserFeignController {
 
     @PostMapping("/cosmetic/decorations/batch")
     public Result<Map<Long, UserDecorationVO>> batchDecorations(@RequestBody BatchUserIdsDTO dto) {
-        return Result.success(cosmeticService.batchDecorations(dto.getUserIds()));
+        return Result.success(cosmeticService.batchDecorations(dto.getAccountIds()));
     }
 
     @PostMapping("/{userId}/steam-account")

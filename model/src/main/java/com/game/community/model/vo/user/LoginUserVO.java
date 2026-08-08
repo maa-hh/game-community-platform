@@ -8,8 +8,7 @@ import lombok.Data;
 @Data
 public class LoginUserVO {
 
-    private Long userId;
-
+    /** 对外账号 ID；t_user.id 仅在服务内部使用。 */
     private Long accountId;
 
     private String username;

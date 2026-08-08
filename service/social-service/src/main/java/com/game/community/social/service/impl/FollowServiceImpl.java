@@ -168,7 +168,7 @@ public class FollowServiceImpl implements FollowService {
                 .collect(Collectors.toMap(UserCardInternalVO::getUserId, Function.identity(), (a, b) -> a));
         List<FollowUserVO> records = result.getRecords().stream()
                 .map(item -> toFollowUserVO(users.get(item.getBlackUserId()), item.getCreateTime()))
-                .filter(vo -> vo.getUserId() != null)
+                .filter(vo -> vo.getAccountId() != null)
                 .toList();
         return PageResult.of(records, current, pageSize, result.getTotal());
     }
@@ -240,7 +240,7 @@ public class FollowServiceImpl implements FollowService {
                 .collect(Collectors.toMap(UserCardInternalVO::getUserId, Function.identity(), (a, b) -> a));
         return follows.stream()
                 .map(item -> toFollowUserVO(users.get(idExtractor.apply(item)), item.getCreateTime()))
-                .filter(vo -> vo.getUserId() != null)
+                .filter(vo -> vo.getAccountId() != null)
                 .toList();
     }
 
@@ -249,7 +249,6 @@ public class FollowServiceImpl implements FollowService {
         if (user == null) {
             return vo;
         }
-        vo.setUserId(user.getUserId());
         vo.setAccountId(user.getAccountId());
         vo.setUsername(user.getUsername());
         vo.setAvatar(user.getAvatar());

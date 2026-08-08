@@ -1,6 +1,7 @@
 package com.game.community.model.dto.user;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
@@ -9,6 +10,9 @@ import lombok.Data;
  */
 @Data
 public class UpdateUsernameDTO {
+
+    @NotNull(message = "资料版本不能为空")
+    private Integer version;
 
     @NotBlank(message = "昵称不能为空")
     @Size(max = 60, message = "昵称过长")

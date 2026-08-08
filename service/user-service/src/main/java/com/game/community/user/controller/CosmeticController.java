@@ -46,9 +46,10 @@ public class CosmeticController {
         return Result.success(cosmeticService.listBackpack(UserThreadLocal.getUserId()));
     }
 
-    @GetMapping("/decoration/{userId}")
-    public Result<UserDecorationVO> decoration(@PathVariable("userId") Long userId) {
-        return Result.success(cosmeticService.getDecoration(userId));
+    @GetMapping("/decoration/{accountId}")
+    public Result<UserDecorationVO> decoration(@PathVariable("accountId") Long accountId) {
+        UserCardInternalVO user = requireUserByAccountId(accountId);
+        return Result.success(cosmeticService.getDecoration(user.getUserId()));
     }
 
     @PostMapping("/decorations/batch")
@@ -56,7 +57,7 @@ public class CosmeticController {
             @Valid @RequestBody BatchUserIdsDTO dto) {
         // 前端及社交接口使用对外 accountId；装扮表按内部 userId 关联。
         // 先批量完成 accountId -> userId 映射，再批量读取装扮，避免 N 次用户查询和 N 次装扮查询。
-        List<Long> accountIds = dto.getUserIds().stream()
+        List<Long> accountIds = dto.getAccountIds().stream()
                 .filter(Objects::nonNull)
                 .distinct()
                 .toList();
@@ -77,6 +78,14 @@ public class CosmeticController {
             }
         }
         return Result.success(result);
+    }
+
+    private UserCardInternalVO requireUserByAccountId(Long accountId) {
+        Result<UserCardInternalVO> result = userQueryService.getUserInternalByAccountId(accountId);
+        if (result == null || result.getData() == null) {
+            throw new com.game.community.common.exception.BusinessException("用户不存在");
+        }
+        return result.getData();
     }
 
     @LoginCheck

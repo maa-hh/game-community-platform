@@ -65,13 +65,16 @@ public class UserAccountServiceImpl implements UserAccountService {
         }
 
         LocalDateTime cancelAt = LocalDateTime.now().plusDays(UserConstants.CANCEL_COOLDOWN_DAYS);
-        userAccountMapper.update(null, new LambdaUpdateWrapper<UserAccount>()
+        int updated = userAccountMapper.update(null, new LambdaUpdateWrapper<UserAccount>()
                 .eq(UserAccount::getId, account.getId())
                 .eq(UserAccount::getVersion, account.getVersion())
                 .set(UserAccount::getStatus, UserAccountStatus.CANCELLING)
                 .set(UserAccount::getCancelAt, cancelAt)
                 .set(UserAccount::getVersion, account.getVersion() + 1)
                 .set(UserAccount::getUpdateTime, LocalDateTime.now()));
+        if (updated == 0) {
+            throw new BusinessException(ApiErrorCodes.CONFLICT, "账号状态已变化，请刷新后重试");
+        }
 
         sessionHelper.invalidateUserSession(userId);
         userSupport.logOperation(userId, OperationType.CANCEL_APPLY,
@@ -119,13 +122,16 @@ public class UserAccountServiceImpl implements UserAccountService {
             throw new BusinessException("账号未在注销中");
         }
 
-        userAccountMapper.update(null, new LambdaUpdateWrapper<UserAccount>()
+        int updated = userAccountMapper.update(null, new LambdaUpdateWrapper<UserAccount>()
                 .eq(UserAccount::getId, account.getId())
                 .eq(UserAccount::getVersion, account.getVersion())
                 .set(UserAccount::getStatus, UserAccountStatus.NORMAL)
                 .set(UserAccount::getCancelAt, null)
                 .set(UserAccount::getVersion, account.getVersion() + 1)
                 .set(UserAccount::getUpdateTime, LocalDateTime.now()));
+        if (updated == 0) {
+            throw new BusinessException(ApiErrorCodes.CONFLICT, "账号状态已变化，请刷新后重试");
+        }
 
         userSupport.logOperation(userId, OperationType.CANCEL_REVOKE, null, null);
     }
@@ -146,7 +152,7 @@ public class UserAccountServiceImpl implements UserAccountService {
                 ? LocalDateTime.now().plusHours(durationHours)
                 : null;
 
-        userAccountMapper.update(null, new LambdaUpdateWrapper<UserAccount>()
+        int updated = userAccountMapper.update(null, new LambdaUpdateWrapper<UserAccount>()
                 .eq(UserAccount::getId, account.getId())
                 .eq(UserAccount::getVersion, account.getVersion())
                 .set(UserAccount::getStatus, UserAccountStatus.BANNED)
@@ -154,6 +160,9 @@ public class UserAccountServiceImpl implements UserAccountService {
                 .set(UserAccount::getBanReason, reason)
                 .set(UserAccount::getVersion, account.getVersion() + 1)
                 .set(UserAccount::getUpdateTime, LocalDateTime.now()));
+        if (updated == 0) {
+            throw new BusinessException(ApiErrorCodes.CONFLICT, "账号状态已变化，请刷新后重试");
+        }
 
         sessionHelper.invalidateUserSession(userId);
 
@@ -161,6 +170,11 @@ public class UserAccountServiceImpl implements UserAccountService {
                 "reason=" + reason + ", durationHours=" + durationHours
                         + ", operatorId=" + operator, null);
         return Result.success("封禁成功");
+    }
+
+    @Override
+    public Result<Void> banUserByAccountId(Long accountId, String reason, Integer durationHours, Long operatorId) {
+        return banUser(requireUserIdByAccountId(accountId), reason, durationHours, operatorId);
     }
 
     @Override
@@ -172,10 +186,17 @@ public class UserAccountServiceImpl implements UserAccountService {
             throw new BusinessException("账号未被封禁");
         }
 
-        clearBan(account);
+        if (!clearBan(account)) {
+            throw new BusinessException(ApiErrorCodes.CONFLICT, "账号状态已变化，请刷新后重试");
+        }
         userSupport.logOperation(userId, OperationType.UNBAN,
                 "operatorId=" + operator, null);
         return Result.success("解封成功");
+    }
+
+    @Override
+    public Result<Void> unbanUserByAccountId(Long accountId, Long operatorId) {
+        return unbanUser(requireUserIdByAccountId(accountId), operatorId);
     }
 
     @Override
@@ -232,8 +253,8 @@ public class UserAccountServiceImpl implements UserAccountService {
         }
     }
 
-    private void clearBan(UserAccount account) {
-        userAccountMapper.update(null, new LambdaUpdateWrapper<UserAccount>()
+    private boolean clearBan(UserAccount account) {
+        int updated = userAccountMapper.update(null, new LambdaUpdateWrapper<UserAccount>()
                 .eq(UserAccount::getId, account.getId())
                 .eq(UserAccount::getVersion, account.getVersion())
                 .set(UserAccount::getStatus, UserAccountStatus.NORMAL)
@@ -241,29 +262,42 @@ public class UserAccountServiceImpl implements UserAccountService {
                 .set(UserAccount::getBanReason, UserStrings.EMPTY)
                 .set(UserAccount::getVersion, account.getVersion() + 1)
                 .set(UserAccount::getUpdateTime, LocalDateTime.now()));
+        if (updated == 0) {
+            return false;
+        }
         account.setStatus(UserAccountStatus.NORMAL);
         account.setBanUntil(null);
         account.setBanReason(UserStrings.EMPTY);
         account.setVersion(account.getVersion() + 1);
+        return true;
     }
 
-    private void completeCancellation(UserAccount account) {
-        userAccountMapper.update(null, new LambdaUpdateWrapper<UserAccount>()
+    private boolean completeCancellation(UserAccount account) {
+        int updated = userAccountMapper.update(null, new LambdaUpdateWrapper<UserAccount>()
                 .eq(UserAccount::getId, account.getId())
+                .eq(UserAccount::getVersion, account.getVersion())
+                .eq(UserAccount::getStatus, UserAccountStatus.CANCELLING)
                 .set(UserAccount::getStatus, UserAccountStatus.CANCELLED)
+                .set(UserAccount::getVersion, account.getVersion() + 1)
                 .set(UserAccount::getUpdateTime, LocalDateTime.now()));
+        if (updated == 0) {
+            return false;
+        }
 
         User user = userMapper.selectById(account.getUserId());
         if (user != null) {
             userMapper.update(null, new LambdaUpdateWrapper<User>()
                     .eq(User::getId, user.getId())
+                    .eq(User::getVersion, user.getVersion())
                     .set(User::getEmail, "cancelled_" + user.getId() + "@invalid.local")
+                    .set(User::getVersion, user.getVersion() + 1)
                     .set(User::getDeleted, 1)
                     .set(User::getUpdateTime, LocalDateTime.now()));
         }
 
         sessionHelper.invalidateUserSession(account.getUserId());
         userSupport.logOperation(account.getUserId(), OperationType.CANCEL_COMPLETE, null, null);
+        return true;
     }
 
     private UserAccount getAccount(Long userId) {
@@ -273,6 +307,18 @@ public class UserAccountServiceImpl implements UserAccountService {
             throw new BusinessException("用户账号数据异常");
         }
         return account;
+    }
+
+    private Long requireUserIdByAccountId(Long accountId) {
+        if (accountId == null) {
+            throw new BusinessException("账号ID不能为空");
+        }
+        User user = userMapper.selectOne(new LambdaQueryWrapper<User>()
+                .eq(User::getAccountId, accountId));
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+        return user.getId();
     }
 
     private String requireBoundEmail(User user) {
@@ -289,8 +335,18 @@ public class UserAccountServiceImpl implements UserAccountService {
             return;
         }
         String value = steamAccount == null ? "" : steamAccount;
-        userMapper.update(null, new LambdaUpdateWrapper<User>()
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+        int updated = userMapper.update(null, new LambdaUpdateWrapper<User>()
                 .eq(User::getId, userId)
-                .set(User::getSteamAccount, value));
+                .eq(User::getVersion, user.getVersion())
+                .set(User::getSteamAccount, value)
+                .set(User::getVersion, user.getVersion() + 1)
+                .set(User::getUpdateTime, LocalDateTime.now()));
+        if (updated == 0) {
+            throw new BusinessException(ApiErrorCodes.CONFLICT, "用户资料已变化，请重试");
+        }
     }
 }

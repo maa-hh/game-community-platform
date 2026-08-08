@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
 @Data
 public class UserAccountVO {
 
-    private Long userId;
+    private Long accountId;
 
     /** 0正常 1封禁 2注销中 3已注销 */
     private Integer status;

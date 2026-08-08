@@ -10,9 +10,11 @@ import java.time.LocalDateTime;
 @Data
 public class UserMeVO {
 
-    private Long userId;
-
+    /** 对外账号 ID；t_user.id 仅在服务内部使用。 */
     private Long accountId;
+
+    /** 用户资料乐观锁版本。 */
+    private Integer version;
 
     private String username;
 

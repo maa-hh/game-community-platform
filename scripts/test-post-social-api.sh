@@ -128,10 +128,10 @@ fi
 curl_json POST /user/auth/login "{\"email\":\"$EMAIL\",\"password\":\"$PASS\"}" >/dev/null
 expect_code 200 "登录"
 TOKEN="$(json_get 'd.get("data",{}).get("accessToken","")' <"$TMP")"
-USER_ID="$(json_get 'd.get("data",{}).get("user",{}).get("id","")' <"$TMP")"
+ACCOUNT_ID="$(json_get 'd.get("data",{}).get("user",{}).get("accountId","")' <"$TMP")"
 [[ -n "$TOKEN" ]] || fail "未拿到 accessToken"
 AUTH_HEADER="Authorization: Bearer $TOKEN"
-pass "拿到 token，userId=$USER_ID"
+pass "拿到 token，accountId=$ACCOUNT_ID"
 
 section "3. 分区 & 发帖（进待审）后强制发布"
 curl_json GET '/category/list?page=1&size=20' >/dev/null
@@ -205,7 +205,7 @@ pass "commentId=$COMMENT_ID"
 
 curl_json GET "/social/comment/list/$ARTICLE_ID?page=1&size=20" >/dev/null
 expect_code 200 "评论列表"
-curl_json POST /social/reply "{\"commentId\":$COMMENT_ID,\"content\":\"联调二级回复\",\"replyToUserId\":$USER_ID}" >/dev/null
+curl_json POST /social/reply "{\"commentId\":$COMMENT_ID,\"content\":\"联调二级回复\",\"replyToAccountId\":$ACCOUNT_ID}" >/dev/null
 expect_code 200 "发回复"
 REPLY_ID="$(json_get 'd.get("data")' <"$TMP")"
 pass "replyId=$REPLY_ID"
@@ -234,7 +234,7 @@ expect_code 200 "再次收藏（个人页展示用）"
 section "8. 批量统计 + 用户名片"
 curl_json GET "/social/article/counts?articleIds=$ARTICLE_ID" >/dev/null
 expect_code 200 "批量统计"
-curl_json GET "/user/ids?ids=$USER_ID" >/dev/null
+curl_json GET "/user/ids?ids=$ACCOUNT_ID" >/dev/null
 expect_code 200 "批量用户名片"
 
 section "9. 举报（可选）"

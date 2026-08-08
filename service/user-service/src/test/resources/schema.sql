@@ -13,7 +13,7 @@ CREATE TABLE t_user (
   username VARCHAR(20) NOT NULL,
   email VARCHAR(128) NOT NULL,
   avatar VARCHAR(512) NOT NULL DEFAULT '',
-  signature VARCHAR(100) NOT NULL DEFAULT '',
+  signature VARCHAR(50) NOT NULL DEFAULT '',
   steam_account VARCHAR(64) NOT NULL DEFAULT '',
   version INT NOT NULL DEFAULT 0,
   create_time DATETIME NOT NULL,
@@ -27,7 +27,7 @@ CREATE TABLE t_user_profile_audit (
   signature_audit_status INT NOT NULL DEFAULT 0,
   avatar_audit_status INT NOT NULL DEFAULT 0,
   pending_username VARCHAR(20) NOT NULL DEFAULT '',
-  pending_signature VARCHAR(100) NOT NULL DEFAULT '',
+  pending_signature VARCHAR(50) NOT NULL DEFAULT '',
   pending_avatar VARCHAR(512) NOT NULL DEFAULT '',
   version INT NOT NULL DEFAULT 0,
   create_time DATETIME NOT NULL,
@@ -54,8 +54,8 @@ CREATE TABLE t_user_account (
 CREATE TABLE t_user_auth (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   user_id BIGINT NOT NULL,
-  password VARCHAR(100) NOT NULL,
-  salt VARCHAR(64),
+  password VARCHAR(128) NOT NULL,
+  salt VARCHAR(32) NOT NULL DEFAULT '',
   fail_count INT NOT NULL DEFAULT 0,
   lock_until DATETIME,
   last_password_change DATETIME NOT NULL,
@@ -93,7 +93,7 @@ CREATE TABLE t_user_audit_task (
 CREATE TABLE t_user_audit_reject_log (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   user_id BIGINT NOT NULL,
-  account_id BIGINT,
+  account_id BIGINT NOT NULL,
   task_id BIGINT,
   task_type VARCHAR(32) NOT NULL,
   request_data CLOB NOT NULL,
@@ -120,6 +120,25 @@ CREATE UNIQUE INDEX uk_user_auth_user_deleted ON t_user_auth(user_id, deleted);
 CREATE UNIQUE INDEX uk_account_id_pool_account_id ON t_account_id_pool(account_id);
 CREATE INDEX idx_account_id_pool_status_digit ON t_account_id_pool(status, digit_count);
 CREATE INDEX idx_user_task_status ON t_user_audit_task(user_id, task_type, status);
+CREATE INDEX idx_audit_task_user_time ON t_user_audit_task(user_id, task_type, create_time, id);
+
+CREATE TABLE t_user_notification_outbox (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  event_key VARCHAR(96) NOT NULL UNIQUE,
+  payload CLOB NOT NULL,
+  status TINYINT NOT NULL DEFAULT 0,
+  retry_count INT NOT NULL DEFAULT 0,
+  next_retry_time DATETIME,
+  lock_token VARCHAR(64),
+  lock_time DATETIME,
+  last_error VARCHAR(1000),
+  create_time DATETIME NOT NULL,
+  update_time DATETIME NOT NULL
+);
+CREATE INDEX idx_user_notification_outbox_pending
+  ON t_user_notification_outbox(status, next_retry_time, id);
+CREATE INDEX idx_user_notification_outbox_lock
+  ON t_user_notification_outbox(status, lock_time, id);
 
 INSERT INTO t_account_id_pool (account_id, digit_count, status, create_time, update_time) VALUES
 (10000, 5, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),

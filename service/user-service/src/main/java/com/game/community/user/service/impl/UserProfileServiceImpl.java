@@ -102,6 +102,7 @@ public class UserProfileServiceImpl implements UserProfileService {
     public Result<ProfileFieldSubmitVO> updateUsername(UpdateUsernameDTO dto) {
         Long userId = userSupport.requireUserId();
         User user = requireEditableUser(userId);
+        assertVersion(user, dto.getVersion());
         UserProfileAudit profileAudit = auditHelper.getOrCreate(userId);
         String username = dto.getUsername().trim();
         int meaningfulLen = countMeaningfulChars(username);
@@ -124,10 +125,11 @@ public class UserProfileServiceImpl implements UserProfileService {
                 FieldAuditPayload payload = new FieldAuditPayload();
                 payload.setField(AuditFieldType.USERNAME);
                 payload.setContent(username);
+                payload.setUserVersion(user.getVersion());
                 return auditHelper.createFieldAuditTask(
                         userId, AuditFieldType.USERNAME, username, payload);
             } catch (RuntimeException e) {
-                auditHelper.clearUsernameAudit(userId);
+                auditHelper.clearUsernameAudit(userId, username);
                 throw e;
             }
         });
@@ -141,6 +143,7 @@ public class UserProfileServiceImpl implements UserProfileService {
     public Result<ProfileFieldSubmitVO> updateSignature(UpdateSignatureDTO dto) {
         Long userId = userSupport.requireUserId();
         User user = requireEditableUser(userId);
+        assertVersion(user, dto.getVersion());
         UserProfileAudit profileAudit = auditHelper.getOrCreate(userId);
         String signature = dto.getSignature() == null ? "" : dto.getSignature().trim();
         if (countMeaningfulChars(signature) > 50) {
@@ -162,10 +165,11 @@ public class UserProfileServiceImpl implements UserProfileService {
                 FieldAuditPayload payload = new FieldAuditPayload();
                 payload.setField(AuditFieldType.SIGNATURE);
                 payload.setContent(signature);
+                payload.setUserVersion(user.getVersion());
                 return auditHelper.createFieldAuditTask(
                         userId, AuditFieldType.SIGNATURE, signature, payload);
             } catch (RuntimeException e) {
-                auditHelper.clearSignatureAudit(userId);
+                auditHelper.clearSignatureAudit(userId, signature);
                 throw e;
             }
         });
@@ -176,9 +180,10 @@ public class UserProfileServiceImpl implements UserProfileService {
     }
 
     @Override
-    public Result<ProfileFieldSubmitVO> uploadAvatar(MultipartFile avatarFile) {
+    public Result<ProfileFieldSubmitVO> uploadAvatar(MultipartFile avatarFile, Integer version) {
         Long userId = userSupport.requireUserId();
         User user = requireEditableUser(userId);
+        assertVersion(user, version);
         UserProfileAudit profileAudit = auditHelper.getOrCreate(userId);
         if (auditHelper.isFieldBusy(profileAudit.getAvatarAuditStatus())
                 || auditHelper.hasInFlightTask(userId, AuditFieldType.AVATAR)) {
@@ -200,10 +205,11 @@ public class UserProfileServiceImpl implements UserProfileService {
                     payload.setField(AuditFieldType.AVATAR);
                     payload.setOldAvatarUrl(user.getAvatar());
                     payload.setPendingObjectName(pendingObjectName);
+                    payload.setUserVersion(user.getVersion());
                     return auditHelper.createFieldAuditTask(
                             userId, AuditFieldType.AVATAR, pendingObjectName, payload);
                 } catch (RuntimeException e) {
-                    auditHelper.clearAvatarAudit(userId);
+                    auditHelper.clearAvatarAudit(userId, pendingObjectName);
                     throw e;
                 }
             });
@@ -251,6 +257,7 @@ public class UserProfileServiceImpl implements UserProfileService {
     public Result<Void> updateUserInfo(UpdateUserInfoDTO dto) {
         Long userId = userSupport.requireUserId();
         User user = requireEditableUser(userId);
+        assertVersion(user, dto.getVersion());
         if (dto.getSteamAccount() == null) {
             return Result.success("资料更新成功");
         }
@@ -383,6 +390,12 @@ public class UserProfileServiceImpl implements UserProfileService {
         return user;
     }
 
+    private void assertVersion(User user, Integer expectedVersion) {
+        if (!Objects.equals(user.getVersion(), expectedVersion)) {
+            throw new BusinessException(ApiErrorCodes.CONFLICT, "资料已更新，请刷新后重试");
+        }
+    }
+
     private ProfileFieldSubmitVO buildSubmitVO(Long taskId, AuditFieldType field, String pendingValue) {
         ProfileFieldSubmitVO vo = new ProfileFieldSubmitVO();
         vo.setTaskId(taskId);
@@ -406,8 +419,8 @@ public class UserProfileServiceImpl implements UserProfileService {
 
     private UserMeVO convertToMeVO(User user, UserAccount account, UserProfileAudit profileAudit) {
         UserMeVO vo = new UserMeVO();
-        vo.setUserId(user.getId());
         vo.setAccountId(user.getAccountId());
+        vo.setVersion(user.getVersion());
         vo.setUsername(user.getUsername());
         vo.setAvatar(user.getAvatar());
         vo.setSignature(user.getSignature());
@@ -470,4 +483,3 @@ public class UserProfileServiceImpl implements UserProfileService {
         return count;
     }
 }
-

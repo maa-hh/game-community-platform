@@ -23,7 +23,7 @@ public class DanmakuEvent implements Serializable {
 
     private Long seq;
 
-    private Long userId;
+    private Long accountId;
 
     private String usernameSnapshot;
 
