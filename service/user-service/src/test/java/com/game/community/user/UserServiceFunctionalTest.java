@@ -106,7 +106,7 @@ class UserServiceFunctionalTest extends AbstractUserServiceIntegrationTest {
         LoginVO loginVO = userAuthService.login(loginDTO, clientInfo()).getData();
 
         assertThat(loginVO.getAccessToken()).isNotBlank();
-        assertThat(loginVO.getUser().getUserId()).isEqualTo(userId);
+        assertThat(loginVO.getUser().getAccountId()).isEqualTo(accountId);
 
         Claims claims = JwtUtils.parseToken(Constants.ACCESS_JWT_SECRET, loginVO.getAccessToken());
         assertThat(((Number) claims.get("accountId")).longValue()).isEqualTo(accountId);

@@ -46,7 +46,13 @@ public class JwtGlobalFilter implements GlobalFilter, Ordered {
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
-        ServerHttpRequest request = exchange.getRequest();
+        ServerHttpRequest request = exchange.getRequest().mutate()
+                .headers(headers -> {
+                    headers.remove(GatewayConstants.INTERNAL_SECRET_HEADER);
+                    headers.add(GatewayConstants.INTERNAL_SECRET_HEADER, internalSecret);
+                })
+                .build();
+        exchange = exchange.mutate().request(request).build();
         String path = request.getURI().getPath();
         String normalized = normalizePath(path);
 

@@ -72,6 +72,9 @@ public class DanmakuCommandService {
             Long id = nextId();
             Long seq = nextSeq(videoPublicId);
             UserCardInternalVO user = resolveUser(userId);
+            if (user == null || user.getAccountId() == null) {
+                throw new BusinessException("用户资料服务暂不可用");
+            }
             String content = dto.getContent().trim();
             DanmakuEvent event = new DanmakuEvent();
             event.setId(id);
@@ -81,7 +84,7 @@ public class DanmakuCommandService {
             event.setVideoTimeMs(dto.getVideoTimeMs());
             event.setDisplayTimeMs(dto.getVideoTimeMs());
             event.setSeq(seq);
-            event.setUserId(userId);
+            event.setAccountId(user.getAccountId());
             event.setUsernameSnapshot(user == null || !StringUtils.hasText(user.getUsername())
                     ? "玩家" : user.getUsername());
             event.setAvatarSnapshot(user == null ? null : user.getAvatar());
@@ -194,7 +197,7 @@ public class DanmakuCommandService {
         vo.setVideoTimeMs(event.getVideoTimeMs());
         vo.setDisplayTimeMs(event.getDisplayTimeMs());
         vo.setSeq(event.getSeq());
-        vo.setUserId(event.getUserId());
+        vo.setAccountId(event.getAccountId());
         vo.setUsername(event.getUsernameSnapshot());
         vo.setAvatar(event.getAvatarSnapshot());
         vo.setContent(event.getContent());

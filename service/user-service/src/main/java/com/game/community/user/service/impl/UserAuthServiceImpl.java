@@ -163,14 +163,19 @@ public class UserAuthServiceImpl implements UserAuthService {
             throw new BusinessException(ApiErrorCodes.INTERNAL_ERROR, "账号数据异常");
         }
 
-        userAuthMapper.update(null, new LambdaUpdateWrapper<UserAuth>()
+        int updated = userAuthMapper.update(null, new LambdaUpdateWrapper<UserAuth>()
                 .eq(UserAuth::getId, userAuth.getId())
+                .eq(UserAuth::getVersion, userAuth.getVersion())
                 .set(UserAuth::getPassword, EncryptUtils.bcryptEncode(dto.getPassword()))
                 .set(UserAuth::getSalt, "")
                 .set(UserAuth::getFailCount, 0)
                 .set(UserAuth::getLockUntil, null)
                 .set(UserAuth::getLastPasswordChange, LocalDateTime.now())
+                .set(UserAuth::getVersion, userAuth.getVersion() + 1)
                 .set(UserAuth::getUpdateTime, LocalDateTime.now()));
+        if (updated == 0) {
+            throw new BusinessException(ApiErrorCodes.CONFLICT, "认证数据已变化，请重试");
+        }
 
         sessionHelper.invalidateUserSession(user.getId());
         userSupport.logOperation(user.getId(), OperationType.RESET_PASSWORD, null, null);
@@ -235,7 +240,8 @@ public class UserAuthServiceImpl implements UserAuthService {
         }
 
         String refreshLockKey = RedisConstants.REFRESH_LOCK_PREFIX + sessionId;
-        if (Boolean.FALSE.equals(redisUtils.setIfAbsent(refreshLockKey, "1", 5))) {
+        String refreshLockToken = UUID.randomUUID().toString();
+        if (Boolean.FALSE.equals(redisUtils.setIfAbsent(refreshLockKey, refreshLockToken, 5))) {
             throw new BusinessException(ApiErrorCodes.TOO_MANY_REQUESTS, "登录态刷新中，请稍后重试");
         }
 
@@ -283,7 +289,7 @@ public class UserAuthServiceImpl implements UserAuthService {
             vo.setRefreshToken(newRefreshToken);
             return Result.success("令牌刷新成功", vo);
         } finally {
-            redisUtils.del(refreshLockKey);
+            redisUtils.unlock(refreshLockKey, refreshLockToken);
         }
     }
 
@@ -320,7 +326,8 @@ public class UserAuthServiceImpl implements UserAuthService {
     /** 登录成功收尾：清旧会话 → 记登录日志 → 生成双 token（LoginVO.refreshToken 供 Controller 写 Cookie） */
     private LoginVO completeLogin(User user, UserAccount account, UserAuth userAuth, String loginIp) {
         String loginLockKey = RedisConstants.LOGIN_LOCK_PREFIX + user.getId();
-        if (Boolean.FALSE.equals(redisUtils.setIfAbsent(loginLockKey, "1", 5))) {
+        String loginLockToken = UUID.randomUUID().toString();
+        if (Boolean.FALSE.equals(redisUtils.setIfAbsent(loginLockKey, loginLockToken, 5))) {
             throw new BusinessException(ApiErrorCodes.TOO_MANY_REQUESTS, "登录处理中，请稍后重试");
         }
 
@@ -341,7 +348,7 @@ public class UserAuthServiceImpl implements UserAuthService {
             userSupport.logOperation(user.getId(), OperationType.LOGIN, null, loginIp);
             return sessionHelper.buildLoginVO(user, account, UUID.randomUUID().toString());
         } finally {
-            redisUtils.del(loginLockKey);
+            redisUtils.unlock(loginLockKey, loginLockToken);
         }
     }
 
@@ -481,21 +488,21 @@ public class UserAuthServiceImpl implements UserAuthService {
     }
 
     private void handleLoginFailure(Long userId, UserAuth userAuth) {
-        int newFailCount = (userAuth.getFailCount() == null ? 0 : userAuth.getFailCount()) + 1;
+        userAuthMapper.update(null, new LambdaUpdateWrapper<UserAuth>()
+                .eq(UserAuth::getId, userAuth.getId())
+                .setSql("fail_count = COALESCE(fail_count, 0) + 1")
+                .set(UserAuth::getUpdateTime, LocalDateTime.now()));
+        UserAuth current = userAuthMapper.selectById(userAuth.getId());
+        int newFailCount = current == null || current.getFailCount() == null ? 0 : current.getFailCount();
         if (newFailCount >= UserConstants.LOGIN_FAIL_LOCK_THRESHOLD) {
             LocalDateTime lockUntil = LocalDateTime.now()
                     .plusMinutes(UserConstants.LOGIN_LOCK_DURATION_MINUTES);
             userAuthMapper.update(null, new LambdaUpdateWrapper<UserAuth>()
                     .eq(UserAuth::getId, userAuth.getId())
-                    .set(UserAuth::getFailCount, newFailCount)
+                    .ge(UserAuth::getFailCount, UserConstants.LOGIN_FAIL_LOCK_THRESHOLD)
                     .set(UserAuth::getLockUntil, lockUntil)
                     .set(UserAuth::getUpdateTime, LocalDateTime.now()));
             log.warn("登录失败锁定: userId={}, failCount={}, lockUntil={}", userId, newFailCount, lockUntil);
-        } else {
-            userAuthMapper.update(null, new LambdaUpdateWrapper<UserAuth>()
-                    .eq(UserAuth::getId, userAuth.getId())
-                    .set(UserAuth::getFailCount, newFailCount)
-                    .set(UserAuth::getUpdateTime, LocalDateTime.now()));
         }
     }
 

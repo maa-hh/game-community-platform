@@ -9,7 +9,7 @@ import java.util.List;
 @Data
 public class UserDecorationVO implements Serializable {
 
-    private Long userId;
+    private Long accountId;
 
     private CosmeticEquippedVO avatarFrame;
 

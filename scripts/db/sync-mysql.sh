@@ -40,6 +40,17 @@ mysql_query() {
     "$@"
 }
 
+MIGRATION_LOCK_NAME="game_community_schema_migrations"
+MIGRATION_LOCK_RESULT="$(mysql_query -e "SELECT GET_LOCK('${MIGRATION_LOCK_NAME}', 30);" 2>/dev/null || true)"
+if [[ "$MIGRATION_LOCK_RESULT" != "1" ]]; then
+  echo "无法获得数据库迁移锁，已有迁移正在执行或数据库不可用" >&2
+  exit 1
+fi
+release_migration_lock() {
+  mysql_query -e "SELECT RELEASE_LOCK('${MIGRATION_LOCK_NAME}');" >/dev/null 2>&1 || true
+}
+trap release_migration_lock EXIT
+
 echo "========================================"
 echo " MySQL 结构同步 -> ${MYSQL_DB}"
 echo "========================================"

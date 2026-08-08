@@ -27,8 +27,14 @@ public interface UserAccountService {
     /** 封禁用户（管理员 / Feign），durationHours 为 null 或 0 表示永久封禁 */
     Result<Void> banUser(Long userId, String reason, Integer durationHours, Long operatorId);
 
+    /** 按对外 accountId 封禁，内部先解析 t_user.id。 */
+    Result<Void> banUserByAccountId(Long accountId, String reason, Integer durationHours, Long operatorId);
+
     /** 解封用户（管理员 / Feign） */
     Result<Void> unbanUser(Long userId, Long operatorId);
+
+    /** 按对外 accountId 解封，内部先解析 t_user.id。 */
+    Result<Void> unbanUserByAccountId(Long accountId, Long operatorId);
 
     /**
      * 被动刷新账号状态并返回最新实体：

@@ -29,6 +29,15 @@ if [[ "$SYNC_DB" == "1" ]]; then
   "$SCRIPT_DIR/db/sync-mysql.sh"
 fi
 
+if [[ "${SKIP_BUILD:-0}" == "1" ]]; then
+  echo "[构建] 跳过全仓构建 (SKIP_BUILD=1)"
+else
+  echo "[构建] 全仓共享模块只构建一次，避免后台服务互相清理 target..."
+  cd "$PROJECT_ROOT"
+  mvn clean install -DskipTests -q
+  export BUILD_ALREADY_DONE=1
+fi
+
 echo ""
 echo "========================================"
 echo " 清理微服务端口并后台启动"

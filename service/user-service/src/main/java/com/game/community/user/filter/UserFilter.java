@@ -9,9 +9,12 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletRequest;
 import jakarta.servlet.ServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.util.StringUtils;
 
 import java.io.IOException;
 
@@ -23,10 +26,19 @@ import java.io.IOException;
 @Component
 public class UserFilter implements Filter {
 
+    @Value("${gateway.internal-secret}")
+    private String internalSecret;
+
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
             throws IOException, ServletException {
         HttpServletRequest httpRequest = (HttpServletRequest) request;
+        HttpServletResponse httpResponse = (HttpServletResponse) response;
+        if (!StringUtils.hasText(internalSecret)
+                || !internalSecret.equals(httpRequest.getHeader(GatewayConstants.INTERNAL_SECRET_HEADER))) {
+            httpResponse.sendError(HttpServletResponse.SC_UNAUTHORIZED, "非法服务调用");
+            return;
+        }
         String userIdStr = httpRequest.getHeader(GatewayConstants.USER_ID_HEADER);
         String userTypeStr = httpRequest.getHeader(GatewayConstants.USER_TYPE_HEADER);
         String steamAccount = httpRequest.getHeader(GatewayConstants.STEAM_ACCOUNT_HEADER);

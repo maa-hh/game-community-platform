@@ -437,11 +437,15 @@ public class NotificationServiceImpl implements NotificationService {
         for (int i = 0; i < messages.size(); i++) {
             NotificationMessage message = messages.get(i);
             NotificationMessageVO vo = vos.get(i);
-            Long actorAccountId = accountIdMap.get(message.getActorUserId());
+            Long actorAccountId = message.getActorUserId() == null
+                    ? null
+                    : accountIdMap.get(message.getActorUserId());
             if (actorAccountId != null) {
                 vo.setActorAccountId(actorAccountId);
             }
-            Long targetAccountId = accountIdMap.get(message.getTargetUserId());
+            Long targetAccountId = message.getTargetUserId() == null
+                    ? null
+                    : accountIdMap.get(message.getTargetUserId());
             if (targetAccountId != null) {
                 vo.setTargetAccountId(targetAccountId);
             }

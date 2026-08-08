@@ -13,8 +13,6 @@ public class AddReplyDTO implements Serializable {
     @NotNull(message = "评论ID不能为空")
     private Long commentId;
 
-    private Long replyToUserId;
-
     private Long replyToAccountId;
 
     @NotBlank(message = "回复内容不能为空")

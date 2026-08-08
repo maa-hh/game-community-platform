@@ -164,7 +164,7 @@ public class ArticleGameServiceImpl implements ArticleGameService {
             if (StringUtils.hasText(raw)) {
                 try {
                     GameTagVO tag = com.alibaba.fastjson2.JSON.parseObject(raw, GameTagVO.class);
-                    if (tag != null) {
+                    if (tag != null && tag.getAppId() != null && StringUtils.hasText(tag.getName())) {
                         tagMap.put(appIds.get(i), tag);
                         continue;
                     }
@@ -189,13 +189,12 @@ public class ArticleGameServiceImpl implements ArticleGameService {
                 }
             }
         } catch (Exception ignored) {
-            // steam-service 未就绪时回退最小标签
+            // 搜索服务失败时不返回不完整标签，避免前端得到空对象或 undefined。
         }
-        return appIds.stream().map(appId -> tagMap.computeIfAbsent(appId, key -> {
-            GameTagVO tag = new GameTagVO();
-            tag.setAppId(key);
-            return tag;
-        })).toList();
+        return appIds.stream()
+                .map(tagMap::get)
+                .filter(Objects::nonNull)
+                .toList();
     }
 
     private String gameTagCacheKey(Long appId) {

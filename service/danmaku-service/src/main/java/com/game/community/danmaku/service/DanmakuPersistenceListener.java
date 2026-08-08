@@ -3,6 +3,7 @@ package com.game.community.danmaku.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.game.community.common.constant.KafkaTopicConstants;
 import com.game.community.danmaku.mapper.DanmakuMessageMapper;
+import com.game.community.feign.UserFeignClient;
 import com.game.community.model.entity.danmaku.DanmakuMessage;
 import com.game.community.model.message.DanmakuEvent;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,7 @@ import java.time.LocalDateTime;
 public class DanmakuPersistenceListener {
 
     private final DanmakuMessageMapper mapper;
+    private final UserFeignClient userFeignClient;
 
     @KafkaListener(topics = KafkaTopicConstants.DANMAKU_TOPIC, groupId = "${spring.kafka.consumer.group-id:danmaku-persistence}")
     public void persist(DanmakuEvent event) {
@@ -37,7 +39,12 @@ public class DanmakuPersistenceListener {
         entity.setVideoTimeMs(event.getVideoTimeMs());
         entity.setDisplayTimeMs(event.getDisplayTimeMs());
         entity.setSeq(event.getSeq());
-        entity.setUserId(event.getUserId());
+        entity.setAccountId(event.getAccountId());
+        var userResult = userFeignClient.getUserByAccountId(event.getAccountId());
+        if (userResult == null || userResult.getData() == null || userResult.getData().getUserId() == null) {
+            throw new IllegalStateException("账号不存在，等待 Kafka 重试");
+        }
+        entity.setUserId(userResult.getData().getUserId());
         entity.setUsernameSnapshot(event.getUsernameSnapshot());
         entity.setAvatarSnapshot(event.getAvatarSnapshot());
         entity.setContent(event.getContent());

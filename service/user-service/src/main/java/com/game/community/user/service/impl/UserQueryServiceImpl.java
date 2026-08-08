@@ -139,7 +139,8 @@ public class UserQueryServiceImpl implements UserQueryService {
             return Result.success("查询成功", null);
         }
         UserAccountVO vo = new UserAccountVO();
-        vo.setUserId(account.getUserId());
+        User user = userMapper.selectById(account.getUserId());
+        vo.setAccountId(user == null ? null : user.getAccountId());
         vo.setStatus(account.getStatus().getCode());
         vo.setType(account.getType().getCode());
         vo.setBanUntil(account.getBanUntil());

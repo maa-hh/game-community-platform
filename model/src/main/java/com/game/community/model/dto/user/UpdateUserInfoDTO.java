@@ -1,6 +1,7 @@
 package com.game.community.model.dto.user;
 
 import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 /**
@@ -8,6 +9,9 @@ import lombok.Data;
  */
 @Data
 public class UpdateUserInfoDTO {
+
+    @NotNull(message = "资料版本不能为空")
+    private Integer version;
 
     @Size(max = 64, message = "Steam账号长度不能超过64个字符")
     private String steamAccount;

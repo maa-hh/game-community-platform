@@ -1,6 +1,9 @@
 server:
   port: 8081
 
+gateway:
+  internal-secret: ${GATEWAY_INTERNAL_SECRET}
+
 spring:
   application:
     name: user-service

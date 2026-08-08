@@ -118,11 +118,31 @@ start_spring_service() {
 
   cd "$PROJECT_ROOT"
 
-  if [[ "${SKIP_BUILD:-0}" == "1" ]]; then
+  if [[ "${SKIP_BUILD:-0}" == "1" || "${BUILD_ALREADY_DONE:-0}" == "1" ]]; then
     echo "[构建] 跳过 (SKIP_BUILD=1)"
   else
-    echo "[构建] 清理并安装 ${module} 及依赖到本地仓库（避免残留 class 导致启动失败）..."
-    mvn clean install -pl "$module" -am -DskipTests -q
+    local build_lock="${PID_DIR}/maven-build.lock"
+    local lock_wait_started
+    lock_wait_started="$(date +%s)"
+    while ! mkdir "$build_lock" 2>/dev/null; do
+      if [[ -f "$build_lock/pid" ]] && ! kill -0 "$(cat "$build_lock/pid")" 2>/dev/null; then
+        rm -f "$build_lock/pid"
+        rmdir "$build_lock" 2>/dev/null || true
+        continue
+      fi
+      if (( $(date +%s) - lock_wait_started > 300 )); then
+        echo "[构建] 等待 Maven 构建锁超时: $build_lock" >&2
+        return 1
+      fi
+      sleep 1
+    done
+    printf '%s\n' "$$" >"$build_lock/pid"
+    trap 'rm -f "${build_lock}/pid"; rmdir "${build_lock}" 2>/dev/null || true' RETURN
+    echo "[构建] 安装 ${module} 及依赖到本地仓库（共享模块串行构建）..."
+    mvn install -pl "$module" -am -DskipTests -q
+    trap - RETURN
+    rm -f "$build_lock/pid"
+    rmdir "$build_lock" 2>/dev/null || true
   fi
 
   echo "[启动] ${service_name} (module=${module}, port=${port})"
@@ -134,7 +154,7 @@ start_spring_service() {
       -DskipTests \
       -Dspring-boot.run.jvmArguments="$java_opts" \
       ${profile_args[@]+"${profile_args[@]}"} \
-      >"$log_file" 2>&1 &
+      </dev/null >"$log_file" 2>&1 &
     echo $! >"$pid_file"
     echo "[后台] ${service_name} PID=$(cat "$pid_file"), 日志: $log_file"
   else

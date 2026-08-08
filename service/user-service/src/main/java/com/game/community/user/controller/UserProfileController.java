@@ -59,8 +59,9 @@ public class UserProfileController {
 
     @LoginCheck
     @PostMapping("/avatar")
-    public Result<ProfileFieldSubmitVO> uploadAvatar(@RequestParam("avatar") MultipartFile avatar) {
-        return userProfileService.uploadAvatar(avatar);
+    public Result<ProfileFieldSubmitVO> uploadAvatar(@RequestParam("avatar") MultipartFile avatar,
+                                                     @RequestParam("version") Integer version) {
+        return userProfileService.uploadAvatar(avatar, version);
     }
 
     /** 更新无需审核的资料（Steam 账号） */

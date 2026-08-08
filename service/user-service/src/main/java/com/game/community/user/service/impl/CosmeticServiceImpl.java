@@ -18,6 +18,7 @@ import com.game.community.model.entity.cosmetic.UserActiveEffect;
 import com.game.community.model.entity.cosmetic.UserCosmetic;
 import com.game.community.model.entity.cosmetic.UserCosmeticLoadout;
 import com.game.community.model.entity.cosmetic.UserCosmeticUseLog;
+import com.game.community.model.entity.user.User;
 import com.game.community.model.vo.cosmetic.ActiveEffectVO;
 import com.game.community.model.vo.cosmetic.CosmeticDefVO;
 import com.game.community.model.vo.cosmetic.CosmeticEquippedVO;
@@ -32,6 +33,7 @@ import com.game.community.user.mapper.UserActiveEffectMapper;
 import com.game.community.user.mapper.UserCosmeticLoadoutMapper;
 import com.game.community.user.mapper.UserCosmeticMapper;
 import com.game.community.user.mapper.UserCosmeticUseLogMapper;
+import com.game.community.user.mapper.UserMapper;
 import com.game.community.user.service.CosmeticService;
 import com.game.community.utils.RedisUtils;
 import lombok.RequiredArgsConstructor;
@@ -67,6 +69,7 @@ public class CosmeticServiceImpl implements CosmeticService {
     private final UserActiveEffectMapper activeEffectMapper;
     private final CosmeticGrantRecordMapper grantRecordMapper;
     private final RedisUtils redisUtils;
+    private final UserMapper userMapper;
 
     @Override
     public PageResult<CosmeticDefVO> pageDefs(Long page, Long size, String category, Integer status) {
@@ -513,7 +516,8 @@ public class CosmeticServiceImpl implements CosmeticService {
                                              Map<String, CosmeticDef> defs,
                                              List<UserActiveEffect> effects) {
         UserDecorationVO vo = new UserDecorationVO();
-        vo.setUserId(userId);
+        User user = userMapper.selectById(userId);
+        vo.setAccountId(user == null ? null : user.getAccountId());
         if (loadout != null) {
             vo.setAvatarFrame(buildEquipped(loadout.getAvatarFrameCode(), defs));
             vo.setCommentCard(buildEquipped(loadout.getCommentCardCode(), defs));

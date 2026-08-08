@@ -37,14 +37,14 @@ public interface UserFeignClient {
     Result<UserCardInternalVO> getUserByAccountId(@PathVariable("accountId") Long accountId);
 
     /** 封禁用户（供审核服务等调用） */
-    @PostMapping("/{userId}/ban")
-    Result<Void> banUser(@PathVariable("userId") Long userId,
+    @PostMapping("/account/{accountId}/ban")
+    Result<Void> banUser(@PathVariable("accountId") Long accountId,
                          @RequestParam("reason") String reason,
                          @RequestParam(value = "durationHours", required = false) Integer durationHours);
 
     /** 解封用户 */
-    @PostMapping("/{userId}/unban")
-    Result<Void> unbanUser(@PathVariable("userId") Long userId);
+    @PostMapping("/account/{accountId}/unban")
+    Result<Void> unbanUser(@PathVariable("accountId") Long accountId);
 
     /** 查询用户账户状态 */
     @GetMapping("/{userId}/account")

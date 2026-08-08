@@ -21,7 +21,7 @@ public class DanmakuVO implements Serializable {
 
     private Long seq;
 
-    private Long userId;
+    private Long accountId;
 
     private String username;
 

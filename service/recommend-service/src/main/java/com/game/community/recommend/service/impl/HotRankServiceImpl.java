@@ -150,10 +150,7 @@ public class HotRankServiceImpl implements HotRankService {
     }
 
     private void rebuildBoardFromEvents(HotRankBoardType boardType, String periodKey, String scope) {
-        redisUtils.del(liveRedisKey(boardType, periodKey, scope));
-        List<ArticleRankScoreAgg> aggs = hotRankBehaviorEventService.aggregate(
-                boardType, periodKey, scopeCategoryId(scope));
-        writeAggScores(boardType, periodKey, scope, aggs);
+        refreshLiveBoardFromEvents(boardType, periodKey, scope);
     }
 
     @Override
@@ -204,6 +201,9 @@ public class HotRankServiceImpl implements HotRankService {
 
         if (boardType == HotRankBoardType.DAILY) {
             if (HotRankPeriodUtils.isToday(resolvedPeriod)) {
+                if (refresh) {
+                    refreshLiveBoardFromEvents(boardType, resolvedPeriod, scope);
+                }
                 return listFromRedis(liveRedisKey(boardType, resolvedPeriod, scope), userId, boardType.getCode(), resolvedPeriod);
             }
             return listHistoricalRank(boardType, resolvedPeriod, scope, userId);
@@ -211,6 +211,9 @@ public class HotRankServiceImpl implements HotRankService {
 
         if (boardType == HotRankBoardType.WEEKLY) {
             if (HotRankPeriodUtils.isCurrentWeek(resolvedPeriod)) {
+                if (refresh) {
+                    refreshLiveBoardFromEvents(boardType, resolvedPeriod, scope);
+                }
                 return listFromRedis(liveRedisKey(boardType, resolvedPeriod, scope), userId, boardType.getCode(), resolvedPeriod);
             }
             return listHistoricalRank(boardType, resolvedPeriod, scope, userId);
@@ -218,6 +221,9 @@ public class HotRankServiceImpl implements HotRankService {
 
         // 总榜：选定日期截止的累计热度；仅「今天」走实时 Redis
         if (HotRankPeriodUtils.isToday(resolvedPeriod)) {
+            if (refresh) {
+                refreshLiveBoardFromEvents(boardType, resolvedPeriod, scope);
+            }
             ensureLiveBoard(boardType, categoryId);
             return listFromRedis(liveRedisKey(boardType, resolvedPeriod, scope), userId, boardType.getCode(), resolvedPeriod);
         }
@@ -244,8 +250,9 @@ public class HotRankServiceImpl implements HotRankService {
 
     @Override
     public void refreshDailyBoard(Long categoryId) {
-        // 日榜仅由当日行为事件实时累加，不做全量 stats 灌入（避免把历史累计误当「今日热度」）
-        log.debug("日榜 refresh 跳过全量预热: categoryId={}", categoryId);
+        String periodKey = HotRankPeriodUtils.dailyPeriodKey();
+        String scope = RecommendConstants.categoryScope(categoryId);
+        refreshLiveBoardFromEvents(HotRankBoardType.DAILY, periodKey, scope);
     }
 
     private List<HotArticleVO> listFromRedis(String key, Long userId, String boardType, String periodKey) {
@@ -281,9 +288,12 @@ public class HotRankServiceImpl implements HotRankService {
             if (article == null) {
                 continue;
             }
+            UserCardVO author = article.getAuthorAccountId() == null
+                    ? null
+                    : enrichment.users().get(article.getAuthorAccountId());
             result.add(toVO(article,
                     enrichment.stats().getOrDefault(articleId, emptyStats(articleId)),
-                    enrichment.users().get(article.getAuthorAccountId()),
+                    author,
                     enrichment.categoryNames(),
                     scoreMap.get(articleId),
                     rank,
@@ -313,9 +323,12 @@ public class HotRankServiceImpl implements HotRankService {
             if (score == null || score <= 0D) {
                 continue;
             }
+            UserCardVO author = article.getAuthorAccountId() == null
+                    ? null
+                    : enrichment.users().get(article.getAuthorAccountId());
             result.add(toVO(article,
                     enrichment.stats().getOrDefault(articleId, emptyStats(articleId)),
-                    enrichment.users().get(article.getAuthorAccountId()),
+                    author,
                     enrichment.categoryNames(),
                     score,
                     rank++,
@@ -421,6 +434,14 @@ public class HotRankServiceImpl implements HotRankService {
             redisUtils.zAdd(key, agg.getArticleId().toString(), agg.getTotalScore());
         }
         trimRank(key);
+    }
+
+    private void refreshLiveBoardFromEvents(HotRankBoardType boardType, String periodKey, String scope) {
+        String key = liveRedisKey(boardType, periodKey, scope);
+        redisUtils.del(key);
+        List<ArticleRankScoreAgg> aggs = hotRankBehaviorEventService.aggregate(
+                boardType, periodKey, scopeCategoryId(scope));
+        writeAggScores(boardType, periodKey, scope, aggs);
     }
 
     private void warmPassiveCacheFromAggs(String boardType, String periodKey, String scope, List<ArticleRankScoreAgg> aggs) {
@@ -574,7 +595,7 @@ public class HotRankServiceImpl implements HotRankService {
         }
         vo.setBoardType(boardType);
         vo.setPeriodKey(periodKey);
-        vo.setAuthorName(author == null ? "玩家" + article.getAuthorAccountId() : author.getUsername());
+        vo.setAuthorName(author == null ? null : author.getUsername());
         vo.setAuthorAvatar(author == null ? null : author.getAvatar());
         vo.setLikeCount(defaultLong(stats.getLikeCount()));
         vo.setCommentCount(defaultLong(stats.getCommentCount()));

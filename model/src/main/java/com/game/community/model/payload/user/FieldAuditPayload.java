@@ -12,6 +12,9 @@ public class FieldAuditPayload {
 
     private AuditFieldType field;
 
+    /** 提交审核时的 t_user.version，用于审核结果回写 CAS。 */
+    private Integer userVersion;
+
     private String content;
 
     private String oldAvatarUrl;

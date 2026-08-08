@@ -58,16 +58,16 @@ public class UserAccountController {
 
     /** 封禁用户（仅管理员） */
     @AdminCheck
-    @PostMapping("/{userId}/ban")
-    public Result<Void> banUser(@PathVariable("userId") Long userId,
+    @PostMapping("/account/{accountId}/ban")
+    public Result<Void> banUser(@PathVariable("accountId") Long accountId,
                                 @Valid @RequestBody BanUserDTO dto) {
-        return userAccountService.banUser(userId, dto.getReason(), dto.getDurationHours(), null);
+        return userAccountService.banUserByAccountId(accountId, dto.getReason(), dto.getDurationHours(), null);
     }
 
     /** 解封用户（仅管理员） */
     @AdminCheck
-    @PostMapping("/{userId}/unban")
-    public Result<Void> unbanUser(@PathVariable("userId") Long userId) {
-        return userAccountService.unbanUser(userId, null);
+    @PostMapping("/account/{accountId}/unban")
+    public Result<Void> unbanUser(@PathVariable("accountId") Long accountId) {
+        return userAccountService.unbanUserByAccountId(accountId, null);
     }
 }

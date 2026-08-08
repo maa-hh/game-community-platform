@@ -199,7 +199,14 @@ public class ReportServiceImpl implements ReportService {
             if (result == null || result.getData() == null) {
                 throw new BusinessException("弹幕不存在");
             }
-            return result.getData().getUserId();
+            Long accountId = result.getData().getAccountId();
+            UserCardInternalVO targetUser = accountId == null
+                    ? null
+                    : remoteClient.getUserByAccountId(accountId);
+            if (targetUser == null || targetUser.getUserId() == null) {
+                throw new BusinessException("弹幕用户不存在");
+            }
+            return targetUser.getUserId();
         }
         throw new BusinessException("举报目标类型不合法");
     }

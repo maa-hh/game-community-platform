@@ -196,16 +196,11 @@ public class SocialServiceImpl implements SocialService {
         if (!dfaAuditUtils.pass(dto.getContent())) {
             throw new BusinessException("回复包含敏感内容");
         }
-        if (dto.getReplyToUserId() != null && dto.getReplyToAccountId() != null) {
-            throw new BusinessException("被回复用户参数不能同时使用用户ID和账号ID");
-        }
-        if (dto.getReplyToUserId() != null) {
-            assertReplyTargetBelongsToComment(comment, dto.getReplyToUserId());
-            assertUserInteractionAllowed(userId, dto.getReplyToUserId());
-        } else if (dto.getReplyToAccountId() != null) {
+        Long replyToUserId = null;
+        if (dto.getReplyToAccountId() != null) {
             UserCardInternalVO replyTo = remoteClient.getUserByAccountId(dto.getReplyToAccountId());
             if (replyTo != null && replyTo.getUserId() != null) {
-                dto.setReplyToUserId(replyTo.getUserId());
+                replyToUserId = replyTo.getUserId();
                 assertReplyTargetBelongsToComment(comment, replyTo.getUserId());
                 assertUserInteractionAllowed(userId, replyTo.getUserId());
             } else {
@@ -213,14 +208,14 @@ public class SocialServiceImpl implements SocialService {
             }
         }
         UserCardInternalVO user = currentUser(userId);
-        UserCardInternalVO replyToUser = dto.getReplyToUserId() == null ? null : userMap(List.of(dto.getReplyToUserId())).get(dto.getReplyToUserId());
+        UserCardInternalVO replyToUser = replyToUserId == null ? null : userMap(List.of(replyToUserId)).get(replyToUserId);
         SocialReply reply = new SocialReply();
         reply.setCommentId(comment.getId());
         reply.setArticleId(comment.getArticleId());
         reply.setUserId(userId);
         reply.setUsername(user == null ? "玩家" + userId : user.getUsername());
         reply.setAvatar(user == null || user.getAvatar() == null ? "" : user.getAvatar());
-        reply.setReplyToUserId(dto.getReplyToUserId());
+        reply.setReplyToUserId(replyToUserId);
         reply.setReplyToUsername(replyToUser == null ? null : replyToUser.getUsername());
         reply.setContent(dto.getContent().trim());
         reply.setLikeCount(0L);
@@ -234,8 +229,8 @@ public class SocialServiceImpl implements SocialService {
         if (!Objects.equals(userId, articleAuthorUserId(article))) {
             recipients.add(articleAuthorUserId(article));
         }
-        if (dto.getReplyToUserId() != null && !Objects.equals(userId, dto.getReplyToUserId())) {
-            recipients.add(dto.getReplyToUserId());
+        if (replyToUserId != null && !Objects.equals(userId, replyToUserId)) {
+            recipients.add(replyToUserId);
         } else if (!Objects.equals(userId, comment.getUserId())) {
             recipients.add(comment.getUserId());
         }
@@ -1559,9 +1554,12 @@ public class SocialServiceImpl implements SocialService {
         vo.setArticleId(comment.getArticleId());
         if (user != null) {
             vo.setAccountId(user.getAccountId());
+            vo.setUsername(user.getUsername());
+            vo.setAvatar(user.getAvatar());
+        } else {
+            vo.setUsername(comment.getUsername());
+            vo.setAvatar(comment.getAvatar());
         }
-        vo.setUsername(comment.getUsername());
-        vo.setAvatar(comment.getAvatar());
         vo.setContent(StringUtils.hasText(content) ? content : "");
         vo.setLikeCount(defaultLong(comment.getLikeCount()));
         vo.setReplyCount(defaultLong(comment.getReplyCount()));
@@ -1578,16 +1576,21 @@ public class SocialServiceImpl implements SocialService {
         UserCardInternalVO user = users.get(reply.getUserId());
         if (user != null) {
             vo.setAccountId(user.getAccountId());
+            vo.setUsername(user.getUsername());
+            vo.setAvatar(user.getAvatar());
+        } else {
+            vo.setUsername(reply.getUsername());
+            vo.setAvatar(reply.getAvatar());
         }
-        vo.setUsername(reply.getUsername());
-        vo.setAvatar(reply.getAvatar());
         if (reply.getReplyToUserId() != null) {
             UserCardInternalVO replyTo = users.get(reply.getReplyToUserId());
             if (replyTo != null) {
                 vo.setReplyToAccountId(replyTo.getAccountId());
+                vo.setReplyToUsername(replyTo.getUsername());
+            } else {
+                vo.setReplyToUsername(reply.getReplyToUsername());
             }
         }
-        vo.setReplyToUsername(reply.getReplyToUsername());
         vo.setContent(reply.getContent());
         vo.setLikeCount(defaultLong(reply.getLikeCount()));
         vo.setLiked(liked);

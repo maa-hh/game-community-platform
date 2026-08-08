@@ -478,7 +478,12 @@ public class ModerationServiceImpl implements ModerationService {
                         && task.getTargetType() == SocialConstants.ReportTargetType.USER
                         ? task.getTargetId()
                         : task.getSubjectUserId();
-                unwrap(userFeignClient.banUser(userId, StringUtils.hasText(remark) ? remark : "举报成立封禁", null),
+                UserCardInternalVO targetUser = tryFetchUser(userId);
+                if (targetUser == null || targetUser.getAccountId() == null) {
+                    throw new BusinessException("封禁目标用户不存在");
+                }
+                unwrap(userFeignClient.banUser(targetUser.getAccountId(),
+                                StringUtils.hasText(remark) ? remark : "举报成立封禁", null),
                         "封禁用户失败");
             }
         }

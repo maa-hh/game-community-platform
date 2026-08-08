@@ -24,7 +24,7 @@ public interface UserProfileService {
 
     Result<ProfileFieldSubmitVO> updateSignature(UpdateSignatureDTO dto);
 
-    Result<ProfileFieldSubmitVO> uploadAvatar(MultipartFile avatarFile);
+    Result<ProfileFieldSubmitVO> uploadAvatar(MultipartFile avatarFile, Integer version);
 
     /** 更新无需审核的资料（Steam 账号等） */
     Result<Void> updateUserInfo(UpdateUserInfoDTO dto);

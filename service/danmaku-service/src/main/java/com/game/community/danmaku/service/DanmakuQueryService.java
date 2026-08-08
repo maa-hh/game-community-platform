@@ -131,7 +131,8 @@ public class DanmakuQueryService {
         vo.setVideoTimeMs(entity.getVideoTimeMs());
         vo.setDisplayTimeMs(entity.getDisplayTimeMs());
         vo.setSeq(entity.getSeq());
-        vo.setUserId(entity.getUserId());
+        // 弹幕响应只暴露 accountId；内部事件/表仍使用 userId 关联。
+        vo.setAccountId(entity.getAccountId());
         vo.setUsername(entity.getUsernameSnapshot());
         vo.setAvatar(entity.getAvatarSnapshot());
         vo.setContent(entity.getContent());

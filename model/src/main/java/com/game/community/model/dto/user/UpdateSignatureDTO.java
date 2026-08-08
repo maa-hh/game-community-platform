@@ -1,6 +1,7 @@
 package com.game.community.model.dto.user;
 
 import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 /**
@@ -8,6 +9,9 @@ import lombok.Data;
  */
 @Data
 public class UpdateSignatureDTO {
+
+    @NotNull(message = "资料版本不能为空")
+    private Integer version;
 
     @Size(max = 200, message = "个性签名过长")
     private String signature;
