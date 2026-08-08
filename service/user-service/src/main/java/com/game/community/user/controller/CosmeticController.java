@@ -2,6 +2,7 @@ package com.game.community.user.controller;
 
 import com.game.community.common.annotation.AdminCheck;
 import com.game.community.common.annotation.LoginCheck;
+import com.game.community.common.constant.cosmetic.CosmeticConstants;
 import com.game.community.model.base.PageResult;
 import com.game.community.model.base.Result;
 import com.game.community.model.dto.cosmetic.BatchUserIdsDTO;
@@ -10,8 +11,8 @@ import com.game.community.model.dto.cosmetic.SaveCosmeticDefDTO;
 import com.game.community.model.dto.cosmetic.UnequipCosmeticDTO;
 import com.game.community.model.dto.cosmetic.UseConsumableCosmeticDTO;
 import com.game.community.model.vo.cosmetic.CosmeticDefVO;
-import com.game.community.model.vo.cosmetic.UserCosmeticVO;
 import com.game.community.model.vo.cosmetic.CosmeticItemStateVO;
+import com.game.community.model.vo.cosmetic.UserCosmeticVO;
 import com.game.community.model.vo.cosmetic.UserDecorationVO;
 import com.game.community.model.vo.user.UserCardInternalVO;
 import com.game.community.user.service.CosmeticService;
@@ -28,9 +29,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 @RestController
 @RequestMapping("/user/cosmetic")
@@ -41,9 +40,17 @@ public class CosmeticController {
     private final UserQueryService userQueryService;
 
     @LoginCheck
-    @GetMapping("/backpack")
-    public Result<List<UserCosmeticVO>> backpack() {
-        return Result.success(cosmeticService.listBackpack(UserThreadLocal.getUserId()));
+    @GetMapping("/backpack/page")
+    public PageResult<UserCosmeticVO> backpackPage(
+            @RequestParam(value = "page", defaultValue = CosmeticConstants.FIRST_PAGE_TEXT) Long page,
+            @RequestParam(value = "size", defaultValue = CosmeticConstants.DEFAULT_PAGE_SIZE_TEXT) Long size,
+            @RequestParam(value = "effectMode", required = false) String effectMode,
+            @RequestParam(value = "category", required = false) String category,
+            @RequestParam(value = "equipped", required = false) Boolean equipped,
+            @RequestParam(value = "state", required = false) String state,
+            @RequestParam(value = "keyword", required = false) String keyword) {
+        return cosmeticService.pageBackpack(UserThreadLocal.getUserId(), page, size,
+                effectMode, category, equipped, state, keyword);
     }
 
     @GetMapping("/decoration/{accountId}")
@@ -55,29 +62,7 @@ public class CosmeticController {
     @PostMapping("/decorations/batch")
     public Result<Map<Long, UserDecorationVO>> batchDecorations(
             @Valid @RequestBody BatchUserIdsDTO dto) {
-        // 前端及社交接口使用对外 accountId；装扮表按内部 userId 关联。
-        // 先批量完成 accountId -> userId 映射，再批量读取装扮，避免 N 次用户查询和 N 次装扮查询。
-        List<Long> accountIds = dto.getAccountIds().stream()
-                .filter(Objects::nonNull)
-                .distinct()
-                .toList();
-        Result<List<UserCardInternalVO>> usersResult =
-                userQueryService.getUsersInternalByAccountIds(accountIds);
-        List<UserCardInternalVO> users = usersResult == null || usersResult.getData() == null
-                ? List.of()
-                : usersResult.getData();
-        Map<Long, UserDecorationVO> decorations = cosmeticService.batchDecorations(users.stream()
-                .map(UserCardInternalVO::getUserId)
-                .filter(Objects::nonNull)
-                .toList());
-        Map<Long, UserDecorationVO> result = new java.util.LinkedHashMap<>();
-        for (UserCardInternalVO user : users) {
-            UserDecorationVO decoration = decorations.get(user.getUserId());
-            if (user.getAccountId() != null && decoration != null) {
-                result.put(user.getAccountId(), decoration);
-            }
-        }
-        return Result.success(result);
+        return Result.success(cosmeticService.batchDecorationsByAccountIds(dto.getAccountIds()));
     }
 
     private UserCardInternalVO requireUserByAccountId(Long accountId) {
@@ -111,8 +96,8 @@ public class CosmeticController {
 
     @AdminCheck
     @GetMapping("/admin/def/page")
-    public PageResult<CosmeticDefVO> pageDefs(@RequestParam(value = "page", defaultValue = "1") Long page,
-                                              @RequestParam(value = "size", defaultValue = "20") Long size,
+    public PageResult<CosmeticDefVO> pageDefs(@RequestParam(value = "page", defaultValue = CosmeticConstants.FIRST_PAGE_TEXT) Long page,
+                                              @RequestParam(value = "size", defaultValue = CosmeticConstants.DEFAULT_PAGE_SIZE_TEXT) Long size,
                                               @RequestParam(value = "category", required = false) String category,
                                               @RequestParam(value = "status", required = false) Integer status) {
         return cosmeticService.pageDefs(page, size, category, status);

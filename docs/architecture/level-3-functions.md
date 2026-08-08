@@ -29,7 +29,7 @@
 | 4 | `UserAuthServiceImpl.assignAccountIdFromPool`（私有） |
 | 5 | `UserAuthServiceImpl.expandPool`（私有，号池耗尽时） |
 | 6 | MyBatis `UserMapper.insert` / `UserAccountMapper.insert` / `UserAuthMapper.insert` |
-| 7 | `AccountIdPoolMapper.casOccupy` |
+| 7 | `AccountIdPoolMapper.casReserve` / `bindUserId` |
 
 ---
 

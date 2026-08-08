@@ -7,6 +7,7 @@ import com.game.community.common.constant.ApiErrorCodes;
 import com.game.community.common.constant.cosmetic.CosmeticConstants;
 import com.game.community.common.exception.BusinessException;
 import com.game.community.model.base.PageResult;
+import com.game.community.model.base.Result;
 import com.game.community.model.dto.cosmetic.EquipCosmeticDTO;
 import com.game.community.model.dto.cosmetic.GrantCosmeticDTO;
 import com.game.community.model.dto.cosmetic.SaveCosmeticDefDTO;
@@ -27,6 +28,7 @@ import com.game.community.model.vo.cosmetic.CosmeticItemStateVO;
 import com.game.community.model.vo.cosmetic.CosmeticPurchaseCheckVO;
 import com.game.community.model.vo.cosmetic.UserCosmeticVO;
 import com.game.community.model.vo.cosmetic.UserDecorationVO;
+import com.game.community.model.vo.user.UserCardInternalVO;
 import com.game.community.user.mapper.CosmeticDefMapper;
 import com.game.community.user.mapper.CosmeticGrantRecordMapper;
 import com.game.community.user.mapper.UserActiveEffectMapper;
@@ -35,6 +37,7 @@ import com.game.community.user.mapper.UserCosmeticMapper;
 import com.game.community.user.mapper.UserCosmeticUseLogMapper;
 import com.game.community.user.mapper.UserMapper;
 import com.game.community.user.service.CosmeticService;
+import com.game.community.user.service.UserQueryService;
 import com.game.community.utils.RedisUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -47,10 +50,13 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Comparator;
+import java.util.Locale;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -60,7 +66,6 @@ import java.util.stream.Collectors;
 public class CosmeticServiceImpl implements CosmeticService {
 
     private static final String COSMETIC_DEF_CACHE_PREFIX = "user:cosmetic:def:";
-    private static final long COSMETIC_DEF_CACHE_SECONDS = 600;
 
     private final CosmeticDefMapper cosmeticDefMapper;
     private final UserCosmeticMapper userCosmeticMapper;
@@ -70,11 +75,14 @@ public class CosmeticServiceImpl implements CosmeticService {
     private final CosmeticGrantRecordMapper grantRecordMapper;
     private final RedisUtils redisUtils;
     private final UserMapper userMapper;
+    private final UserQueryService userQueryService;
 
     @Override
     public PageResult<CosmeticDefVO> pageDefs(Long page, Long size, String category, Integer status) {
-        long current = page == null || page < 1 ? 1 : page;
-        long pageSize = size == null || size < 1 ? 20 : Math.min(size, 100);
+        long current = page == null || page < CosmeticConstants.FIRST_PAGE
+                ? CosmeticConstants.FIRST_PAGE : page;
+        long pageSize = size == null || size < CosmeticConstants.DEFAULT_PAGE_SIZE
+                ? CosmeticConstants.DEFAULT_PAGE_SIZE : Math.min(size, CosmeticConstants.MAX_PAGE_SIZE);
         Page<CosmeticDef> result = cosmeticDefMapper.selectPage(new Page<>(current, pageSize),
                 new LambdaQueryWrapper<CosmeticDef>()
                         .eq(StringUtils.hasText(category), CosmeticDef::getCategory, category)
@@ -86,7 +94,10 @@ public class CosmeticServiceImpl implements CosmeticService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public CosmeticDefVO saveDef(SaveCosmeticDefDTO dto) {
-        validateDef(dto);
+        if (CosmeticConstants.EffectMode.EQUIP.equals(dto.getEffectMode())
+                && !StringUtils.hasText(dto.getSlot())) {
+            throw new BusinessException("装备类装扮必须指定槽位");
+        }
         CosmeticDef entity;
         if (dto.getId() != null) {
             entity = cosmeticDefMapper.selectById(dto.getId());
@@ -105,7 +116,8 @@ public class CosmeticServiceImpl implements CosmeticService {
         entity.setName(dto.getName().trim());
         entity.setCategory(dto.getCategory());
         entity.setEffectMode(dto.getEffectMode());
-        entity.setSlot(resolveSlot(dto));
+        entity.setSlot(StringUtils.hasText(dto.getSlot())
+                ? dto.getSlot().trim().toUpperCase() : dto.getCategory());
         entity.setPreviewUrl(dto.getPreviewUrl());
         entity.setAssetJson(dto.getAssetJson());
         entity.setConsumableConfig(dto.getConsumableConfig());
@@ -123,35 +135,65 @@ public class CosmeticServiceImpl implements CosmeticService {
     }
 
     @Override
-    public List<UserCosmeticVO> listBackpack(Long userId) {
-        List<UserCosmetic> owned = userCosmeticMapper.selectList(new LambdaQueryWrapper<UserCosmetic>()
-                .eq(UserCosmetic::getUserId, userId)
-                .gt(UserCosmetic::getQuantity, 0)
-                .orderByDesc(UserCosmetic::getAcquiredAt));
-        if (owned.isEmpty()) {
-            return List.of();
+    public PageResult<UserCosmeticVO> pageBackpack(Long userId, Long page, Long size,
+                                                    String effectMode, String category,
+                                                    Boolean equipped, String state, String keyword) {
+        long current = page == null || page < CosmeticConstants.FIRST_PAGE
+                ? CosmeticConstants.FIRST_PAGE : page;
+        long pageSize = size == null || size < CosmeticConstants.DEFAULT_PAGE_SIZE
+                ? CosmeticConstants.DEFAULT_PAGE_SIZE : Math.min(size, CosmeticConstants.MAX_PAGE_SIZE);
+        String normalizedEffectMode = normalizeFilter(effectMode, Set.of(
+                CosmeticConstants.EffectMode.EQUIP, CosmeticConstants.EffectMode.CONSUMABLE));
+        String normalizedCategory = normalizeFilter(category, Set.of(
+                CosmeticConstants.Category.AVATAR_FRAME, CosmeticConstants.Category.COMMENT_CARD,
+                CosmeticConstants.Category.COMMENT_FONT, CosmeticConstants.Category.POST_CARD,
+                CosmeticConstants.Category.PROFILE_BG));
+        String normalizedState = normalizeFilter(state, Set.of(
+                CosmeticConstants.State.ACTIVE, CosmeticConstants.State.EXPIRED));
+        String normalizedKeyword = StringUtils.hasText(keyword) ? keyword.trim() : null;
+
+        Page<UserCosmetic> pageResult = new Page<>(current, pageSize);
+        userCosmeticMapper.selectBackpackPage(pageResult, userId, normalizedEffectMode,
+                normalizedCategory, equipped, normalizedState, normalizedKeyword);
+
+        List<UserCosmetic> records = pageResult.getRecords();
+        if (records == null || records.isEmpty()) {
+            return PageResult.of(List.of(), current, pageSize, pageResult.getTotal());
         }
-        Map<String, CosmeticDef> defs = loadDefs(owned.stream().map(UserCosmetic::getCosmeticCode).toList());
+        Map<String, CosmeticDef> defs = loadDefs(records.stream()
+                .map(UserCosmetic::getCosmeticCode)
+                .toList());
         UserCosmeticLoadout loadout = loadoutMapper.selectById(userId);
-        return owned.stream()
+        List<UserCosmeticVO> result = records.stream()
                 .map(item -> toBackpackVO(item, defs.get(item.getCosmeticCode()), loadout))
                 .filter(Objects::nonNull)
                 .toList();
+        return PageResult.of(result, current, pageSize, pageResult.getTotal());
+    }
+
+    private String normalizeFilter(String value, Set<String> allowedValues) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        String normalized = value.trim().toUpperCase(Locale.ROOT);
+        return allowedValues.contains(normalized) ? normalized : null;
     }
 
     @Override
     public UserDecorationVO getDecoration(Long userId) {
+        User user = userMapper.selectById(userId);
         UserCosmeticLoadout loadout = loadoutMapper.selectById(userId);
         Map<String, CosmeticDef> defs = loadDefs(loadoutCodes(loadout));
         List<UserActiveEffect> effects = loadActiveEffects(List.of(userId), LocalDateTime.now());
-        return buildDecoration(userId, loadout, defs, effects);
+        return buildDecoration(user == null ? null : user.getAccountId(), loadout, defs, effects);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public CosmeticGrantResultVO grantCosmetic(GrantCosmeticDTO dto) {
         CosmeticDef def = requireEnabledDef(dto.getCosmeticCode());
-        int quantity = dto.getQuantity() == null || dto.getQuantity() < 1 ? 1 : dto.getQuantity();
+        int quantity = dto.getQuantity() == null || dto.getQuantity() < CosmeticConstants.DEFAULT_QUANTITY
+                ? CosmeticConstants.DEFAULT_QUANTITY : dto.getQuantity();
         CosmeticGrantRecord existing = grantRecordMapper.selectByOrderNo(dto.getOrderNo());
         if (existing != null) {
             return buildGrantResult(def.getCode(), existing.getQuantity(), true);
@@ -168,7 +210,12 @@ public class CosmeticServiceImpl implements CosmeticService {
             CosmeticGrantRecord concurrent = grantRecordMapper.selectByOrderNo(dto.getOrderNo());
             return buildGrantResult(def.getCode(), concurrent == null ? quantity : concurrent.getQuantity(), true);
         }
-        upsertOwned(dto.getUserId(), def, quantity, dto.getSourceType(), dto.getOrderNo());
+        boolean stackable = CosmeticConstants.EffectMode.CONSUMABLE.equals(def.getEffectMode());
+        userCosmeticMapper.upsertOwned(
+                dto.getUserId(), def.getCode(), stackable ? quantity : CosmeticConstants.DEFAULT_QUANTITY,
+                StringUtils.hasText(dto.getSourceType())
+                        ? dto.getSourceType() : CosmeticConstants.SourceType.SHOP,
+                dto.getOrderNo(), stackable ? CosmeticConstants.STACKABLE : CosmeticConstants.NON_STACKABLE);
         return buildGrantResult(def.getCode(), quantity, true);
     }
 
@@ -215,11 +262,45 @@ public class CosmeticServiceImpl implements CosmeticService {
     }
 
     @Override
-    public Map<Long, UserDecorationVO> batchDecorations(List<Long> userIds) {
-        if (userIds == null || userIds.isEmpty()) {
+    public Map<Long, UserDecorationVO> batchDecorationsByAccountIds(List<Long> accountIds) {
+        List<Long> normalizedAccountIds = accountIds == null
+                ? List.of()
+                : accountIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (normalizedAccountIds.isEmpty()) {
             return Map.of();
         }
-        List<Long> distinct = userIds.stream().filter(Objects::nonNull).distinct().toList();
+
+        Result<List<UserCardInternalVO>> usersResult =
+                userQueryService.getUsersInternalByAccountIds(normalizedAccountIds);
+        List<UserCardInternalVO> users = usersResult == null || usersResult.getData() == null
+                ? List.of()
+                : usersResult.getData();
+        Map<Long, Long> accountIdsByUserId = users.stream()
+                .filter(user -> user.getUserId() != null && user.getAccountId() != null)
+                .collect(Collectors.toMap(UserCardInternalVO::getUserId,
+                        UserCardInternalVO::getAccountId, (a, b) -> a));
+        Map<Long, UserDecorationVO> decorations = batchDecorationsInternal(users.stream()
+                .map(UserCardInternalVO::getUserId)
+                .filter(Objects::nonNull)
+                .toList(), accountIdsByUserId);
+
+        Map<Long, UserDecorationVO> result = new LinkedHashMap<>();
+        for (UserCardInternalVO user : users) {
+            UserDecorationVO decoration = decorations.get(user.getUserId());
+            if (user.getAccountId() != null && decoration != null) {
+                result.put(user.getAccountId(), decoration);
+            }
+        }
+        return result;
+    }
+
+    private Map<Long, UserDecorationVO> batchDecorationsInternal(
+            List<Long> userIds, Map<Long, Long> accountIdsByUserId) {
+        List<Long> distinct = userIds == null
+                ? List.of() : userIds.stream().filter(Objects::nonNull).distinct().toList();
         if (distinct.isEmpty()) {
             return Map.of();
         }
@@ -233,7 +314,9 @@ public class CosmeticServiceImpl implements CosmeticService {
                 .collect(Collectors.groupingBy(UserActiveEffect::getUserId));
         Map<Long, UserDecorationVO> result = new HashMap<>();
         for (Long userId : distinct) {
-            result.put(userId, buildDecoration(userId, loadouts.get(userId), defs,
+            result.put(userId, buildDecoration(
+                    accountIdsByUserId == null ? null : accountIdsByUserId.get(userId),
+                    loadouts.get(userId), defs,
                     effectsByUser.getOrDefault(userId, List.of())));
         }
         return result;
@@ -255,7 +338,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         if (loadout == null) {
             loadout = new UserCosmeticLoadout();
             loadout.setUserId(userId);
-            loadout.setVersion(0);
+            loadout.setVersion(CosmeticConstants.INITIAL_VERSION);
             loadout.setUpdateTime(LocalDateTime.now());
             applySlot(loadout, slot, def.getCode());
             if (loadoutMapper.insertIgnore(loadout) == 1) {
@@ -320,17 +403,6 @@ public class CosmeticServiceImpl implements CosmeticService {
         }
     }
 
-    private void upsertOwned(Long userId, CosmeticDef def, int quantity, String sourceType, String sourceRef) {
-        boolean stackable = CosmeticConstants.EffectMode.CONSUMABLE.equals(def.getEffectMode());
-        userCosmeticMapper.upsertOwned(
-                userId,
-                def.getCode(),
-                stackable ? quantity : 1,
-                StringUtils.hasText(sourceType) ? sourceType : CosmeticConstants.SourceType.SHOP,
-                sourceRef,
-                stackable ? 1 : 0);
-    }
-
     private UserCosmetic requireOwned(Long userId, String code) {
         UserCosmetic owned = userCosmeticMapper.selectByUserAndCode(userId, code);
         if (owned == null || owned.getQuantity() == null || owned.getQuantity() <= 0) {
@@ -353,19 +425,6 @@ public class CosmeticServiceImpl implements CosmeticService {
         return def;
     }
 
-    private void validateDef(SaveCosmeticDefDTO dto) {
-        if (CosmeticConstants.EffectMode.EQUIP.equals(dto.getEffectMode()) && !StringUtils.hasText(dto.getSlot())) {
-            throw new BusinessException("装备类装扮必须指定槽位");
-        }
-    }
-
-    private String resolveSlot(SaveCosmeticDefDTO dto) {
-        if (StringUtils.hasText(dto.getSlot())) {
-            return dto.getSlot().trim().toUpperCase();
-        }
-        return dto.getCategory();
-    }
-
     private Map<String, CosmeticDef> loadDefs(List<String> codes) {
         List<String> distinctCodes = codes == null ? List.of() : codes.stream()
                 .filter(StringUtils::hasText)
@@ -379,7 +438,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         List<String> missingCodes = new ArrayList<>();
         try {
             List<String> cacheValues = redisUtils.multiGet(distinctCodes.stream()
-                    .map(this::defCacheKey)
+                    .map(code -> COSMETIC_DEF_CACHE_PREFIX + code)
                     .toArray(String[]::new));
             for (int i = 0; i < distinctCodes.size(); i++) {
                 String value = i < cacheValues.size() ? cacheValues.get(i) : null;
@@ -425,7 +484,8 @@ public class CosmeticServiceImpl implements CosmeticService {
             return;
         }
         try {
-            redisUtils.setEx(defCacheKey(def.getCode()), JSON.toJSONString(def), COSMETIC_DEF_CACHE_SECONDS);
+            redisUtils.setEx(COSMETIC_DEF_CACHE_PREFIX + def.getCode(),
+                    JSON.toJSONString(def), CosmeticConstants.DEF_CACHE_SECONDS);
         } catch (RuntimeException e) {
             log.warn("装扮定义缓存写入失败，code={}", def.getCode(), e);
         }
@@ -436,14 +496,10 @@ public class CosmeticServiceImpl implements CosmeticService {
             return;
         }
         try {
-            redisUtils.del(defCacheKey(code));
+            redisUtils.del(COSMETIC_DEF_CACHE_PREFIX + code);
         } catch (RuntimeException e) {
             log.warn("装扮定义缓存删除失败，code={}", code, e);
         }
-    }
-
-    private String defCacheKey(String code) {
-        return COSMETIC_DEF_CACHE_PREFIX + code;
     }
 
     private UserCosmeticVO toBackpackVO(UserCosmetic owned, CosmeticDef def, UserCosmeticLoadout loadout) {
@@ -462,8 +518,12 @@ public class CosmeticServiceImpl implements CosmeticService {
         vo.setAcquiredAt(owned.getAcquiredAt());
         vo.setExpireAt(owned.getExpireAt());
         vo.setEquipped(isEquipped(loadout, def));
+        boolean expired = owned.getExpireAt() != null
+                && !owned.getExpireAt().isAfter(LocalDateTime.now());
+        vo.setState(expired ? CosmeticConstants.State.EXPIRED : CosmeticConstants.State.ACTIVE);
         vo.setCanUse(CosmeticConstants.EffectMode.CONSUMABLE.equals(def.getEffectMode())
-                && owned.getQuantity() != null && owned.getQuantity() > 0);
+                && owned.getQuantity() != null && owned.getQuantity() > 0
+                && !expired);
         return vo;
     }
 
@@ -508,12 +568,12 @@ public class CosmeticServiceImpl implements CosmeticService {
                 .toList();
     }
 
-    private UserDecorationVO buildDecoration(Long userId, UserCosmeticLoadout loadout,
+    private UserDecorationVO buildDecoration(Long accountId,
+                                             UserCosmeticLoadout loadout,
                                              Map<String, CosmeticDef> defs,
                                              List<UserActiveEffect> effects) {
         UserDecorationVO vo = new UserDecorationVO();
-        User user = userMapper.selectById(userId);
-        vo.setAccountId(user == null ? null : user.getAccountId());
+        vo.setAccountId(accountId);
         if (loadout != null) {
             vo.setAvatarFrame(buildEquipped(loadout.getAvatarFrameCode(), defs));
             vo.setCommentCard(buildEquipped(loadout.getCommentCardCode(), defs));
@@ -521,7 +581,11 @@ public class CosmeticServiceImpl implements CosmeticService {
             vo.setPostCard(buildEquipped(loadout.getPostCardCode(), defs));
             vo.setProfileBg(buildEquipped(loadout.getProfileBgCode(), defs));
         }
-        vo.setActiveEffects(toActiveEffectVOs(effects));
+        vo.setActiveEffects(effects.stream().map(effect -> {
+            ActiveEffectVO effectVO = new ActiveEffectVO();
+            BeanUtils.copyProperties(effect, effectVO);
+            return effectVO;
+        }).toList());
         return vo;
     }
 
@@ -533,19 +597,6 @@ public class CosmeticServiceImpl implements CosmeticService {
                         loadout.getCommentFontCode(), loadout.getPostCardCode(), loadout.getProfileBgCode())
                 .filter(StringUtils::hasText)
                 .toList();
-    }
-
-    private List<ActiveEffectVO> toActiveEffectVOs(List<UserActiveEffect> effects) {
-        List<ActiveEffectVO> result = new ArrayList<>();
-        for (UserActiveEffect effect : effects) {
-            ActiveEffectVO vo = new ActiveEffectVO();
-            vo.setEffectCode(effect.getEffectCode());
-            vo.setSourceCosmeticCode(effect.getSourceCosmeticCode());
-            vo.setExpireAt(effect.getExpireAt());
-            vo.setPayloadJson(effect.getPayloadJson());
-            result.add(vo);
-        }
-        return result;
     }
 
     private void applySlot(UserCosmeticLoadout loadout, String slot, String code) {

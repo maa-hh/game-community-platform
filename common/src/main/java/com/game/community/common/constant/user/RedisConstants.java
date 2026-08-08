@@ -5,6 +5,10 @@ package com.game.community.common.constant.user;
  */
 public class RedisConstants {
 
+    public static final long RESERVE_COOLDOWN = 0;
+    public static final long RESERVE_DAILY_LIMIT = 2;
+    public static final long RESERVE_UNAVAILABLE = -1;
+
     public static final String CODE_PREFIX = "email:code:";
 
     public static final String SEND_CODE_COOLDOWN_PREFIX = "email:cooldown:";

@@ -2,6 +2,8 @@ package com.game.community.user.filter;
 
 import com.game.community.common.constant.gateway.GatewayConstants;
 import com.game.community.model.ThreadLocal.UserContex;
+import com.game.community.model.enums.user.AccountType;
+import com.game.community.model.enums.user.UserStrings;
 import com.game.community.utils.ThreadLocal.UserThreadLocal;
 import jakarta.servlet.Filter;
 import jakarta.servlet.FilterChain;
@@ -48,10 +50,10 @@ public class UserFilter implements Filter {
             try {
                 Long userId = Long.parseLong(userIdStr);
                 Integer userType = userTypeStr == null || userTypeStr.isBlank()
-                        ? 0
+                        ? AccountType.NORMAL.getCode()
                         : Integer.parseInt(userTypeStr);
                 UserThreadLocal.setUser(new UserContex(userId, userType,
-                        steamAccount == null ? "" : steamAccount, sessionId));
+                        steamAccount == null ? UserStrings.EMPTY : steamAccount, sessionId));
                 log.debug("设置用户上下文: userId={}, type={}, steamAccount={}, sessionId={}",
                         userId, userType, steamAccount, sessionId);
             } catch (NumberFormatException e) {

@@ -1,4 +1,4 @@
-package com.game.community.user.event;
+package com.game.community.user.event.kafka;
 
 import com.game.community.common.constant.KafkaTopicConstants;
 import com.game.community.common.constant.audit.ModerationConstants;

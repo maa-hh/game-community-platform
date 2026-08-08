@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.game.community.user.mapper.UserCosmeticMapper">
+
+    <select id="selectBackpackPage"
+            resultType="com.game.community.model.entity.cosmetic.UserCosmetic">
+        SELECT uc.*
+        FROM t_user_cosmetic uc
+        INNER JOIN t_cosmetic_def cd ON cd.code = uc.cosmetic_code
+        LEFT JOIN t_user_cosmetic_loadout cl ON cl.user_id = uc.user_id
+        WHERE uc.user_id = #{userId}
+          AND uc.quantity &gt; 0
+        <if test="effectMode != null and effectMode != ''">
+            AND cd.effect_mode = #{effectMode}
+        </if>
+        <if test="category != null and category != ''">
+            AND cd.category = #{category}
+        </if>
+        <if test="state == 'ACTIVE'">
+            AND (uc.expire_at IS NULL OR uc.expire_at &gt; NOW())
+        </if>
+        <if test="state == 'EXPIRED'">
+            AND uc.expire_at IS NOT NULL
+            AND uc.expire_at &lt;= NOW()
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (cd.code LIKE CONCAT('%', #{keyword}, '%')
+                 OR cd.name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="equipped != null and equipped">
+            AND (
+                (cd.slot = 'AVATAR_FRAME' AND COALESCE(cl.avatar_frame_code, '') = uc.cosmetic_code)
+                OR (cd.slot = 'COMMENT_CARD' AND COALESCE(cl.comment_card_code, '') = uc.cosmetic_code)
+                OR (cd.slot = 'COMMENT_FONT' AND COALESCE(cl.comment_font_code, '') = uc.cosmetic_code)
+                OR (cd.slot = 'POST_CARD' AND COALESCE(cl.post_card_code, '') = uc.cosmetic_code)
+                OR (cd.slot = 'PROFILE_BG' AND COALESCE(cl.profile_bg_code, '') = uc.cosmetic_code)
+            )
+        </if>
+        <if test="equipped != null and !equipped">
+            AND NOT (
+                (cd.slot = 'AVATAR_FRAME' AND COALESCE(cl.avatar_frame_code, '') = uc.cosmetic_code)
+                OR (cd.slot = 'COMMENT_CARD' AND COALESCE(cl.comment_card_code, '') = uc.cosmetic_code)
+                OR (cd.slot = 'COMMENT_FONT' AND COALESCE(cl.comment_font_code, '') = uc.cosmetic_code)
+                OR (cd.slot = 'POST_CARD' AND COALESCE(cl.post_card_code, '') = uc.cosmetic_code)
+                OR (cd.slot = 'PROFILE_BG' AND COALESCE(cl.profile_bg_code, '') = uc.cosmetic_code)
+            )
+        </if>
+        ORDER BY uc.acquired_at DESC, uc.id DESC
+    </select>
+</mapper>

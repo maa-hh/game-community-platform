@@ -6,8 +6,8 @@ import com.game.community.common.constant.user.UserConstants;
 import com.game.community.model.entity.user.UserAuditTask;
 import com.game.community.model.enums.user.AuditFieldType;
 import com.game.community.model.enums.user.AuditTaskStatus;
+import com.game.community.user.event.executor.AuditTaskExecutor;
 import com.game.community.user.mapper.UserAuditTaskMapper;
-import com.game.community.user.service.UserFieldAuditTaskService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
@@ -28,6 +28,9 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class UserAuditTaskRecoveryRunner implements ApplicationRunner {
 
+    private static final long INITIAL_LAST_ID = 0L;
+    private static final String RECOVERY_SOURCE = "startup-recovery";
+
     private static final Set<AuditFieldType> SUPPORTED = Set.of(
             AuditFieldType.USERNAME,
             AuditFieldType.SIGNATURE,
@@ -35,7 +38,7 @@ public class UserAuditTaskRecoveryRunner implements ApplicationRunner {
     );
 
     private final UserAuditTaskMapper userAuditTaskMapper;
-    private final UserFieldAuditTaskService fieldAuditTaskService;
+    private final AuditTaskExecutor auditTaskExecutor;
 
     @Override
     public void run(ApplicationArguments args) {
@@ -48,7 +51,7 @@ public class UserAuditTaskRecoveryRunner implements ApplicationRunner {
 
     private int resetStaleTasks() {
         int count = 0;
-        long lastId = 0L;
+        long lastId = INITIAL_LAST_ID;
         LocalDateTime staleBefore = LocalDateTime.now().minusMinutes(UserConstants.AUDIT_TASK_STALE_MINUTES);
         while (true) {
             List<UserAuditTask> tasks = selectBatch(AuditTaskStatus.PROCESSING, lastId, staleBefore);
@@ -72,7 +75,7 @@ public class UserAuditTaskRecoveryRunner implements ApplicationRunner {
 
     private int enqueuePendingTasks() {
         int count = 0;
-        long lastId = 0L;
+        long lastId = INITIAL_LAST_ID;
         while (true) {
             List<UserAuditTask> tasks = selectBatch(AuditTaskStatus.PENDING, lastId, null);
             if (tasks.isEmpty()) {
@@ -81,15 +84,15 @@ public class UserAuditTaskRecoveryRunner implements ApplicationRunner {
             for (UserAuditTask task : tasks) {
                 if (SUPPORTED.contains(task.getTaskType())) {
                     try {
-                        fieldAuditTaskService.enqueueFieldAudit(task.getId());
+                        auditTaskExecutor.submit(task.getId());
                         count++;
                     } catch (java.util.concurrent.RejectedExecutionException ex) {
                         Map<String, Object> snapshot = new LinkedHashMap<>();
-                        snapshot.put("source", "startup-recovery");
+                        snapshot.put("source", RECOVERY_SOURCE);
                         snapshot.put("taskId", task.getId());
                         snapshot.put("pendingContent", task.getPendingContent());
                         snapshot.put("payload", task.getPayload());
-                        fieldAuditTaskService.handleEnqueueRejected(
+                        auditTaskExecutor.handleRejected(
                                 task.getId(),
                                 task.getTaskType(),
                                 task.getUserId(),

@@ -7,6 +7,34 @@ package com.game.community.common.constant.user;
  */
 public class UserConstants {
 
+    public static final int INITIAL_VERSION = 0;
+    public static final int INITIAL_FAIL_COUNT = 0;
+    public static final int NOT_DELETED = 0;
+    public static final int DELETED = 1;
+    public static final int ACCOUNT_POOL_AVAILABLE = 0;
+    public static final int ACCOUNT_POOL_RESERVED = 1;
+
+    public static final int MAX_BATCH_QUERY_SIZE = 100;
+    public static final int FIRST_PAGE = 1;
+    public static final int USER_SEARCH_DEFAULT_PAGE_SIZE = 10;
+    public static final int USER_SEARCH_MAX_PAGE_SIZE = 20;
+
+    public static final int USERNAME_MIN_LENGTH = 2;
+    public static final int USERNAME_MAX_LENGTH = 20;
+    public static final int SIGNATURE_MAX_LENGTH = 50;
+
+    public static final long MIN_POSITIVE_SECONDS = 1;
+    public static final int SECONDS_PER_MINUTE = 60;
+    public static final int CODE_LENGTH = 6;
+    public static final int CODE_RANDOM_BOUND = 1_000_000;
+
+    public static final int REGISTER_LOCK_SECONDS = 10;
+    public static final int SESSION_LOCK_SECONDS = 5;
+    public static final int ACCOUNT_ID_RESERVE_MAX_RETRIES = 3;
+    public static final String DEFAULT_NICKNAME = "新玩家";
+    public static final String CANCELLED_EMAIL_PREFIX = "cancelled_";
+    public static final String INVALID_EMAIL_DOMAIN = "@invalid.local";
+
     /** 验证码有效期默认值（秒）；实际以 email.code.expire-seconds 配置为准 */
     public static final long CODE_EXPIRE = 300;
 
@@ -56,6 +84,10 @@ public class UserConstants {
         public static final int MAX = 10;
         public static final int REJECT_MAX = 3;
         public static final int HUMAN_REVIEW_MAX = 6;
+        public static final int REJECT_DEFAULT = 1;
+        public static final int PASS_DEFAULT = 9;
+        public static final int HUMAN_REVIEW_PASS = 8;
+        public static final int ERROR_MAX_LENGTH = 255;
 
         private AuditScore() {
         }
