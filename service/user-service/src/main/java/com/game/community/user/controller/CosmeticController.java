@@ -40,6 +40,7 @@ public class CosmeticController {
     private final UserQueryService userQueryService;
 
     @LoginCheck
+    /** 执行 backpackPage 对应的业务处理。 */
     @GetMapping("/backpack/page")
     public PageResult<UserCosmeticVO> backpackPage(
             @RequestParam(value = "page", defaultValue = CosmeticConstants.FIRST_PAGE_TEXT) Long page,
@@ -53,18 +54,21 @@ public class CosmeticController {
                 effectMode, category, equipped, state, keyword);
     }
 
+    /** 执行 decoration 对应的业务处理。 */
     @GetMapping("/decoration/{accountId}")
     public Result<UserDecorationVO> decoration(@PathVariable("accountId") Long accountId) {
         UserCardInternalVO user = requireUserByAccountId(accountId);
         return Result.success(cosmeticService.getDecoration(user.getUserId()));
     }
 
+    /** 执行 batchDecorations 对应的业务处理。 */
     @PostMapping("/decorations/batch")
     public Result<Map<Long, UserDecorationVO>> batchDecorations(
             @Valid @RequestBody BatchUserIdsDTO dto) {
         return Result.success(cosmeticService.batchDecorationsByAccountIds(dto.getAccountIds()));
     }
 
+    /** 执行 requireUserByAccountId 对应的业务处理。 */
     private UserCardInternalVO requireUserByAccountId(Long accountId) {
         Result<UserCardInternalVO> result = userQueryService.getUserInternalByAccountId(accountId);
         if (result == null || result.getData() == null) {
@@ -74,6 +78,7 @@ public class CosmeticController {
     }
 
     @LoginCheck
+    /** 执行 equip 对应的业务处理。 */
     @PutMapping("/equip")
     public Result<Void> equip(@Valid @RequestBody EquipCosmeticDTO dto) {
         cosmeticService.equip(UserThreadLocal.getUserId(), dto);
@@ -81,6 +86,7 @@ public class CosmeticController {
     }
 
     @LoginCheck
+    /** 执行 unequip 对应的业务处理。 */
     @PutMapping("/unequip")
     public Result<Void> unequip(@Valid @RequestBody UnequipCosmeticDTO dto) {
         cosmeticService.unequip(UserThreadLocal.getUserId(), dto);
@@ -88,6 +94,7 @@ public class CosmeticController {
     }
 
     @LoginCheck
+    /** 执行 use 对应的业务处理。 */
     @PostMapping("/use")
     public Result<Void> use(@Valid @RequestBody UseConsumableCosmeticDTO dto) {
         cosmeticService.useConsumable(UserThreadLocal.getUserId(), dto);
@@ -104,6 +111,7 @@ public class CosmeticController {
     }
 
     @AdminCheck
+    /** 执行 saveDef 对应的业务处理。 */
     @PostMapping("/admin/def")
     public Result<CosmeticDefVO> saveDef(@Valid @RequestBody SaveCosmeticDefDTO dto) {
         return Result.success(cosmeticService.saveDef(dto));

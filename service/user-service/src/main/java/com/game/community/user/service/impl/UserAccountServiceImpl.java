@@ -45,6 +45,7 @@ public class UserAccountServiceImpl implements UserAccountService {
     private final VerificationCodeHelper verificationCodeHelper;
     private final UserOperationLogMapper userOperationLogMapper;
 
+    /** 执行 cancelAccount 对应的业务处理。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<Void> cancelAccount(CancelAccountDTO dto) {
@@ -97,6 +98,7 @@ public class UserAccountServiceImpl implements UserAccountService {
         return Result.success("注销申请已提交");
     }
 
+    /** 执行 sendCancelAccountCode 对应的业务处理。 */
     @Override
     public Result<SendCodeVO> sendCancelAccountCode() {
         Long userId = UserThreadLocal.getUserId();
@@ -120,6 +122,7 @@ public class UserAccountServiceImpl implements UserAccountService {
         return Result.success("验证码发送任务已提交，请留意邮箱", vo);
     }
 
+    /** 执行 revokeCancel 对应的业务处理。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<Void> revokeCancel() {
@@ -131,12 +134,14 @@ public class UserAccountServiceImpl implements UserAccountService {
         return Result.success("已撤销注销");
     }
 
+    /** 执行 revokeCancel 对应的业务处理。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void revokeCancel(Long userId) {
         doRevokeCancel(userId);
     }
 
+    /** 执行 doRevokeCancel 对应的业务处理。 */
     private void doRevokeCancel(Long userId) {
         UserAccount account = refreshStatus(userId);
         if (account.getStatus() == UserAccountStatus.CANCELLED) {
@@ -171,6 +176,7 @@ public class UserAccountServiceImpl implements UserAccountService {
         }
     }
 
+    /** 执行 banUser 对应的业务处理。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<Void> banUser(Long userId, String reason, Integer durationHours, Long operatorId) {
@@ -223,11 +229,13 @@ public class UserAccountServiceImpl implements UserAccountService {
         return Result.success("封禁成功");
     }
 
+    /** 执行 banUserByAccountId 对应的业务处理。 */
     @Override
     public Result<Void> banUserByAccountId(Long accountId, String reason, Integer durationHours, Long operatorId) {
         return banUser(requireUserIdByAccountId(accountId), reason, durationHours, operatorId);
     }
 
+    /** 执行 unbanUser 对应的业务处理。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<Void> unbanUser(Long userId, Long operatorId) {
@@ -261,23 +269,27 @@ public class UserAccountServiceImpl implements UserAccountService {
         return Result.success("解封成功");
     }
 
+    /** 执行 unbanUserByAccountId 对应的业务处理。 */
     @Override
     public Result<Void> unbanUserByAccountId(Long accountId, Long operatorId) {
         return unbanUser(requireUserIdByAccountId(accountId), operatorId);
     }
 
+    /** 执行 refreshStatus 对应的业务处理。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public UserAccount refreshStatus(Long userId) {
         return refreshStatus(getAccount(userId), true);
     }
 
+    /** 执行 refreshStatusForToken 对应的业务处理。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public UserAccount refreshStatusForToken(Long userId) {
         return refreshStatus(getAccount(userId), false);
     }
 
+    /** 执行 refreshStatus 对应的业务处理。 */
     private UserAccount refreshStatus(UserAccount account, boolean invalidateSession) {
         if (account == null) {
             throw new BusinessException("用户账号数据异常");
@@ -303,6 +315,7 @@ public class UserAccountServiceImpl implements UserAccountService {
         return account;
     }
 
+    /** 执行 assertLoginAllowed 对应的业务处理。 */
     @Override
     public void assertLoginAllowed(UserAccount account) {
         if (account.getStatus() == UserAccountStatus.CANCELLED) {
@@ -316,6 +329,7 @@ public class UserAccountServiceImpl implements UserAccountService {
         }
     }
 
+    /** 执行 assertEditable 对应的业务处理。 */
     @Override
     public void assertEditable(UserAccount account) {
         assertLoginAllowed(account);
@@ -324,6 +338,7 @@ public class UserAccountServiceImpl implements UserAccountService {
         }
     }
 
+    /** 执行 clearBan 对应的业务处理。 */
     private boolean clearBan(UserAccount account) {
         int updated = userAccountMapper.update(null, new LambdaUpdateWrapper<UserAccount>()
                 .eq(UserAccount::getId, account.getId())
@@ -343,6 +358,7 @@ public class UserAccountServiceImpl implements UserAccountService {
         return true;
     }
 
+    /** 执行 completeCancellation 对应的业务处理。 */
     private boolean completeCancellation(UserAccount account, boolean invalidateSession) {
         int updated = userAccountMapper.update(null, new LambdaUpdateWrapper<UserAccount>()
                 .eq(UserAccount::getId, account.getId())
@@ -385,6 +401,7 @@ public class UserAccountServiceImpl implements UserAccountService {
         return true;
     }
 
+    /** 执行 getAccount 对应的业务处理。 */
     private UserAccount getAccount(Long userId) {
         UserAccount account = userAccountMapper.selectOne(new LambdaQueryWrapper<UserAccount>()
                 .eq(UserAccount::getUserId, userId));
@@ -394,6 +411,7 @@ public class UserAccountServiceImpl implements UserAccountService {
         return account;
     }
 
+    /** 执行 requireUserIdByAccountId 对应的业务处理。 */
     private Long requireUserIdByAccountId(Long accountId) {
         if (accountId == null) {
             throw new BusinessException("账号ID不能为空");
@@ -406,6 +424,7 @@ public class UserAccountServiceImpl implements UserAccountService {
         return user.getId();
     }
 
+    /** 执行 updateSteamAccount 对应的业务处理。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateSteamAccount(Long userId, String steamAccount) {

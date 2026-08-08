@@ -28,8 +28,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
-import java.util.Arrays;
-import java.util.List;
 
 /**
  * 用户字段审核：审核状态表 CAS、任务创建、pending 解析
@@ -40,12 +38,6 @@ import java.util.List;
 @EnableConfigurationProperties(AuditModeProperties.class)
 public class UserAuditHelper {
 
-    private static final List<AuditTaskStatus> IN_FLIGHT = Arrays.asList(
-            AuditTaskStatus.PENDING,
-            AuditTaskStatus.PROCESSING,
-            AuditTaskStatus.HUMAN_REVIEW
-    );
-
     private final UserMapper userMapper;
     private final UserProfileAuditMapper profileAuditMapper;
     private final UserAuditTaskMapper userAuditTaskMapper;
@@ -53,7 +45,9 @@ public class UserAuditHelper {
     private final ObjectMapper objectMapper;
     private final AuditModeProperties auditModeProperties;
 
+    /** 执行 getOrCreate 对应的业务处理。 */
     public UserProfileAudit getOrCreate(Long userId) {
+        // 首次并发访问依靠 user_id 主键竞争，冲突后重新读取已存在的审核行。
         UserProfileAudit audit = profileAuditMapper.selectById(userId);
         if (audit != null) {
             return audit;
@@ -66,6 +60,7 @@ public class UserAuditHelper {
         return profileAuditMapper.selectById(userId);
     }
 
+    /** 执行 initProfileAudit 对应的业务处理。 */
     public void initProfileAudit(Long userId) {
         UserProfileAudit audit = new UserProfileAudit();
         audit.setUserId(userId);
@@ -78,7 +73,9 @@ public class UserAuditHelper {
         profileAuditMapper.insert(audit);
     }
 
+    /** 执行 acquireUsernameAudit 对应的业务处理。 */
     public boolean acquireUsernameAudit(Long userId, String pendingUsername) {
+        // 只有 NONE 状态才能 CAS 为 AUDITING，避免重复提交覆盖 pending 值。
         ensureProfileAuditRow(userId);
         return profileAuditMapper.update(null, new LambdaUpdateWrapper<UserProfileAudit>()
                 .eq(UserProfileAudit::getUserId, userId)
@@ -88,7 +85,9 @@ public class UserAuditHelper {
                 .set(UserProfileAudit::getUpdateTime, LocalDateTime.now())) > 0;
     }
 
+    /** 执行 acquireSignatureAudit 对应的业务处理。 */
     public boolean acquireSignatureAudit(Long userId, String pendingSignature) {
+        // 签名字段独立 CAS，占用失败表示已有审核任务正在处理。
         ensureProfileAuditRow(userId);
         return profileAuditMapper.update(null, new LambdaUpdateWrapper<UserProfileAudit>()
                 .eq(UserProfileAudit::getUserId, userId)
@@ -98,7 +97,9 @@ public class UserAuditHelper {
                 .set(UserProfileAudit::getUpdateTime, LocalDateTime.now())) > 0;
     }
 
+    /** 执行 acquireAvatarAudit 对应的业务处理。 */
     public boolean acquireAvatarAudit(Long userId, String pendingObjectName) {
+        // 头像对象名先写入 pending，审核通过前不写入正式头像字段。
         ensureProfileAuditRow(userId);
         return profileAuditMapper.update(null, new LambdaUpdateWrapper<UserProfileAudit>()
                 .eq(UserProfileAudit::getUserId, userId)
@@ -108,6 +109,7 @@ public class UserAuditHelper {
                 .set(UserProfileAudit::getUpdateTime, LocalDateTime.now())) > 0;
     }
 
+    /** 执行 clearUsernameAudit 对应的业务处理。 */
     public void clearUsernameAudit(Long userId, String pendingUsername) {
         profileAuditMapper.update(null, new LambdaUpdateWrapper<UserProfileAudit>()
                 .eq(UserProfileAudit::getUserId, userId)
@@ -117,6 +119,7 @@ public class UserAuditHelper {
                 .set(UserProfileAudit::getUpdateTime, LocalDateTime.now()));
     }
 
+    /** 执行 clearSignatureAudit 对应的业务处理。 */
     public void clearSignatureAudit(Long userId, String pendingSignature) {
         profileAuditMapper.update(null, new LambdaUpdateWrapper<UserProfileAudit>()
                 .eq(UserProfileAudit::getUserId, userId)
@@ -126,6 +129,7 @@ public class UserAuditHelper {
                 .set(UserProfileAudit::getUpdateTime, LocalDateTime.now()));
     }
 
+    /** 执行 clearAvatarAudit 对应的业务处理。 */
     public void clearAvatarAudit(Long userId, String pendingAvatar) {
         profileAuditMapper.update(null, new LambdaUpdateWrapper<UserProfileAudit>()
                 .eq(UserProfileAudit::getUserId, userId)
@@ -135,6 +139,7 @@ public class UserAuditHelper {
                 .set(UserProfileAudit::getUpdateTime, LocalDateTime.now()));
     }
 
+    /** 执行 markUsernameHumanReview 对应的业务处理。 */
     public void markUsernameHumanReview(Long userId) {
         profileAuditMapper.update(null, new LambdaUpdateWrapper<UserProfileAudit>()
                 .eq(UserProfileAudit::getUserId, userId)
@@ -143,6 +148,7 @@ public class UserAuditHelper {
                 .set(UserProfileAudit::getUpdateTime, LocalDateTime.now()));
     }
 
+    /** 执行 markSignatureHumanReview 对应的业务处理。 */
     public void markSignatureHumanReview(Long userId) {
         profileAuditMapper.update(null, new LambdaUpdateWrapper<UserProfileAudit>()
                 .eq(UserProfileAudit::getUserId, userId)
@@ -151,6 +157,7 @@ public class UserAuditHelper {
                 .set(UserProfileAudit::getUpdateTime, LocalDateTime.now()));
     }
 
+    /** 执行 markAvatarHumanReview 对应的业务处理。 */
     public void markAvatarHumanReview(Long userId) {
         profileAuditMapper.update(null, new LambdaUpdateWrapper<UserProfileAudit>()
                 .eq(UserProfileAudit::getUserId, userId)
@@ -159,6 +166,7 @@ public class UserAuditHelper {
                 .set(UserProfileAudit::getUpdateTime, LocalDateTime.now()));
     }
 
+    /** 执行 applyUsernamePassed 对应的业务处理。 */
     @Transactional(rollbackFor = Exception.class)
     public boolean applyUsernamePassed(Long userId, Integer expectedUserVersion, String username) {
         if (expectedUserVersion == null) {
@@ -186,6 +194,7 @@ public class UserAuditHelper {
         return true;
     }
 
+    /** 执行 applySignaturePassed 对应的业务处理。 */
     @Transactional(rollbackFor = Exception.class)
     public boolean applySignaturePassed(Long userId, Integer expectedUserVersion, String signature) {
         if (expectedUserVersion == null) {
@@ -213,6 +222,7 @@ public class UserAuditHelper {
         return true;
     }
 
+    /** 执行 applyAvatarPassed 对应的业务处理。 */
     @Transactional(rollbackFor = Exception.class)
     public boolean applyAvatarPassed(Long userId, Integer expectedUserVersion,
                                      String pendingAvatar, String publicAvatarUrl) {
@@ -241,8 +251,10 @@ public class UserAuditHelper {
         return true;
     }
 
+    /** 执行 createFieldAuditTask 对应的业务处理。 */
     public Long createFieldAuditTask(Long userId, AuditFieldType taskType, String pendingContent,
                                      FieldAuditPayload payload) {
+        // payload 保存完整审核上下文，异步线程只按 taskId 读取数据库即可执行。
         UserAuditTask task = new UserAuditTask();
         task.setUserId(userId);
         task.setTaskType(taskType);
@@ -261,6 +273,7 @@ public class UserAuditHelper {
         return task.getId();
     }
 
+    /** 执行 resolvePendingAvatarUrl 对应的业务处理。 */
     public String resolvePendingAvatarUrl(UserProfileAudit audit) {
         if (audit == null || !StringUtils.hasText(audit.getPendingAvatar())) {
             return null;
@@ -273,6 +286,7 @@ public class UserAuditHelper {
         }
     }
 
+    /** 执行 resolveLatestFieldAuditError 对应的业务处理。 */
     public String resolveLatestFieldAuditError(Long userId, AuditFieldType taskType) {
         UserAuditTask latest = userAuditTaskMapper.selectOne(new LambdaQueryWrapper<UserAuditTask>()
                 .eq(UserAuditTask::getUserId, userId)
@@ -292,15 +306,18 @@ public class UserAuditHelper {
         return latest.getErrorMessage();
     }
 
+    /** 执行 hasInFlightTask 对应的业务处理。 */
     public boolean hasInFlightTask(Long userId, AuditFieldType taskType) {
         Long count = userAuditTaskMapper.selectCount(new LambdaQueryWrapper<UserAuditTask>()
                 .eq(UserAuditTask::getUserId, userId)
                 .eq(UserAuditTask::getTaskType, taskType)
-                .in(UserAuditTask::getStatus, IN_FLIGHT));
+                .in(UserAuditTask::getStatus, UserConstants.IN_FLIGHT_AUDIT_STATUSES));
         return count != null && count > 0;
     }
 
+    /** 执行 readPayload 对应的业务处理。 */
     public FieldAuditPayload readPayload(UserAuditTask task) {
+        // 解析失败返回 null，由执行器统一回滚字段占用并结束任务。
         if (task == null || !StringUtils.hasText(task.getPayload())) {
             return null;
         }
@@ -312,6 +329,7 @@ public class UserAuditHelper {
         }
     }
 
+    /** 执行 ensureProfileAuditRow 对应的业务处理。 */
     private void ensureProfileAuditRow(Long userId) {
         if (profileAuditMapper.selectById(userId) == null) {
             try {

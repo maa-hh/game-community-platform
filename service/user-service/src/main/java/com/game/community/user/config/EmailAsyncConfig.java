@@ -15,6 +15,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 @EnableConfigurationProperties(EmailAsyncProperties.class)
 public class EmailAsyncConfig {
 
+    /** 执行 emailExecutor 对应的业务处理。 */
     @Bean("emailExecutor")
     public Executor emailExecutor(EmailAsyncProperties properties) {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();

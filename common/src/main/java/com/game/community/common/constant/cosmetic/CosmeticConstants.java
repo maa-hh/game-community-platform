@@ -3,6 +3,7 @@ package com.game.community.common.constant.cosmetic;
 public final class CosmeticConstants {
 
     public static final long DEF_CACHE_SECONDS = 600;
+    public static final String DEF_CACHE_KEY_PREFIX = "user:cosmetic:def:";
     public static final int FIRST_PAGE = 1;
     public static final int DEFAULT_PAGE_SIZE = 20;
     public static final int MAX_PAGE_SIZE = 100;

@@ -28,17 +28,20 @@ public class EmailServiceImpl implements EmailService {
 
     private Set<String> mockEmailSet = Set.of();
 
+    /** 执行 EmailServiceImpl 对应的业务处理。 */
     public EmailServiceImpl(EmailProperties emailProperties, EmailTaskExecutor emailTaskExecutor) {
         this.emailProperties = emailProperties;
         this.emailTaskExecutor = emailTaskExecutor;
     }
 
+    /** 执行 init 对应的业务处理。 */
     @PostConstruct
     public void init() {
         mockEmailSet = parseMockAddresses(emailProperties.getMock().getAddresses());
         log.info("邮箱 mock: enabled={}, addresses={}", emailProperties.getMock().isEnabled(), mockEmailSet);
     }
 
+    /** 执行 sendVerificationCode 对应的业务处理。 */
     @Override
     public void sendVerificationCode(String email, String code, CodeBizType bizType) {
         CodeBizType type = bizType == null ? CodeBizType.REGISTER : bizType;
@@ -57,17 +60,20 @@ public class EmailServiceImpl implements EmailService {
         }
     }
 
+    /** 执行 useFixedCode 对应的业务处理。 */
     @Override
     public boolean useFixedCode(String email) {
         return shouldMockSend(email)
                 && StringUtils.hasText(emailProperties.getMock().getFixedCode());
     }
 
+    /** 执行 getMockFixedCode 对应的业务处理。 */
     @Override
     public String getMockFixedCode() {
         return emailProperties.getMock().getFixedCode();
     }
 
+    /** 执行 shouldMockSend 对应的业务处理。 */
     private boolean shouldMockSend(String email) {
         if (emailProperties.isForceReal()) {
             return false;
@@ -82,6 +88,7 @@ public class EmailServiceImpl implements EmailService {
         return mockEmailSet.contains(email);
     }
 
+    /** 执行 parseMockAddresses 对应的业务处理。 */
     private static Set<String> parseMockAddresses(String addresses) {
         if (!StringUtils.hasText(addresses)) {
             return Set.of();

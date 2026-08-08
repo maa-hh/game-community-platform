@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.game.community.common.constant.user.UserConstants;
 import com.game.community.model.entity.user.UserAuditTask;
-import com.game.community.model.enums.user.AuditFieldType;
 import com.game.community.model.enums.user.AuditTaskStatus;
 import com.game.community.user.event.executor.AuditTaskExecutor;
 import com.game.community.user.mapper.UserAuditTaskMapper;
@@ -18,7 +17,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * 审核任务恢复器：服务启动时分批重新提交未完成的审核任务。
@@ -28,20 +26,13 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class UserAuditTaskRecoveryRunner implements ApplicationRunner {
 
-    private static final long INITIAL_LAST_ID = 0L;
-    private static final String RECOVERY_SOURCE = "startup-recovery";
-
-    private static final Set<AuditFieldType> SUPPORTED = Set.of(
-            AuditFieldType.USERNAME,
-            AuditFieldType.SIGNATURE,
-            AuditFieldType.AVATAR
-    );
-
     private final UserAuditTaskMapper userAuditTaskMapper;
     private final AuditTaskExecutor auditTaskExecutor;
 
+    /** 执行 run 对应的业务处理。 */
     @Override
     public void run(ApplicationArguments args) {
+        // 启动时只恢复超时 PROCESSING 和未处理 PENDING，不引入常驻扫描线程。
         int staleCount = resetStaleTasks();
         int pendingCount = enqueuePendingTasks();
         if (pendingCount > 0 || staleCount > 0) {
@@ -49,9 +40,10 @@ public class UserAuditTaskRecoveryRunner implements ApplicationRunner {
         }
     }
 
+    /** 执行 resetStaleTasks 对应的业务处理。 */
     private int resetStaleTasks() {
         int count = 0;
-        long lastId = INITIAL_LAST_ID;
+        long lastId = UserConstants.AUDIT_RECOVERY_INITIAL_LAST_ID;
         LocalDateTime staleBefore = LocalDateTime.now().minusMinutes(UserConstants.AUDIT_TASK_STALE_MINUTES);
         while (true) {
             List<UserAuditTask> tasks = selectBatch(AuditTaskStatus.PROCESSING, lastId, staleBefore);
@@ -73,22 +65,23 @@ public class UserAuditTaskRecoveryRunner implements ApplicationRunner {
         }
     }
 
+    /** 执行 enqueuePendingTasks 对应的业务处理。 */
     private int enqueuePendingTasks() {
         int count = 0;
-        long lastId = INITIAL_LAST_ID;
+        long lastId = UserConstants.AUDIT_RECOVERY_INITIAL_LAST_ID;
         while (true) {
             List<UserAuditTask> tasks = selectBatch(AuditTaskStatus.PENDING, lastId, null);
             if (tasks.isEmpty()) {
                 return count;
             }
             for (UserAuditTask task : tasks) {
-                if (SUPPORTED.contains(task.getTaskType())) {
+                if (UserConstants.SUPPORTED_AUDIT_FIELDS.contains(task.getTaskType())) {
                     try {
                         auditTaskExecutor.submit(task.getId());
                         count++;
                     } catch (java.util.concurrent.RejectedExecutionException ex) {
                         Map<String, Object> snapshot = new LinkedHashMap<>();
-                        snapshot.put("source", RECOVERY_SOURCE);
+                        snapshot.put("source", UserConstants.AUDIT_RECOVERY_SOURCE);
                         snapshot.put("taskId", task.getId());
                         snapshot.put("pendingContent", task.getPendingContent());
                         snapshot.put("payload", task.getPayload());
@@ -109,6 +102,7 @@ public class UserAuditTaskRecoveryRunner implements ApplicationRunner {
         }
     }
 
+    /** 执行 selectBatch 对应的业务处理。 */
     private List<UserAuditTask> selectBatch(AuditTaskStatus status, long lastId, LocalDateTime updateBefore) {
         LambdaQueryWrapper<UserAuditTask> wrapper = new LambdaQueryWrapper<UserAuditTask>()
                 .eq(UserAuditTask::getStatus, status)

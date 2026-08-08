@@ -31,6 +31,7 @@ public class UserFieldAuditTaskServiceImpl implements UserFieldAuditTaskService 
     private final ProfileAuditNotificationProducer notificationProducer;
     private final AuditTaskExecutor auditTaskExecutor;
 
+    /** 执行 approveHumanReview 对应的业务处理。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<Void> approveHumanReview(Long taskId) {
@@ -53,6 +54,7 @@ public class UserFieldAuditTaskServiceImpl implements UserFieldAuditTaskService 
         return Result.success(null);
     }
 
+    /** 执行 rejectHumanReview 对应的业务处理。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<Void> rejectHumanReview(Long taskId, String reason) {
@@ -72,6 +74,7 @@ public class UserFieldAuditTaskServiceImpl implements UserFieldAuditTaskService 
         return Result.success(null);
     }
 
+    /** 执行 getAuditTaskBrief 对应的业务处理。 */
     @Override
     public UserAuditTaskBriefVO getAuditTaskBrief(Long taskId) {
         UserAuditTask task = userAuditTaskMapper.selectById(taskId);
@@ -88,6 +91,7 @@ public class UserFieldAuditTaskServiceImpl implements UserFieldAuditTaskService 
         return vo;
     }
 
+    /** 执行 requireTask 对应的业务处理。 */
     private UserAuditTask requireTask(Long taskId) {
         UserAuditTask task = userAuditTaskMapper.selectById(taskId);
         if (task == null) {

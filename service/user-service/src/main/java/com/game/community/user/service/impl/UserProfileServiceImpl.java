@@ -62,8 +62,6 @@ import java.util.concurrent.RejectedExecutionException;
 @RequiredArgsConstructor
 public class UserProfileServiceImpl implements UserProfileService {
 
-    private static final long AVATAR_MAX_BYTES = 5L * 1024 * 1024;
-
     private final UserMapper userMapper;
     private final UserAuthMapper userAuthMapper;
     private final UserAuditHelper auditHelper;
@@ -74,6 +72,7 @@ public class UserProfileServiceImpl implements UserProfileService {
     private final UserAccountService userAccountService;
     private final TransactionTemplate transactionTemplate;
 
+    /** 执行 getCurrentUser 对应的业务处理。 */
     @Override
     public Result<UserMeVO> getCurrentUser() {
         Long userId = UserThreadLocal.getUserId();
@@ -105,8 +104,10 @@ public class UserProfileServiceImpl implements UserProfileService {
         return Result.success("查询成功", vo);
     }
 
+    /** 执行 updateUsername 对应的业务处理。 */
     @Override
     public Result<ProfileFieldSubmitVO> updateUsername(UpdateUsernameDTO dto) {
+        // 资料版本和审核占用共同实现乐观并发控制，避免覆盖别人的修改。
         Long userId = UserThreadLocal.getUserId();
         if (userId == null) {
             throw new BusinessException(ApiErrorCodes.UNAUTHORIZED, "请先登录");
@@ -133,6 +134,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         }
 
         Long taskId = transactionTemplate.execute(status -> {
+            // 占用状态和审核任务必须在同一事务中写入，任一失败都释放占用。
             if (!auditHelper.acquireUsernameAudit(userId, username)) {
                 throw new BusinessException(AuditFieldType.USERNAME.busyMessage());
             }
@@ -158,8 +160,10 @@ public class UserProfileServiceImpl implements UserProfileService {
         return Result.success("昵称已提交审核", vo);
     }
 
+    /** 执行 updateSignature 对应的业务处理。 */
     @Override
     public Result<ProfileFieldSubmitVO> updateSignature(UpdateSignatureDTO dto) {
+        // 签名与用户名使用同样的版本校验和字段级审核占用规则。
         Long userId = UserThreadLocal.getUserId();
         if (userId == null) {
             throw new BusinessException(ApiErrorCodes.UNAUTHORIZED, "请先登录");
@@ -183,6 +187,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         }
 
         Long taskId = transactionTemplate.execute(status -> {
+            // 先 CAS 占用签名字段，再落审核任务，防止重复提交。
             if (!auditHelper.acquireSignatureAudit(userId, signature)) {
                 throw new BusinessException(AuditFieldType.SIGNATURE.busyMessage());
             }
@@ -208,8 +213,10 @@ public class UserProfileServiceImpl implements UserProfileService {
         return Result.success("签名已提交审核", vo);
     }
 
+    /** 执行 uploadAvatar 对应的业务处理。 */
     @Override
     public Result<ProfileFieldSubmitVO> uploadAvatar(MultipartFile avatarFile, Integer version) {
+        // 头像先存私有对象，审核通过后才发布为公开对象，避免未审核内容被访问。
         Long userId = UserThreadLocal.getUserId();
         if (userId == null) {
             throw new BusinessException(ApiErrorCodes.UNAUTHORIZED, "请先登录");
@@ -231,6 +238,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         Long taskId;
         try {
             taskId = transactionTemplate.execute(status -> {
+                // 文件上传在事务外完成，数据库失败时由 catch 删除私有对象补偿。
                 if (!auditHelper.acquireAvatarAudit(userId, pendingObjectName)) {
                     throw new BusinessException(AuditFieldType.AVATAR.busyMessage());
                 }
@@ -260,6 +268,7 @@ public class UserProfileServiceImpl implements UserProfileService {
             enqueueOrReject(taskId, AuditFieldType.AVATAR, userId,
                     Map.of("pendingObjectName", pendingObjectName, "oldAvatarUrl", UserStrings.orEmpty(user.getAvatar())));
         } catch (BusinessException e) {
+            // 线程池拒绝时任务已落库但不会执行，清理私有头像避免孤儿文件。
             try {
                 minIOUtils.deletePrivateAvatar(pendingObjectName);
             } catch (Exception ignored) {
@@ -291,6 +300,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         }
     }
 
+    /** 执行 updateUserInfo 对应的业务处理。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<Void> updateUserInfo(UpdateUserInfoDTO dto) {
@@ -321,6 +331,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         return Result.success("资料更新成功");
     }
 
+    /** 执行 changePassword 对应的业务处理。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<Void> changePassword(ChangePasswordDTO dto) {
@@ -372,6 +383,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         return Result.success("密码修改成功，请重新登录");
     }
 
+    /** 执行 sendChangeEmailOldCode 对应的业务处理。 */
     @Override
     public Result<SendCodeVO> sendChangeEmailOldCode() {
         Long userId = UserThreadLocal.getUserId();
@@ -386,6 +398,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         return Result.success("验证码发送任务已提交，请留意邮箱", vo);
     }
 
+    /** 执行 prepareChangeEmail 对应的业务处理。 */
     @Override
     public Result<SendCodeVO> prepareChangeEmail(PrepareChangeEmailDTO dto) {
         Long userId = UserThreadLocal.getUserId();
@@ -405,6 +418,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         return Result.success("新邮箱验证码发送任务已提交，请留意邮箱", vo);
     }
 
+    /** 执行 confirmChangeEmail 对应的业务处理。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<ChangeEmailVO> confirmChangeEmail(ConfirmChangeEmailDTO dto) {
@@ -443,6 +457,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         return Result.success("邮箱修改成功，请重新登录", vo);
     }
 
+    /** 执行 requireEditableUser 对应的业务处理。 */
     private User requireEditableUser(Long userId) {
         User user = userMapper.selectById(userId);
         if (user == null) {
@@ -453,6 +468,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         return user;
     }
 
+    /** 执行 validateChangeEmailTarget 对应的业务处理。 */
     private String validateChangeEmailTarget(String oldEmail, String rawNewEmail) {
         String newEmail = EmailValidator.normalize(rawNewEmail);
         if (oldEmail.equalsIgnoreCase(newEmail)) {
@@ -465,6 +481,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         return newEmail;
     }
 
+    /** 执行 convertToMeVO 对应的业务处理。 */
     private UserMeVO convertToMeVO(User user, UserAccount account, UserProfileAudit profileAudit) {
         UserMeVO vo = new UserMeVO();
         BeanUtils.copyProperties(user, vo);
@@ -482,6 +499,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         return vo;
     }
 
+    /** 执行 requireBoundEmail 对应的业务处理。 */
     private String requireBoundEmail(User user) {
         if (user == null || !StringUtils.hasText(user.getEmail())) {
             throw new BusinessException(ApiErrorCodes.BAD_REQUEST, "当前账号未绑定邮箱");
@@ -489,11 +507,12 @@ public class UserProfileServiceImpl implements UserProfileService {
         return EmailValidator.normalize(user.getEmail());
     }
 
+    /** 执行 validateAvatar 对应的业务处理。 */
     private void validateAvatar(MultipartFile avatarFile) {
         if (avatarFile == null || avatarFile.isEmpty()) {
             throw new BusinessException("请选择头像文件");
         }
-        if (avatarFile.getSize() > AVATAR_MAX_BYTES) {
+        if (avatarFile.getSize() > UserConstants.AVATAR_MAX_BYTES) {
             throw new BusinessException("头像大小不能超过5MB");
         }
         String contentType = avatarFile.getContentType();

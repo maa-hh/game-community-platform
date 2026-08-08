@@ -16,11 +16,13 @@ import java.util.List;
 @Mapper
 public interface AccountIdPoolMapper extends BaseMapper<AccountIdPool> {
 
+    /** CAS 预占一个可用 accountId。 */
     @Update("UPDATE t_account_id_pool SET status = " + UserConstants.ACCOUNT_POOL_RESERVED
             + ", update_time = NOW() " +
             "WHERE account_id = #{accountId} AND status = " + UserConstants.ACCOUNT_POOL_AVAILABLE)
     int casReserve(@Param("accountId") Long accountId);
 
+    /** 将预占的 accountId 绑定到新用户。 */
     @Update("UPDATE t_account_id_pool SET user_id = #{userId}, update_time = NOW() " +
             "WHERE account_id = #{accountId} AND status = " + UserConstants.ACCOUNT_POOL_RESERVED
             + " AND user_id IS NULL")

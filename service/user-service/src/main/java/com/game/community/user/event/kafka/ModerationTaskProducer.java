@@ -19,6 +19,7 @@ public class ModerationTaskProducer {
 
     private final KafkaTemplate<String, ModerationTaskMessage> kafkaTemplate;
 
+    /** 执行 publishProfileAudit 对应的业务处理。 */
     public void publishProfileAudit(Long taskId, Long userId, String fieldLabel, String content, String reason,
                                     LocalDateTime targetUpdatedAt) {
         if (taskId == null) {

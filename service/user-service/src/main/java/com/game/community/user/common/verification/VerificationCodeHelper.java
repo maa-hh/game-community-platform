@@ -33,6 +33,7 @@ public class VerificationCodeHelper {
 
     /** 邮箱已由业务入口规范化；这里负责限流、落 Redis 验证码并提交发送任务。 */
     public int sendEmailCode(String email, CodeBizType bizType) {
+        // 验证码先原子占用冷却和每日额度，再提交邮件；额度失败不会发送邮件。
         String normalized = email;
         CodeBizType type = bizType == null ? CodeBizType.REGISTER : bizType;
         String typeCode = type.getCode();
@@ -74,9 +75,11 @@ public class VerificationCodeHelper {
         }
 
         emailService.sendVerificationCode(normalized, code, type);
+        // 返回 TTL 给前端倒计时，实际 SMTP 发送由 EmailTaskExecutor 异步完成。
         return (int) expireSeconds;
     }
 
+    /** 执行 verify 对应的业务处理。 */
     public void verify(String email, CodeBizType bizType, String inputCode) {
         assertCodeMatches(email, bizType, inputCode, true);
     }
@@ -86,6 +89,7 @@ public class VerificationCodeHelper {
         assertCodeMatches(email, bizType, inputCode, false);
     }
 
+    /** 执行 assertCodeMatches 对应的业务处理。 */
     private void assertCodeMatches(String email, CodeBizType bizType, String inputCode, boolean consume) {
         String normalized = email;
         CodeBizType type = bizType == null ? CodeBizType.REGISTER : bizType;
@@ -98,6 +102,7 @@ public class VerificationCodeHelper {
             throw new BusinessException(ApiErrorCodes.BAD_REQUEST, "验证码已过期，请重新获取");
         }
         if (!storedCode.equals(inputCode)) {
+            // 错误次数写 Redis 并在达到阈值后锁定，防止验证码被暴力试探。
             handleVerifyFailure(normalized);
             throw new BusinessException(ApiErrorCodes.BAD_REQUEST, "验证码错误");
         }
@@ -108,6 +113,7 @@ public class VerificationCodeHelper {
         }
     }
 
+    /** 执行 assertNotVerifyLocked 对应的业务处理。 */
     private void assertNotVerifyLocked(String email) {
         if (redisUtils.get(RedisConstants.CODE_VERIFY_LOCK_PREFIX + email) != null) {
             throw new BusinessException(ApiErrorCodes.FORBIDDEN, "验证码验证失败次数过多，请"
@@ -115,6 +121,7 @@ public class VerificationCodeHelper {
         }
     }
 
+    /** 执行 handleVerifyFailure 对应的业务处理。 */
     private void handleVerifyFailure(String email) {
         String failKey = RedisConstants.CODE_VERIFY_FAIL_PREFIX + email;
         long failCount = redisUtils.recordVerificationFailure(

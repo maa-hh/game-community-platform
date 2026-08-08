@@ -15,8 +15,10 @@ import java.util.List;
  */
 public interface UserQueryService {
 
+    /** 按对外 accountId 查询公开资料。 */
     Result<UserPublicVO> getUserPublicByAccountId(Long accountId);
 
+    /** 按对外 accountId 查询用户卡片。 */
     Result<UserCardVO> getUserCardByAccountId(Long accountId);
 
     /** 对外批量查询（ids 为 accountId） */

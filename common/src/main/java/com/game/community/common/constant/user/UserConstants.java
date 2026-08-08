@@ -1,5 +1,10 @@
 package com.game.community.common.constant.user;
 
+import com.game.community.model.enums.user.AuditFieldType;
+import com.game.community.model.enums.user.AuditTaskStatus;
+
+import java.util.Set;
+
 /**
  * 用户模块数值/时间类配置常量。
  * <p>
@@ -22,6 +27,8 @@ public class UserConstants {
     public static final int USERNAME_MIN_LENGTH = 2;
     public static final int USERNAME_MAX_LENGTH = 20;
     public static final int SIGNATURE_MAX_LENGTH = 50;
+    public static final long AVATAR_MAX_BYTES = 5L * 1024 * 1024;
+    public static final String LOCK_TIME_FORMAT_PATTERN = "yyyy-MM-dd HH:mm";
 
     public static final long MIN_POSITIVE_SECONDS = 1;
     public static final int SECONDS_PER_MINUTE = 60;
@@ -77,6 +84,16 @@ public class UserConstants {
 
     /** 服务启动恢复审核任务时每批最多读入的任务数 */
     public static final int AUDIT_RECOVERY_BATCH_SIZE = 100;
+    public static final long AUDIT_RECOVERY_INITIAL_LAST_ID = 0L;
+    public static final String AUDIT_RECOVERY_SOURCE = "startup-recovery";
+    public static final Set<AuditFieldType> SUPPORTED_AUDIT_FIELDS = Set.of(
+            AuditFieldType.USERNAME,
+            AuditFieldType.SIGNATURE,
+            AuditFieldType.AVATAR);
+    public static final Set<AuditTaskStatus> IN_FLIGHT_AUDIT_STATUSES = Set.of(
+            AuditTaskStatus.PENDING,
+            AuditTaskStatus.PROCESSING,
+            AuditTaskStatus.HUMAN_REVIEW);
 
     /** 合规分阈值：0-3 拒绝，4-6 人工，7-10 通过 */
     public static final class AuditScore {

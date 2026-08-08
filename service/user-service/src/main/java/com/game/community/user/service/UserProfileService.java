@@ -18,12 +18,16 @@ import org.springframework.web.multipart.MultipartFile;
  */
 public interface UserProfileService {
 
+    /** 查询当前登录用户及字段审核状态。 */
     Result<UserMeVO> getCurrentUser();
 
+    /** 提交用户名字段审核。 */
     Result<ProfileFieldSubmitVO> updateUsername(UpdateUsernameDTO dto);
 
+    /** 提交个性签名字段审核。 */
     Result<ProfileFieldSubmitVO> updateSignature(UpdateSignatureDTO dto);
 
+    /** 上传头像并提交头像字段审核。 */
     Result<ProfileFieldSubmitVO> uploadAvatar(MultipartFile avatarFile, Integer version);
 
     /** 更新无需审核的资料（Steam 账号等） */

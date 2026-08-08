@@ -6,6 +6,7 @@ import com.game.community.common.constant.ApiErrorCodes;
 import com.game.community.common.constant.AuthErrorCodes;
 import com.game.community.common.constant.Constants;
 import com.game.community.common.constant.user.RedisConstants;
+import com.game.community.common.constant.user.UserSessionConstants;
 import com.game.community.common.constant.user.UserConstants;
 import com.game.community.common.exception.BusinessException;
 import com.game.community.model.base.Result;
@@ -56,7 +57,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.UUID;
 
@@ -70,9 +70,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class UserAuthServiceImpl implements UserAuthService {
 
-    private static final DateTimeFormatter LOCK_TIME_FORMAT =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
-
     private final UserMapper userMapper;
     private final UserAccountMapper userAccountMapper;
     private final UserAuthMapper userAuthMapper;
@@ -85,8 +82,10 @@ public class UserAuthServiceImpl implements UserAuthService {
     private final UserOperationLogMapper userOperationLogMapper;
     private final UserAuditHelper auditHelper;
 
+    /** 执行 sendCode 对应的业务处理。 */
     @Override
     public Result<SendCodeVO> sendCode(SendCodeDTO dto) {
+        // 入口只规范化一次邮箱；后续验证码、查重和邮件任务都使用同一个值。
         String normalized = assertDeliverableEmail(dto.getEmail());
         CodeBizType type = dto.getBizType() == null ? CodeBizType.REGISTER : dto.getBizType();
 
@@ -105,14 +104,17 @@ public class UserAuthServiceImpl implements UserAuthService {
         }
 
         int expireIn = verificationCodeHelper.sendEmailCode(normalized, type);
+        // 邮件由后台任务发送，接口只返回有效期，避免 SMTP 阻塞请求线程。
         SendCodeVO vo = new SendCodeVO();
         vo.setExpireIn(expireIn);
         return Result.success("验证码发送任务已提交，请留意邮箱", vo);
     }
 
+    /** 执行 register 对应的业务处理。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<RegisterVO> register(RegisterDTO dto) {
+        // 先完成密码和验证码校验，再进入数据库事务，避免无效请求占用注册锁。
         String email = assertDeliverableEmail(dto.getEmail());
         try {
             PasswordValidator.assertValid(dto.getPassword());
@@ -126,6 +128,7 @@ public class UserAuthServiceImpl implements UserAuthService {
             throw new BusinessException(ApiErrorCodes.TOO_MANY_REQUESTS, "操作过于频繁，请稍后重试");
         }
 
+        // Redis 锁只抑制并发注册，邮箱唯一索引仍是最终一致性保障。
         if (userMapper.selectCount(new LambdaQueryWrapper<User>()
                 .eq(User::getEmail, email)) > 0) {
             throw new BusinessException(ApiErrorCodes.CONFLICT, "该邮箱已被注册");
@@ -148,6 +151,7 @@ public class UserAuthServiceImpl implements UserAuthService {
             throw new BusinessException(ApiErrorCodes.CONFLICT, "该邮箱已被注册");
         }
         int bound = accountIdPoolMapper.bindUserId(accountId, user.getId());
+        // 账号 ID 先预占再绑定用户；绑定失败抛异常让事务回滚，避免产生孤儿号。
         if (bound <= 0) {
             throw new BusinessException(ApiErrorCodes.INTERNAL_ERROR, "账号ID绑定失败");
         }
@@ -161,6 +165,7 @@ public class UserAuthServiceImpl implements UserAuthService {
         return Result.success("注册成功", vo);
     }
 
+    /** 执行 resetPassword 对应的业务处理。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<Void> resetPassword(ResetPasswordDTO dto) {
@@ -213,6 +218,7 @@ public class UserAuthServiceImpl implements UserAuthService {
         return Result.success("密码重置成功");
     }
 
+    /** 执行 login 对应的业务处理。 */
     @Override
     public Result<LoginVO> login(AccountLoginDTO dto, ClientInfo clientInfo) {
         String email = assertDeliverableEmail(dto.getEmail());
@@ -254,6 +260,7 @@ public class UserAuthServiceImpl implements UserAuthService {
         return Result.success("登录成功", loginVO);
     }
 
+    /** 执行 refreshToken 对应的业务处理。 */
     @Override
     public Result<TokenRefreshVO> refreshToken(String refreshToken) {
         if (!StringUtils.hasText(refreshToken)) {
@@ -267,17 +274,18 @@ public class UserAuthServiceImpl implements UserAuthService {
             throw new BusinessException(AuthErrorCodes.REFRESH_EXPIRED, "refreshToken 无效");
         }
 
-        if (!UserSessionHelper.TOKEN_TYPE_REFRESH.equals(
-                claims.get(UserSessionHelper.CLAIM_TOKEN_TYPE, String.class))) {
+        if (!UserSessionConstants.TOKEN_TYPE_REFRESH.equals(
+                claims.get(UserSessionConstants.CLAIM_TOKEN_TYPE, String.class))) {
             throw new BusinessException(AuthErrorCodes.REFRESH_EXPIRED, "refreshToken 无效");
         }
-        String sessionId = claims.get(UserSessionHelper.CLAIM_SESSION_ID, String.class);
+        String sessionId = claims.get(UserSessionConstants.CLAIM_SESSION_ID, String.class);
         if (!StringUtils.hasText(sessionId)) {
             throw new BusinessException(AuthErrorCodes.REFRESH_EXPIRED, "refreshToken 无效");
         }
 
         String refreshLockKey = RedisConstants.REFRESH_LOCK_PREFIX + sessionId;
         String refreshLockToken = UUID.randomUUID().toString();
+        // 同一 session 串行 refresh，防止两个请求同时生成新 refresh 并互相覆盖。
         if (Boolean.FALSE.equals(redisUtils.setIfAbsent(refreshLockKey, refreshLockToken,
                 UserConstants.SESSION_LOCK_SECONDS))) {
             throw new BusinessException(ApiErrorCodes.TOO_MANY_REQUESTS, "登录态刷新中，请稍后重试");
@@ -327,17 +335,19 @@ public class UserAuthServiceImpl implements UserAuthService {
             vo.setRefreshToken(newRefreshToken);
             return Result.success("令牌刷新成功", vo);
         } finally {
+            // 只有持有本次 token 的锁才能释放，避免误删其他请求的锁。
             redisUtils.unlock(refreshLockKey, refreshLockToken);
         }
     }
 
+    /** 执行 logout 对应的业务处理。 */
     @Override
     public Result<Void> logout(Long userId, String sessionId, String refreshToken) {
         // access 过期时 ThreadLocal 无 userId，从 refresh JWT 取 sessionId 再查 Redis 会话
         if (userId == null && StringUtils.hasText(refreshToken)) {
             try {
                 Claims claims = JwtUtils.parseToken(Constants.REFRESH_JWT_SECRET, refreshToken);
-                String refreshSessionId = claims.get(UserSessionHelper.CLAIM_SESSION_ID, String.class);
+                String refreshSessionId = claims.get(UserSessionConstants.CLAIM_SESSION_ID, String.class);
                 if (StringUtils.hasText(refreshSessionId)) {
                     sessionId = refreshSessionId;
                     UserSessionVO session = sessionHelper.getSession(refreshSessionId);
@@ -413,13 +423,15 @@ public class UserAuthServiceImpl implements UserAuthService {
         }
     }
 
+    /** 执行 assertLoginNotLocked 对应的业务处理。 */
     private void assertLoginNotLocked(UserAuth userAuth) {
         if (userAuth.getLockUntil() == null) {
             return;
         }
         if (userAuth.getLockUntil().isAfter(LocalDateTime.now())) {
             throw new BusinessException(ApiErrorCodes.FORBIDDEN, "密码错误次数过多，账号已锁定至 "
-                    + userAuth.getLockUntil().format(LOCK_TIME_FORMAT) + "，请稍后再试");
+                    + userAuth.getLockUntil().format(java.time.format.DateTimeFormatter.ofPattern(
+                    UserConstants.LOCK_TIME_FORMAT_PATTERN)) + "，请稍后再试");
         }
         userAuthMapper.update(null, new LambdaUpdateWrapper<UserAuth>()
                 .eq(UserAuth::getId, userAuth.getId())
@@ -430,6 +442,7 @@ public class UserAuthServiceImpl implements UserAuthService {
         userAuth.setLockUntil(null);
     }
 
+    /** 执行 assertDeliverableEmail 对应的业务处理。 */
     private String assertDeliverableEmail(String email) {
         String normalized = EmailValidator.normalize(email);
         try {
@@ -440,6 +453,7 @@ public class UserAuthServiceImpl implements UserAuthService {
         return normalized;
     }
 
+    /** 执行 reserveAccountId 对应的业务处理。 */
     private Long reserveAccountId() {
         int maxRetries = UserConstants.ACCOUNT_ID_RESERVE_MAX_RETRIES;
         for (int retry = 0; retry < maxRetries; retry++) {
@@ -502,6 +516,7 @@ public class UserAuthServiceImpl implements UserAuthService {
         log.info("号池扩容完成: digits={}, range=[{}, {}], inserted={}", digitCount, startId, endId, inserted);
     }
 
+    /** 执行 pow10 对应的业务处理。 */
     private static long pow10(int digits) {
         long v = 1L;
         for (int i = 0; i < digits; i++) {
@@ -510,6 +525,7 @@ public class UserAuthServiceImpl implements UserAuthService {
         return v;
     }
 
+    /** 执行 createUserAccount 对应的业务处理。 */
     private void createUserAccount(Long userId, RegisterSource registerSource) {
         UserAccount account = new UserAccount();
         account.setUserId(userId);
@@ -525,6 +541,7 @@ public class UserAuthServiceImpl implements UserAuthService {
         userAccountMapper.insert(account);
     }
 
+    /** 执行 createUserAuth 对应的业务处理。 */
     private void createUserAuth(Long userId, String password) {
         LocalDateTime now = LocalDateTime.now();
         UserAuth userAuth = new UserAuth();
@@ -540,6 +557,7 @@ public class UserAuthServiceImpl implements UserAuthService {
         userAuthMapper.insert(userAuth);
     }
 
+    /** 执行 handleLoginFailure 对应的业务处理。 */
     private void handleLoginFailure(Long userId, UserAuth userAuth) {
         userAuthMapper.update(null, new LambdaUpdateWrapper<UserAuth>()
                 .eq(UserAuth::getId, userAuth.getId())

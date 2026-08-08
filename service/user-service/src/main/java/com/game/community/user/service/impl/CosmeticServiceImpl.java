@@ -65,8 +65,6 @@ import java.util.stream.Collectors;
 @Slf4j
 public class CosmeticServiceImpl implements CosmeticService {
 
-    private static final String COSMETIC_DEF_CACHE_PREFIX = "user:cosmetic:def:";
-
     private final CosmeticDefMapper cosmeticDefMapper;
     private final UserCosmeticMapper userCosmeticMapper;
     private final UserCosmeticLoadoutMapper loadoutMapper;
@@ -77,6 +75,7 @@ public class CosmeticServiceImpl implements CosmeticService {
     private final UserMapper userMapper;
     private final UserQueryService userQueryService;
 
+    /** 执行 pageDefs 对应的业务处理。 */
     @Override
     public PageResult<CosmeticDefVO> pageDefs(Long page, Long size, String category, Integer status) {
         long current = page == null || page < CosmeticConstants.FIRST_PAGE
@@ -91,6 +90,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return PageResult.of(result.getRecords().stream().map(this::toDefVO).toList(), current, pageSize, result.getTotal());
     }
 
+    /** 执行 saveDef 对应的业务处理。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public CosmeticDefVO saveDef(SaveCosmeticDefDTO dto) {
@@ -134,6 +134,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return toDefVO(entity);
     }
 
+    /** 执行 pageBackpack 对应的业务处理。 */
     @Override
     public PageResult<UserCosmeticVO> pageBackpack(Long userId, Long page, Long size,
                                                     String effectMode, String category,
@@ -171,6 +172,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return PageResult.of(result, current, pageSize, pageResult.getTotal());
     }
 
+    /** 执行 normalizeFilter 对应的业务处理。 */
     private String normalizeFilter(String value, Set<String> allowedValues) {
         if (!StringUtils.hasText(value)) {
             return null;
@@ -179,6 +181,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return allowedValues.contains(normalized) ? normalized : null;
     }
 
+    /** 执行 getDecoration 对应的业务处理。 */
     @Override
     public UserDecorationVO getDecoration(Long userId) {
         User user = userMapper.selectById(userId);
@@ -188,6 +191,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return buildDecoration(user == null ? null : user.getAccountId(), loadout, defs, effects);
     }
 
+    /** 执行 grantCosmetic 对应的业务处理。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public CosmeticGrantResultVO grantCosmetic(GrantCosmeticDTO dto) {
@@ -219,6 +223,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return buildGrantResult(def.getCode(), quantity, true);
     }
 
+    /** 执行 checkOwnershipBlock 对应的业务处理。 */
     @Override
     public CosmeticPurchaseCheckVO checkOwnershipBlock(Long userId, String cosmeticCode) {
         CosmeticPurchaseCheckVO vo = new CosmeticPurchaseCheckVO();
@@ -241,6 +246,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return vo;
     }
 
+    /** 执行 getItemState 对应的业务处理。 */
     @Override
     public CosmeticItemStateVO getItemState(Long userId, String cosmeticCode) {
         CosmeticItemStateVO vo = new CosmeticItemStateVO();
@@ -261,6 +267,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return vo;
     }
 
+    /** 执行 batchDecorationsByAccountIds 对应的业务处理。 */
     @Override
     public Map<Long, UserDecorationVO> batchDecorationsByAccountIds(List<Long> accountIds) {
         List<Long> normalizedAccountIds = accountIds == null
@@ -297,6 +304,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return result;
     }
 
+    /** 执行 batchDecorationsInternal 对应的业务处理。 */
     private Map<Long, UserDecorationVO> batchDecorationsInternal(
             List<Long> userIds, Map<Long, Long> accountIdsByUserId) {
         List<Long> distinct = userIds == null
@@ -322,6 +330,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return result;
     }
 
+    /** 执行 equip 对应的业务处理。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void equip(Long userId, EquipCosmeticDTO dto) {
@@ -356,6 +365,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         }
     }
 
+    /** 执行 unequip 对应的业务处理。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void unequip(Long userId, UnequipCosmeticDTO dto) {
@@ -371,6 +381,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         }
     }
 
+    /** 执行 useConsumable 对应的业务处理。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void useConsumable(Long userId, UseConsumableCosmeticDTO dto) {
@@ -403,6 +414,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         }
     }
 
+    /** 执行 requireOwned 对应的业务处理。 */
     private UserCosmetic requireOwned(Long userId, String code) {
         UserCosmetic owned = userCosmeticMapper.selectByUserAndCode(userId, code);
         if (owned == null || owned.getQuantity() == null || owned.getQuantity() <= 0) {
@@ -414,6 +426,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return owned;
     }
 
+    /** 执行 requireEnabledDef 对应的业务处理。 */
     private CosmeticDef requireEnabledDef(String code) {
         CosmeticDef def = findDef(code);
         if (def == null) {
@@ -425,6 +438,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return def;
     }
 
+    /** 执行 loadDefs 对应的业务处理。 */
     private Map<String, CosmeticDef> loadDefs(List<String> codes) {
         List<String> distinctCodes = codes == null ? List.of() : codes.stream()
                 .filter(StringUtils::hasText)
@@ -438,7 +452,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         List<String> missingCodes = new ArrayList<>();
         try {
             List<String> cacheValues = redisUtils.multiGet(distinctCodes.stream()
-                    .map(code -> COSMETIC_DEF_CACHE_PREFIX + code)
+                    .map(code -> CosmeticConstants.DEF_CACHE_KEY_PREFIX + code)
                     .toArray(String[]::new));
             for (int i = 0; i < distinctCodes.size(); i++) {
                 String value = i < cacheValues.size() ? cacheValues.get(i) : null;
@@ -472,6 +486,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return result;
     }
 
+    /** 执行 findDef 对应的业务处理。 */
     private CosmeticDef findDef(String code) {
         if (!StringUtils.hasText(code)) {
             return null;
@@ -479,29 +494,32 @@ public class CosmeticServiceImpl implements CosmeticService {
         return loadDefs(List.of(code.trim())).get(code.trim());
     }
 
+    /** 执行 cacheDef 对应的业务处理。 */
     private void cacheDef(CosmeticDef def) {
         if (def == null || !StringUtils.hasText(def.getCode())) {
             return;
         }
         try {
-            redisUtils.setEx(COSMETIC_DEF_CACHE_PREFIX + def.getCode(),
+            redisUtils.setEx(CosmeticConstants.DEF_CACHE_KEY_PREFIX + def.getCode(),
                     JSON.toJSONString(def), CosmeticConstants.DEF_CACHE_SECONDS);
         } catch (RuntimeException e) {
             log.warn("装扮定义缓存写入失败，code={}", def.getCode(), e);
         }
     }
 
+    /** 执行 evictDefCache 对应的业务处理。 */
     private void evictDefCache(String code) {
         if (!StringUtils.hasText(code)) {
             return;
         }
         try {
-            redisUtils.del(COSMETIC_DEF_CACHE_PREFIX + code);
+            redisUtils.del(CosmeticConstants.DEF_CACHE_KEY_PREFIX + code);
         } catch (RuntimeException e) {
             log.warn("装扮定义缓存删除失败，code={}", code, e);
         }
     }
 
+    /** 执行 toBackpackVO 对应的业务处理。 */
     private UserCosmeticVO toBackpackVO(UserCosmetic owned, CosmeticDef def, UserCosmeticLoadout loadout) {
         if (def == null) {
             return null;
@@ -527,6 +545,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return vo;
     }
 
+    /** 执行 isEquipped 对应的业务处理。 */
     private boolean isEquipped(UserCosmeticLoadout loadout, CosmeticDef def) {
         if (loadout == null || !StringUtils.hasText(def.getSlot())) {
             return false;
@@ -542,6 +561,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         };
     }
 
+    /** 执行 buildEquipped 对应的业务处理。 */
     private CosmeticEquippedVO buildEquipped(String code, Map<String, CosmeticDef> defs) {
         if (!StringUtils.hasText(code)) {
             return null;
@@ -558,6 +578,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return vo;
     }
 
+    /** 执行 loadActiveEffects 对应的业务处理。 */
     private List<UserActiveEffect> loadActiveEffects(List<Long> userIds, LocalDateTime now) {
         if (userIds == null || userIds.isEmpty()) {
             return List.of();
@@ -568,6 +589,7 @@ public class CosmeticServiceImpl implements CosmeticService {
                 .toList();
     }
 
+    /** 执行 buildDecoration 对应的业务处理。 */
     private UserDecorationVO buildDecoration(Long accountId,
                                              UserCosmeticLoadout loadout,
                                              Map<String, CosmeticDef> defs,
@@ -589,6 +611,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return vo;
     }
 
+    /** 执行 loadoutCodes 对应的业务处理。 */
     private List<String> loadoutCodes(UserCosmeticLoadout loadout) {
         if (loadout == null) {
             return List.of();
@@ -599,6 +622,7 @@ public class CosmeticServiceImpl implements CosmeticService {
                 .toList();
     }
 
+    /** 执行 applySlot 对应的业务处理。 */
     private void applySlot(UserCosmeticLoadout loadout, String slot, String code) {
         switch (slot) {
             case CosmeticConstants.Slot.AVATAR_FRAME -> loadout.setAvatarFrameCode(code);
@@ -610,6 +634,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         }
     }
 
+    /** 执行 isSlotEquipped 对应的业务处理。 */
     private boolean isSlotEquipped(UserCosmeticLoadout loadout, String slot) {
         return switch (slot) {
             case CosmeticConstants.Slot.AVATAR_FRAME -> StringUtils.hasText(loadout.getAvatarFrameCode());
@@ -621,12 +646,14 @@ public class CosmeticServiceImpl implements CosmeticService {
         };
     }
 
+    /** 执行 toDefVO 对应的业务处理。 */
     private CosmeticDefVO toDefVO(CosmeticDef def) {
         CosmeticDefVO vo = new CosmeticDefVO();
         BeanUtils.copyProperties(def, vo);
         return vo;
     }
 
+    /** 执行 buildGrantResult 对应的业务处理。 */
     private CosmeticGrantResultVO buildGrantResult(String code, int quantity, boolean granted) {
         CosmeticGrantResultVO vo = new CosmeticGrantResultVO();
         vo.setCosmeticCode(code);
