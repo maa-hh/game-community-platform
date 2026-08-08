@@ -3,6 +3,7 @@ package com.game.community.user.common.session;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.game.community.common.constant.Constants;
+import com.game.community.common.constant.ApiErrorCodes;
 import com.game.community.common.constant.user.RedisConstants;
 import com.game.community.common.exception.BusinessException;
 import com.game.community.model.entity.user.User;
@@ -25,6 +26,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * 用户会话与令牌组件（本服务领域能力，非通用工具）
@@ -127,20 +129,42 @@ public class UserSessionHelper {
     /** 使用户的所有会话失效（用于封禁、注销、改密码等场景） */
     public void invalidateUserSession(Long userId) {
         String activeSessionId = redisUtils.get(RedisConstants.ACTIVE_SESSION_PREFIX + userId);
-        invalidateSession(activeSessionId, userId);
+        if (activeSessionId != null && !activeSessionId.isBlank()) {
+            invalidateSessionWithLock(activeSessionId, userId);
+        }
     }
 
     /** 使指定会话失效 */
     public void invalidateSession(String sessionId, Long userId) {
         if (sessionId != null && !sessionId.isBlank()) {
-            redisUtils.del(RedisConstants.SESSION_PREFIX + sessionId);
-            redisUtils.del(RedisConstants.SESSION_ACTIVE_PREFIX + sessionId);
-        }
-        if (userId != null) {
-            String activeSessionId = redisUtils.get(RedisConstants.ACTIVE_SESSION_PREFIX + userId);
-            if (sessionId == null || sessionId.isBlank() || sessionId.equals(activeSessionId)) {
-                redisUtils.del(RedisConstants.ACTIVE_SESSION_PREFIX + userId);
+            if (userId == null) {
+                redisUtils.invalidateSession(
+                        RedisConstants.SESSION_PREFIX + sessionId,
+                        RedisConstants.SESSION_ACTIVE_PREFIX + sessionId);
+            } else {
+                redisUtils.invalidateSession(
+                        RedisConstants.SESSION_PREFIX + sessionId,
+                        RedisConstants.SESSION_ACTIVE_PREFIX + sessionId,
+                        RedisConstants.ACTIVE_SESSION_PREFIX + userId,
+                        sessionId);
             }
+        }
+    }
+
+    /** 作废与 refresh 共用同一把会话锁，避免作废后被 refresh 的 saveSession 复活。 */
+    public void invalidateSessionWithLock(String sessionId, Long userId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return;
+        }
+        String lockKey = RedisConstants.REFRESH_LOCK_PREFIX + sessionId;
+        String lockToken = UUID.randomUUID().toString();
+        if (Boolean.FALSE.equals(redisUtils.setIfAbsent(lockKey, lockToken, 5))) {
+            throw new BusinessException(ApiErrorCodes.TOO_MANY_REQUESTS, "登录态处理中，请稍后重试");
+        }
+        try {
+            invalidateSession(sessionId, userId);
+        } finally {
+            redisUtils.unlock(lockKey, lockToken);
         }
     }
 

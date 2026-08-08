@@ -16,11 +16,12 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
 /**
- * 审核任务恢复器：服务启动时重新提交未完成的审核任务。
+ * 审核任务恢复器：服务启动时分批重新提交未完成的审核任务。
  */
 @Slf4j
 @Component
@@ -38,54 +39,80 @@ public class UserAuditTaskRecoveryRunner implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
-        List<UserAuditTask> pendingTasks = userAuditTaskMapper.selectList(new LambdaQueryWrapper<UserAuditTask>()
-                .eq(UserAuditTask::getStatus, AuditTaskStatus.PENDING)
-                .orderByAsc(UserAuditTask::getId));
-
-        List<UserAuditTask> staleTasks = userAuditTaskMapper.selectList(new LambdaQueryWrapper<UserAuditTask>()
-                .eq(UserAuditTask::getStatus, AuditTaskStatus.PROCESSING)
-                .lt(UserAuditTask::getUpdateTime, LocalDateTime.now().minusMinutes(UserConstants.AUDIT_TASK_STALE_MINUTES))
-                .orderByAsc(UserAuditTask::getId));
-
-        for (UserAuditTask task : staleTasks) {
-            userAuditTaskMapper.update(null, new LambdaUpdateWrapper<UserAuditTask>()
-                    .eq(UserAuditTask::getId, task.getId())
-                    .eq(UserAuditTask::getStatus, AuditTaskStatus.PROCESSING)
-                    .set(UserAuditTask::getStatus, AuditTaskStatus.PENDING)
-                    .set(UserAuditTask::getUpdateTime, LocalDateTime.now()));
-            log.info("重置超时审核任务: taskId={}, type={}", task.getId(), task.getTaskType());
+        int staleCount = resetStaleTasks();
+        int pendingCount = enqueuePendingTasks();
+        if (pendingCount > 0 || staleCount > 0) {
+            log.info("审核任务恢复完成: pending={}, stale={}", pendingCount, staleCount);
         }
+    }
 
-        List<UserAuditTask> allTasks = userAuditTaskMapper.selectList(new LambdaQueryWrapper<UserAuditTask>()
-                .eq(UserAuditTask::getStatus, AuditTaskStatus.PENDING)
-                .orderByAsc(UserAuditTask::getId));
-
-        for (UserAuditTask task : allTasks) {
-            if (SUPPORTED.contains(task.getTaskType())) {
-                try {
-                    fieldAuditTaskService.enqueueFieldAudit(task.getId());
-                } catch (java.util.concurrent.RejectedExecutionException ex) {
-                    fieldAuditTaskService.handleEnqueueRejected(
-                            task.getId(),
-                            task.getTaskType(),
-                            task.getUserId(),
-                            Map.of(
-                                    "source", "startup-recovery",
-                                    "taskId", task.getId(),
-                                    "pendingContent", task.getPendingContent(),
-                                    "payload", task.getPayload()
-                            ),
-                            ex);
-                    log.warn("启动恢复入队失败(服务繁忙): taskId={}, type={}", task.getId(), task.getTaskType());
+    private int resetStaleTasks() {
+        int count = 0;
+        long lastId = 0L;
+        LocalDateTime staleBefore = LocalDateTime.now().minusMinutes(UserConstants.AUDIT_TASK_STALE_MINUTES);
+        while (true) {
+            List<UserAuditTask> tasks = selectBatch(AuditTaskStatus.PROCESSING, lastId, staleBefore);
+            if (tasks.isEmpty()) {
+                return count;
+            }
+            for (UserAuditTask task : tasks) {
+                int updated = userAuditTaskMapper.update(null, new LambdaUpdateWrapper<UserAuditTask>()
+                        .eq(UserAuditTask::getId, task.getId())
+                        .eq(UserAuditTask::getStatus, AuditTaskStatus.PROCESSING)
+                        .set(UserAuditTask::getStatus, AuditTaskStatus.PENDING)
+                        .set(UserAuditTask::getUpdateTime, LocalDateTime.now()));
+                if (updated > 0) {
+                    count++;
+                    log.info("重置超时审核任务: taskId={}, type={}", task.getId(), task.getTaskType());
                 }
-            } else {
-                log.warn("未知或已废弃审核任务类型，跳过恢复: taskId={}, taskType={}",
-                        task.getId(), task.getTaskType());
+                lastId = task.getId();
             }
         }
+    }
 
-        if (!pendingTasks.isEmpty() || !staleTasks.isEmpty()) {
-            log.info("审核任务恢复完成: pending={}, stale={}", pendingTasks.size(), staleTasks.size());
+    private int enqueuePendingTasks() {
+        int count = 0;
+        long lastId = 0L;
+        while (true) {
+            List<UserAuditTask> tasks = selectBatch(AuditTaskStatus.PENDING, lastId, null);
+            if (tasks.isEmpty()) {
+                return count;
+            }
+            for (UserAuditTask task : tasks) {
+                if (SUPPORTED.contains(task.getTaskType())) {
+                    try {
+                        fieldAuditTaskService.enqueueFieldAudit(task.getId());
+                        count++;
+                    } catch (java.util.concurrent.RejectedExecutionException ex) {
+                        Map<String, Object> snapshot = new LinkedHashMap<>();
+                        snapshot.put("source", "startup-recovery");
+                        snapshot.put("taskId", task.getId());
+                        snapshot.put("pendingContent", task.getPendingContent());
+                        snapshot.put("payload", task.getPayload());
+                        fieldAuditTaskService.handleEnqueueRejected(
+                                task.getId(),
+                                task.getTaskType(),
+                                task.getUserId(),
+                                snapshot,
+                                ex);
+                        log.warn("启动恢复入队失败(服务繁忙): taskId={}, type={}", task.getId(), task.getTaskType());
+                    }
+                } else {
+                    log.warn("未知或已废弃审核任务类型，跳过恢复: taskId={}, taskType={}",
+                            task.getId(), task.getTaskType());
+                }
+                lastId = task.getId();
+            }
         }
+    }
+
+    private List<UserAuditTask> selectBatch(AuditTaskStatus status, long lastId, LocalDateTime updateBefore) {
+        LambdaQueryWrapper<UserAuditTask> wrapper = new LambdaQueryWrapper<UserAuditTask>()
+                .eq(UserAuditTask::getStatus, status)
+                .gt(lastId > 0, UserAuditTask::getId, lastId)
+                .lt(updateBefore != null, UserAuditTask::getUpdateTime, updateBefore)
+                .orderByAsc(UserAuditTask::getId)
+                .last("LIMIT " + UserConstants.AUDIT_RECOVERY_BATCH_SIZE);
+        return userAuditTaskMapper.selectList(wrapper);
     }
 }

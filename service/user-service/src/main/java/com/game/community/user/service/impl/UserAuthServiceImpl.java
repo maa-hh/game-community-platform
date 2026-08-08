@@ -267,7 +267,7 @@ public class UserAuthServiceImpl implements UserAuthService {
             }
             UserAccount account;
             try {
-                account = userAccountService.refreshStatus(userId);
+                account = userAccountService.refreshStatusForToken(userId);
                 userAccountService.assertLoginAllowed(account);
             } catch (BusinessException e) {
                 sessionHelper.invalidateSession(sessionId, userId);
@@ -317,7 +317,7 @@ public class UserAuthServiceImpl implements UserAuthService {
             String currentSessionId = StringUtils.hasText(sessionId)
                     ? sessionId
                     : redisUtils.get(RedisConstants.ACTIVE_SESSION_PREFIX + userId);
-            sessionHelper.invalidateSession(currentSessionId, userId);
+            sessionHelper.invalidateSessionWithLock(currentSessionId, userId);
             userSupport.logOperation(userId, OperationType.LOGOUT, null, null);
         }
         return Result.success("退出登录成功");

@@ -6,6 +6,7 @@ import com.game.community.model.entity.user.UserNotificationOutbox;
 import com.game.community.model.message.NotificationEventMessage;
 import com.game.community.user.mapper.UserNotificationOutboxMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +32,10 @@ public class UserNotificationOutboxService {
         outbox.setRetryCount(0);
         outbox.setCreateTime(LocalDateTime.now());
         outbox.setUpdateTime(LocalDateTime.now());
-        mapper.insert(outbox);
+        try {
+            mapper.insert(outbox);
+        } catch (DuplicateKeyException e) {
+            // eventKey 是生产端幂等键；重复调用视为已入队，不能阻断原业务事务。
+        }
     }
 }

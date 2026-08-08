@@ -27,6 +27,7 @@ import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Objects;
 
 /**
  * JWT 全局过滤器：
@@ -112,6 +113,11 @@ public class JwtGlobalFilter implements GlobalFilter, Ordered {
             throw new AuthFailException("token无效");
         }
 
+        int sessionType = session.getType() == null ? 0 : session.getType().getCode();
+        if (!Objects.equals(userType == null ? 0 : userType, sessionType)) {
+            throw new AuthFailException("账号权限已变化，请刷新登录态");
+        }
+
         if (session.getAccountStatus() != null
                 && (session.getAccountStatus() == UserAccountStatus.BANNED
                 || session.getAccountStatus() == UserAccountStatus.CANCELLED)) {
@@ -126,7 +132,7 @@ public class JwtGlobalFilter implements GlobalFilter, Ordered {
                     headers.remove(GatewayConstants.SESSION_ID_HEADER);
                 })
                 .header(GatewayConstants.USER_ID_HEADER, userId.toString())
-                .header(GatewayConstants.USER_TYPE_HEADER, String.valueOf(userType == null ? 0 : userType))
+                .header(GatewayConstants.USER_TYPE_HEADER, String.valueOf(sessionType))
                 .header(GatewayConstants.SESSION_ID_HEADER, sessionId)
                 .header(GatewayConstants.INTERNAL_SECRET_HEADER, internalSecret);
         if (StringUtils.hasText(steamAccount)) {

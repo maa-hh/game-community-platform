@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS t_user_cosmetic_loadout (
     comment_font_code VARCHAR(64) NULL,
     post_card_code VARCHAR(64) NULL,
     profile_bg_code VARCHAR(64) NULL,
+    version INT NOT NULL DEFAULT 0 COMMENT '乐观锁版本号',
     update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户当前装备';
 

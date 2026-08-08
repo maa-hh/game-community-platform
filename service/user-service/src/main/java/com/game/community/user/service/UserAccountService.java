@@ -45,6 +45,9 @@ public interface UserAccountService {
     /** 按 userId 加载并被动刷新状态 */
     UserAccount refreshStatus(Long userId);
 
+    /** refresh 持有会话锁时使用；注销完成后的会话作废由 refresh 调用方在锁内完成。 */
+    UserAccount refreshStatusForToken(Long userId);
+
     /** 更新 Steam 账号字段（Feign / steam-service 绑定解绑） */
     void updateSteamAccount(Long userId, String steamAccount);
 

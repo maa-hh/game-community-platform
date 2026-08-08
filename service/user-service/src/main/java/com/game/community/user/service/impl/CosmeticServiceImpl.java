@@ -2,8 +2,8 @@ package com.game.community.user.service.impl;
 
 import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.game.community.common.constant.ApiErrorCodes;
 import com.game.community.common.constant.cosmetic.CosmeticConstants;
 import com.game.community.common.exception.BusinessException;
 import com.game.community.model.base.PageResult;
@@ -255,14 +255,22 @@ public class CosmeticServiceImpl implements CosmeticService {
         if (loadout == null) {
             loadout = new UserCosmeticLoadout();
             loadout.setUserId(userId);
+            loadout.setVersion(0);
             loadout.setUpdateTime(LocalDateTime.now());
             applySlot(loadout, slot, def.getCode());
-            loadoutMapper.insert(loadout);
-            return;
+            if (loadoutMapper.insertIgnore(loadout) == 1) {
+                return;
+            }
+            loadout = loadoutMapper.selectById(userId);
+            if (loadout == null) {
+                throw new BusinessException("装备状态初始化失败，请重试");
+            }
         }
         applySlot(loadout, slot, def.getCode());
         loadout.setUpdateTime(LocalDateTime.now());
-        loadoutMapper.updateById(loadout);
+        if (loadoutMapper.updateById(loadout) == 0) {
+            throw new BusinessException(ApiErrorCodes.CONFLICT, "装备状态已变化，请刷新后重试");
+        }
     }
 
     @Override
@@ -273,11 +281,11 @@ public class CosmeticServiceImpl implements CosmeticService {
         if (loadout == null || !isSlotEquipped(loadout, slot)) {
             return;
         }
-        LambdaUpdateWrapper<UserCosmeticLoadout> wrapper = new LambdaUpdateWrapper<UserCosmeticLoadout>()
-                .eq(UserCosmeticLoadout::getUserId, userId)
-                .set(UserCosmeticLoadout::getUpdateTime, LocalDateTime.now());
-        applySlotUpdate(wrapper, slot, null);
-        loadoutMapper.update(null, wrapper);
+        applySlot(loadout, slot, null);
+        loadout.setUpdateTime(LocalDateTime.now());
+        if (loadoutMapper.updateById(loadout) == 0) {
+            throw new BusinessException(ApiErrorCodes.CONFLICT, "装备状态已变化，请刷新后重试");
+        }
     }
 
     @Override
@@ -313,26 +321,14 @@ public class CosmeticServiceImpl implements CosmeticService {
     }
 
     private void upsertOwned(Long userId, CosmeticDef def, int quantity, String sourceType, String sourceRef) {
-        UserCosmetic existing = userCosmeticMapper.selectByUserAndCode(userId, def.getCode());
-        LocalDateTime now = LocalDateTime.now();
-        if (existing == null) {
-            UserCosmetic created = new UserCosmetic();
-            created.setUserId(userId);
-            created.setCosmeticCode(def.getCode());
-            created.setQuantity(CosmeticConstants.EffectMode.EQUIP.equals(def.getEffectMode()) ? 1 : quantity);
-            created.setSourceType(StringUtils.hasText(sourceType) ? sourceType : CosmeticConstants.SourceType.SHOP);
-            created.setSourceRef(sourceRef);
-            created.setAcquiredAt(now);
-            created.setCreateTime(now);
-            created.setUpdateTime(now);
-            userCosmeticMapper.insert(created);
-            return;
-        }
-        if (CosmeticConstants.EffectMode.CONSUMABLE.equals(def.getEffectMode())) {
-            userCosmeticMapper.increaseQuantity(userId, def.getCode(), quantity);
-            existing.setUpdateTime(now);
-            userCosmeticMapper.updateById(existing);
-        }
+        boolean stackable = CosmeticConstants.EffectMode.CONSUMABLE.equals(def.getEffectMode());
+        userCosmeticMapper.upsertOwned(
+                userId,
+                def.getCode(),
+                stackable ? quantity : 1,
+                StringUtils.hasText(sourceType) ? sourceType : CosmeticConstants.SourceType.SHOP,
+                sourceRef,
+                stackable ? 1 : 0);
     }
 
     private UserCosmetic requireOwned(Long userId, String code) {
@@ -559,17 +555,6 @@ public class CosmeticServiceImpl implements CosmeticService {
             case CosmeticConstants.Slot.COMMENT_FONT -> loadout.setCommentFontCode(code);
             case CosmeticConstants.Slot.POST_CARD -> loadout.setPostCardCode(code);
             case CosmeticConstants.Slot.PROFILE_BG -> loadout.setProfileBgCode(code);
-            default -> throw new BusinessException("未知槽位");
-        }
-    }
-
-    private void applySlotUpdate(LambdaUpdateWrapper<UserCosmeticLoadout> wrapper, String slot, String code) {
-        switch (slot) {
-            case CosmeticConstants.Slot.AVATAR_FRAME -> wrapper.set(UserCosmeticLoadout::getAvatarFrameCode, code);
-            case CosmeticConstants.Slot.COMMENT_CARD -> wrapper.set(UserCosmeticLoadout::getCommentCardCode, code);
-            case CosmeticConstants.Slot.COMMENT_FONT -> wrapper.set(UserCosmeticLoadout::getCommentFontCode, code);
-            case CosmeticConstants.Slot.POST_CARD -> wrapper.set(UserCosmeticLoadout::getPostCardCode, code);
-            case CosmeticConstants.Slot.PROFILE_BG -> wrapper.set(UserCosmeticLoadout::getProfileBgCode, code);
             default -> throw new BusinessException("未知槽位");
         }
     }

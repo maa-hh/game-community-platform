@@ -2,6 +2,7 @@ package com.game.community.model.entity.cosmetic;
 
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.Version;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -23,6 +24,9 @@ public class UserCosmeticLoadout implements Serializable {
     private String postCardCode;
 
     private String profileBgCode;
+
+    @Version
+    private Integer version;
 
     private LocalDateTime updateTime;
 }
