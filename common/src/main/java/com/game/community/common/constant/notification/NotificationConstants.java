@@ -58,6 +58,15 @@ public final class NotificationConstants {
         }
     }
 
+    public static final class Outbox {
+        public static final int DELIVERY_FAILED = 4;
+        public static final int INITIAL_RETRY_COUNT = 0;
+        public static final int MAX_ERROR_LENGTH = 1000;
+
+        private Outbox() {
+        }
+    }
+
     public static final class SseEventType {
         public static final String NOTIFICATION_CREATED = "notification_created";
         public static final String NOTIFICATION_SUMMARY = "notification_summary";

@@ -151,6 +151,7 @@ CREATE INDEX idx_user_notification_outbox_pending
 CREATE INDEX idx_user_notification_outbox_lock
   ON t_user_notification_outbox(status, lock_time, id);
 
+
 INSERT INTO t_account_id_pool (account_id, digit_count, status, create_time, update_time) VALUES
 (10000, 5, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 (10001, 5, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),

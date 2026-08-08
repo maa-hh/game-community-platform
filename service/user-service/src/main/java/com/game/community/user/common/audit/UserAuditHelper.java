@@ -1,9 +1,10 @@
-package com.game.community.user.audit;
+package com.game.community.user.common.audit;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.game.community.common.exception.BusinessException;
+import com.game.community.common.constant.user.UserConstants;
 import com.game.community.model.entity.user.User;
 import com.game.community.model.entity.user.UserAuditTask;
 import com.game.community.model.entity.user.UserProfileAudit;
@@ -52,14 +53,6 @@ public class UserAuditHelper {
     private final ObjectMapper objectMapper;
     private final AuditModeProperties auditModeProperties;
 
-    public AuditMode currentAuditMode() {
-        return auditModeProperties.isLlmMode() ? AuditMode.LLM : AuditMode.MOCK;
-    }
-
-    public boolean isFieldBusy(FieldAuditStatus status) {
-        return status != null && status.isBusy();
-    }
-
     public UserProfileAudit getOrCreate(Long userId) {
         UserProfileAudit audit = profileAuditMapper.selectById(userId);
         if (audit != null) {
@@ -79,7 +72,7 @@ public class UserAuditHelper {
         audit.setUsernameAuditStatus(FieldAuditStatus.NONE);
         audit.setSignatureAuditStatus(FieldAuditStatus.NONE);
         audit.setAvatarAuditStatus(FieldAuditStatus.NONE);
-        audit.setVersion(0);
+        audit.setVersion(UserConstants.INITIAL_VERSION);
         audit.setCreateTime(LocalDateTime.now());
         audit.setUpdateTime(LocalDateTime.now());
         profileAuditMapper.insert(audit);
@@ -255,7 +248,7 @@ public class UserAuditHelper {
         task.setTaskType(taskType);
         task.setStatus(AuditTaskStatus.PENDING);
         task.setPendingContent(pendingContent);
-        task.setAuditMode(currentAuditMode());
+        task.setAuditMode(auditModeProperties.isLlmMode() ? AuditMode.LLM : AuditMode.MOCK);
         try {
             task.setPayload(objectMapper.writeValueAsString(payload));
         } catch (Exception e) {
@@ -263,7 +256,7 @@ public class UserAuditHelper {
         }
         task.setCreateTime(LocalDateTime.now());
         task.setUpdateTime(LocalDateTime.now());
-        task.setDeleted(0);
+        task.setDeleted(UserConstants.NOT_DELETED);
         userAuditTaskMapper.insert(task);
         return task.getId();
     }

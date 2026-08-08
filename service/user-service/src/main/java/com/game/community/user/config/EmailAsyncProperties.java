@@ -16,7 +16,4 @@ public class EmailAsyncProperties {
     private int keepAliveSeconds = 60;
 
     private String threadNamePrefix = "email-";
-
-    /** 等待实际发送完成的超时秒数 */
-    private int sendTimeoutSeconds = 15;
 }

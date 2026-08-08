@@ -3,6 +3,7 @@ package com.game.community.user.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.game.community.common.exception.BusinessException;
+import com.game.community.common.constant.user.UserConstants;
 import com.game.community.model.base.PageResult;
 import com.game.community.model.base.Result;
 import com.game.community.model.dto.user.UserSearchPageDTO;
@@ -16,7 +17,7 @@ import com.game.community.user.mapper.UserMapper;
 import com.game.community.user.service.UserAccountService;
 import com.game.community.user.service.UserQueryService;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -25,7 +26,6 @@ import java.util.List;
 /**
  * 用户查询服务实现（只读）
  */
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class UserQueryServiceImpl implements UserQueryService {
@@ -49,8 +49,8 @@ public class UserQueryServiceImpl implements UserQueryService {
         if (accountIds == null || accountIds.isEmpty()) {
             return Result.success("查询成功", List.of());
         }
-        if (accountIds.size() > 100) {
-            throw new BusinessException("批量查询不能超过100个");
+        if (accountIds.size() > UserConstants.MAX_BATCH_QUERY_SIZE) {
+            throw new BusinessException("批量查询不能超过" + UserConstants.MAX_BATCH_QUERY_SIZE + "个");
         }
         List<User> users = userMapper.selectList(new LambdaQueryWrapper<User>()
                 .in(User::getAccountId, accountIds));
@@ -63,8 +63,8 @@ public class UserQueryServiceImpl implements UserQueryService {
         if (userIds == null || userIds.isEmpty()) {
             return Result.success("查询成功", List.of());
         }
-        if (userIds.size() > 100) {
-            throw new BusinessException("批量查询不能超过100个");
+        if (userIds.size() > UserConstants.MAX_BATCH_QUERY_SIZE) {
+            throw new BusinessException("批量查询不能超过" + UserConstants.MAX_BATCH_QUERY_SIZE + "个");
         }
         List<User> users = userMapper.selectBatchIds(userIds);
         List<UserCardInternalVO> list = users.stream().map(this::convertToInternalCardVO).toList();
@@ -81,8 +81,8 @@ public class UserQueryServiceImpl implements UserQueryService {
         if (accountIds == null || accountIds.isEmpty()) {
             return Result.success("查询成功", List.of());
         }
-        if (accountIds.size() > 100) {
-            throw new BusinessException("批量查询不能超过100个");
+        if (accountIds.size() > UserConstants.MAX_BATCH_QUERY_SIZE) {
+            throw new BusinessException("批量查询不能超过" + UserConstants.MAX_BATCH_QUERY_SIZE + "个");
         }
         List<UserCardInternalVO> list = userMapper.selectList(new LambdaQueryWrapper<User>()
                         .in(User::getAccountId, accountIds))
@@ -94,10 +94,12 @@ public class UserQueryServiceImpl implements UserQueryService {
 
     @Override
     public PageResult<UserCardVO> searchUsers(UserSearchPageDTO dto) {
-        int current = dto == null || dto.getPage() == null || dto.getPage() < 1 ? 1 : dto.getPage();
-        int pageSize = dto == null || dto.getSize() == null || dto.getSize() < 1
-                ? 10
-                : Math.min(dto.getSize(), 20);
+        int current = dto == null || dto.getPage() == null || dto.getPage() < UserConstants.FIRST_PAGE
+                ? UserConstants.FIRST_PAGE : dto.getPage();
+        int pageSize = dto == null || dto.getSize() == null
+                || dto.getSize() < UserConstants.FIRST_PAGE
+                ? UserConstants.USER_SEARCH_DEFAULT_PAGE_SIZE
+                : Math.min(dto.getSize(), UserConstants.USER_SEARCH_MAX_PAGE_SIZE);
         String key = dto == null ? "" : dto.resolveKeyword();
         key = key == null ? "" : key.trim();
         if (!StringUtils.hasText(key)) {
@@ -162,11 +164,7 @@ public class UserQueryServiceImpl implements UserQueryService {
 
     private UserPublicVO convertToPublicVO(User user) {
         UserPublicVO vo = new UserPublicVO();
-        vo.setAccountId(user.getAccountId());
-        vo.setUsername(user.getUsername());
-        vo.setAvatar(user.getAvatar());
-        vo.setSignature(user.getSignature());
-        vo.setSteamAccount(user.getSteamAccount());
+        BeanUtils.copyProperties(user, vo);
         vo.setFollowCount(0);
         vo.setFansCount(0);
         return vo;
@@ -174,20 +172,14 @@ public class UserQueryServiceImpl implements UserQueryService {
 
     private UserCardVO convertToCardVO(User user) {
         UserCardVO vo = new UserCardVO();
-        vo.setAccountId(user.getAccountId());
-        vo.setUsername(user.getUsername());
-        vo.setAvatar(user.getAvatar());
-        vo.setSignature(user.getSignature());
+        BeanUtils.copyProperties(user, vo);
         return vo;
     }
 
     private UserCardInternalVO convertToInternalCardVO(User user) {
         UserCardInternalVO vo = new UserCardInternalVO();
+        BeanUtils.copyProperties(user, vo);
         vo.setUserId(user.getId());
-        vo.setAccountId(user.getAccountId());
-        vo.setUsername(user.getUsername());
-        vo.setAvatar(user.getAvatar());
-        vo.setSignature(user.getSignature());
         return vo;
     }
 }

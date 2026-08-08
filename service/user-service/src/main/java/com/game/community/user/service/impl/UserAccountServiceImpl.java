@@ -9,6 +9,7 @@ import com.game.community.model.base.Result;
 import com.game.community.model.dto.user.CancelAccountDTO;
 import com.game.community.model.entity.user.User;
 import com.game.community.model.entity.user.UserAccount;
+import com.game.community.model.entity.user.UserOperationLog;
 import com.game.community.model.enums.user.CodeBizType;
 import com.game.community.model.enums.user.OperationType;
 import com.game.community.model.enums.user.UserAccountStatus;
@@ -16,10 +17,11 @@ import com.game.community.model.enums.user.UserStrings;
 import com.game.community.model.vo.user.SendCodeVO;
 import com.game.community.user.mapper.UserAccountMapper;
 import com.game.community.user.mapper.UserMapper;
+import com.game.community.user.mapper.UserOperationLogMapper;
 import com.game.community.user.service.UserAccountService;
 import com.game.community.user.common.session.UserSessionHelper;
-import com.game.community.user.common.support.UserSupport;
 import com.game.community.user.common.verification.VerificationCodeHelper;
+import com.game.community.utils.ThreadLocal.UserThreadLocal;
 import com.game.community.utils.email.EmailValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,12 +43,15 @@ public class UserAccountServiceImpl implements UserAccountService {
     private final UserAccountMapper userAccountMapper;
     private final UserSessionHelper sessionHelper;
     private final VerificationCodeHelper verificationCodeHelper;
-    private final UserSupport userSupport;
+    private final UserOperationLogMapper userOperationLogMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<Void> cancelAccount(CancelAccountDTO dto) {
-        Long userId = userSupport.requireUserId();
+        Long userId = UserThreadLocal.getUserId();
+        if (userId == null) {
+            throw new BusinessException(ApiErrorCodes.UNAUTHORIZED, "请先登录");
+        }
         User user = userMapper.selectById(userId);
         if (user == null || !StringUtils.hasText(user.getEmail())) {
             throw new BusinessException("用户不存在");
@@ -77,32 +82,51 @@ public class UserAccountServiceImpl implements UserAccountService {
         }
 
         sessionHelper.invalidateUserSession(userId);
-        userSupport.logOperation(userId, OperationType.CANCEL_APPLY,
-                "cancelAt=" + cancelAt, null);
+        try {
+            UserOperationLog logEntry = new UserOperationLog();
+            logEntry.setUserId(userId);
+            logEntry.setOperatorId(userId);
+            logEntry.setOperation(OperationType.CANCEL_APPLY);
+            logEntry.setDetail("cancelAt=" + cancelAt);
+            logEntry.setIp(UserStrings.EMPTY);
+            logEntry.setCreateTime(LocalDateTime.now());
+            userOperationLogMapper.insert(logEntry);
+        } catch (Exception e) {
+            log.warn("记录操作日志失败: userId={}, operation={}", userId, OperationType.CANCEL_APPLY, e);
+        }
         return Result.success("注销申请已提交");
     }
 
     @Override
     public Result<SendCodeVO> sendCancelAccountCode() {
-        Long userId = userSupport.requireUserId();
+        Long userId = UserThreadLocal.getUserId();
+        if (userId == null) {
+            throw new BusinessException(ApiErrorCodes.UNAUTHORIZED, "请先登录");
+        }
         User user = userMapper.selectById(userId);
         if (user == null) {
             throw new BusinessException("用户不存在");
         }
         UserAccount account = refreshStatus(userId);
         assertEditable(account);
-        String email = requireBoundEmail(user);
+        if (!StringUtils.hasText(user.getEmail())) {
+            throw new BusinessException(ApiErrorCodes.BAD_REQUEST, "当前账号未绑定邮箱");
+        }
+        String email = EmailValidator.normalize(user.getEmail());
 
         int expireIn = verificationCodeHelper.sendEmailCode(email, CodeBizType.CANCEL_ACCOUNT);
         SendCodeVO vo = new SendCodeVO();
         vo.setExpireIn(expireIn);
-        return Result.success("验证码已发送", vo);
+        return Result.success("验证码发送任务已提交，请留意邮箱", vo);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<Void> revokeCancel() {
-        Long userId = userSupport.requireUserId();
+        Long userId = UserThreadLocal.getUserId();
+        if (userId == null) {
+            throw new BusinessException(ApiErrorCodes.UNAUTHORIZED, "请先登录");
+        }
         doRevokeCancel(userId);
         return Result.success("已撤销注销");
     }
@@ -133,13 +157,30 @@ public class UserAccountServiceImpl implements UserAccountService {
             throw new BusinessException(ApiErrorCodes.CONFLICT, "账号状态已变化，请刷新后重试");
         }
 
-        userSupport.logOperation(userId, OperationType.CANCEL_REVOKE, null, null);
+        try {
+            UserOperationLog logEntry = new UserOperationLog();
+            logEntry.setUserId(userId);
+            logEntry.setOperatorId(userId);
+            logEntry.setOperation(OperationType.CANCEL_REVOKE);
+            logEntry.setDetail(UserStrings.EMPTY);
+            logEntry.setIp(UserStrings.EMPTY);
+            logEntry.setCreateTime(LocalDateTime.now());
+            userOperationLogMapper.insert(logEntry);
+        } catch (Exception e) {
+            log.warn("记录操作日志失败: userId={}, operation={}", userId, OperationType.CANCEL_REVOKE, e);
+        }
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<Void> banUser(Long userId, String reason, Integer durationHours, Long operatorId) {
-        Long operator = operatorId != null ? operatorId : userSupport.requireUserId();
+        Long operator = operatorId;
+        if (operator == null) {
+            operator = UserThreadLocal.getUserId();
+            if (operator == null) {
+                throw new BusinessException(ApiErrorCodes.UNAUTHORIZED, "请先登录");
+            }
+        }
         UserAccount account = refreshStatus(userId);
         if (account.getStatus() == UserAccountStatus.BANNED) {
             throw new BusinessException("账号已被封禁");
@@ -166,9 +207,19 @@ public class UserAccountServiceImpl implements UserAccountService {
 
         sessionHelper.invalidateUserSession(userId);
 
-        userSupport.logOperation(userId, OperationType.BAN,
-                "reason=" + reason + ", durationHours=" + durationHours
-                        + ", operatorId=" + operator, null);
+        try {
+            UserOperationLog logEntry = new UserOperationLog();
+            logEntry.setUserId(userId);
+            logEntry.setOperatorId(userId);
+            logEntry.setOperation(OperationType.BAN);
+            logEntry.setDetail("reason=" + reason + ", durationHours=" + durationHours
+                    + ", operatorId=" + operator);
+            logEntry.setIp(UserStrings.EMPTY);
+            logEntry.setCreateTime(LocalDateTime.now());
+            userOperationLogMapper.insert(logEntry);
+        } catch (Exception e) {
+            log.warn("记录操作日志失败: userId={}, operation={}", userId, OperationType.BAN, e);
+        }
         return Result.success("封禁成功");
     }
 
@@ -180,7 +231,13 @@ public class UserAccountServiceImpl implements UserAccountService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<Void> unbanUser(Long userId, Long operatorId) {
-        Long operator = operatorId != null ? operatorId : userSupport.requireUserId();
+        Long operator = operatorId;
+        if (operator == null) {
+            operator = UserThreadLocal.getUserId();
+            if (operator == null) {
+                throw new BusinessException(ApiErrorCodes.UNAUTHORIZED, "请先登录");
+            }
+        }
         UserAccount account = refreshStatus(userId);
         if (account.getStatus() != UserAccountStatus.BANNED) {
             throw new BusinessException("账号未被封禁");
@@ -189,8 +246,18 @@ public class UserAccountServiceImpl implements UserAccountService {
         if (!clearBan(account)) {
             throw new BusinessException(ApiErrorCodes.CONFLICT, "账号状态已变化，请刷新后重试");
         }
-        userSupport.logOperation(userId, OperationType.UNBAN,
-                "operatorId=" + operator, null);
+        try {
+            UserOperationLog logEntry = new UserOperationLog();
+            logEntry.setUserId(userId);
+            logEntry.setOperatorId(userId);
+            logEntry.setOperation(OperationType.UNBAN);
+            logEntry.setDetail("operatorId=" + operator);
+            logEntry.setIp(UserStrings.EMPTY);
+            logEntry.setCreateTime(LocalDateTime.now());
+            userOperationLogMapper.insert(logEntry);
+        } catch (Exception e) {
+            log.warn("记录操作日志失败: userId={}, operation={}", userId, OperationType.UNBAN, e);
+        }
         return Result.success("解封成功");
     }
 
@@ -209,12 +276,6 @@ public class UserAccountServiceImpl implements UserAccountService {
     @Transactional(rollbackFor = Exception.class)
     public UserAccount refreshStatusForToken(Long userId) {
         return refreshStatus(getAccount(userId), false);
-    }
-
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public UserAccount refreshStatus(UserAccount account) {
-        return refreshStatus(account, true);
     }
 
     private UserAccount refreshStatus(UserAccount account, boolean invalidateSession) {
@@ -299,16 +360,28 @@ public class UserAccountServiceImpl implements UserAccountService {
             userMapper.update(null, new LambdaUpdateWrapper<User>()
                     .eq(User::getId, user.getId())
                     .eq(User::getVersion, user.getVersion())
-                    .set(User::getEmail, "cancelled_" + user.getId() + "@invalid.local")
+                    .set(User::getEmail, UserConstants.CANCELLED_EMAIL_PREFIX + user.getId()
+                            + UserConstants.INVALID_EMAIL_DOMAIN)
                     .set(User::getVersion, user.getVersion() + 1)
-                    .set(User::getDeleted, 1)
+                    .set(User::getDeleted, UserConstants.DELETED)
                     .set(User::getUpdateTime, LocalDateTime.now()));
         }
 
         if (invalidateSession) {
             sessionHelper.invalidateUserSession(account.getUserId());
         }
-        userSupport.logOperation(account.getUserId(), OperationType.CANCEL_COMPLETE, null, null);
+        try {
+            UserOperationLog logEntry = new UserOperationLog();
+            logEntry.setUserId(account.getUserId());
+            logEntry.setOperatorId(account.getUserId());
+            logEntry.setOperation(OperationType.CANCEL_COMPLETE);
+            logEntry.setDetail(UserStrings.EMPTY);
+            logEntry.setIp(UserStrings.EMPTY);
+            logEntry.setCreateTime(LocalDateTime.now());
+            userOperationLogMapper.insert(logEntry);
+        } catch (Exception e) {
+            log.warn("记录操作日志失败: userId={}, operation={}", account.getUserId(), OperationType.CANCEL_COMPLETE, e);
+        }
         return true;
     }
 
@@ -331,13 +404,6 @@ public class UserAccountServiceImpl implements UserAccountService {
             throw new BusinessException("用户不存在");
         }
         return user.getId();
-    }
-
-    private String requireBoundEmail(User user) {
-        if (user == null || !StringUtils.hasText(user.getEmail())) {
-            throw new BusinessException(ApiErrorCodes.BAD_REQUEST, "当前账号未绑定邮箱");
-        }
-        return EmailValidator.normalize(user.getEmail());
     }
 
     @Override

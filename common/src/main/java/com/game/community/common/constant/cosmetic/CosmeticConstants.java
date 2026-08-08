@@ -2,6 +2,17 @@ package com.game.community.common.constant.cosmetic;
 
 public final class CosmeticConstants {
 
+    public static final long DEF_CACHE_SECONDS = 600;
+    public static final int FIRST_PAGE = 1;
+    public static final int DEFAULT_PAGE_SIZE = 20;
+    public static final int MAX_PAGE_SIZE = 100;
+    public static final String FIRST_PAGE_TEXT = "1";
+    public static final String DEFAULT_PAGE_SIZE_TEXT = "20";
+    public static final int DEFAULT_QUANTITY = 1;
+    public static final int INITIAL_VERSION = 0;
+    public static final int NON_STACKABLE = 0;
+    public static final int STACKABLE = 1;
+
     public static final class EffectMode {
         public static final String EQUIP = "EQUIP";
         public static final String CONSUMABLE = "CONSUMABLE";
@@ -38,6 +49,14 @@ public final class CosmeticConstants {
         public static final String ADMIN = "ADMIN";
 
         private SourceType() {
+        }
+    }
+
+    public static final class State {
+        public static final String ACTIVE = "ACTIVE";
+        public static final String EXPIRED = "EXPIRED";
+
+        private State() {
         }
     }
 

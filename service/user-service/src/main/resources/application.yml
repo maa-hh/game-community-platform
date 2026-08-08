@@ -121,14 +121,13 @@ email:
     password: ${SMTP_PASSWORD:}
     from: ${SMTP_FROM:}
     starttls: ${SMTP_STARTTLS:true}
-  # 发信线程池：控流 + 有界队列，满则拒绝并返回失败
+  # 发信线程池：控流 + 有界队列；发送失败只记录日志，不自动重试
   async:
     core-pool-size: ${EMAIL_ASYNC_CORE_POOL_SIZE:2}
     max-pool-size: ${EMAIL_ASYNC_MAX_POOL_SIZE:4}
     queue-capacity: ${EMAIL_ASYNC_QUEUE_CAPACITY:100}
     keep-alive-seconds: ${EMAIL_ASYNC_KEEP_ALIVE_SECONDS:60}
     thread-name-prefix: ${EMAIL_ASYNC_THREAD_NAME_PREFIX:email-}
-    send-timeout-seconds: ${EMAIL_ASYNC_SEND_TIMEOUT_SECONDS:15}
 
 # 开发环境可选：预置测试账号 test@game.com / abc123（生产 profile 默认关闭）
 auth:

@@ -1,7 +1,9 @@
 package com.game.community.user.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.game.community.common.constant.ApiErrorCodes;
+import com.game.community.common.constant.user.UserConstants;
 import com.game.community.common.exception.BusinessException;
 import com.game.community.model.base.Result;
 import com.game.community.model.dto.user.ChangePasswordDTO;
@@ -17,6 +19,7 @@ import com.game.community.model.entity.user.UserProfileAudit;
 import com.game.community.model.enums.user.AuditFieldType;
 import com.game.community.model.enums.user.CodeBizType;
 import com.game.community.model.enums.user.FieldAuditStatus;
+import com.game.community.model.enums.user.UserStrings;
 import com.game.community.model.payload.user.FieldAuditPayload;
 import com.game.community.model.vo.user.ChangeEmailVO;
 import com.game.community.model.vo.user.ProfileFieldSubmitVO;
@@ -24,18 +27,20 @@ import com.game.community.model.vo.user.SendCodeVO;
 import com.game.community.model.vo.user.UserMeVO;
 import com.game.community.user.mapper.UserAuthMapper;
 import com.game.community.user.mapper.UserMapper;
+import com.game.community.user.event.executor.AuditTaskExecutor;
 import com.game.community.user.service.UserAccountService;
-import com.game.community.user.audit.UserAuditHelper;
-import com.game.community.user.service.UserFieldAuditTaskService;
+import com.game.community.user.common.audit.UserAuditHelper;
 import com.game.community.user.service.UserProfileService;
 import com.game.community.user.common.session.UserSessionHelper;
-import com.game.community.user.common.support.UserSupport;
 import com.game.community.user.common.verification.VerificationCodeHelper;
 import com.game.community.utils.EncryptUtils;
 import com.game.community.utils.MinIOUtils;
 import com.game.community.utils.email.EmailValidator;
+import com.game.community.utils.email.PasswordValidator;
+import com.game.community.utils.ThreadLocal.UserThreadLocal;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -64,15 +69,17 @@ public class UserProfileServiceImpl implements UserProfileService {
     private final UserAuditHelper auditHelper;
     private final UserSessionHelper sessionHelper;
     private final MinIOUtils minIOUtils;
-    private final UserFieldAuditTaskService fieldAuditTaskService;
+    private final AuditTaskExecutor auditTaskExecutor;
     private final VerificationCodeHelper verificationCodeHelper;
     private final UserAccountService userAccountService;
     private final TransactionTemplate transactionTemplate;
-    private final UserSupport userSupport;
 
     @Override
     public Result<UserMeVO> getCurrentUser() {
-        Long userId = userSupport.requireUserId();
+        Long userId = UserThreadLocal.getUserId();
+        if (userId == null) {
+            throw new BusinessException(ApiErrorCodes.UNAUTHORIZED, "请先登录");
+        }
         User user = userMapper.selectById(userId);
         if (user == null) {
             throw new BusinessException("用户不存在");
@@ -83,15 +90,15 @@ public class UserProfileServiceImpl implements UserProfileService {
         vo.setPendingUsername(profileAudit.getPendingUsername());
         vo.setPendingSignature(profileAudit.getPendingSignature());
         vo.setPendingAvatarUrl(auditHelper.resolvePendingAvatarUrl(profileAudit));
-        if (!auditHelper.isFieldBusy(profileAudit.getUsernameAuditStatus())) {
+        if (profileAudit.getUsernameAuditStatus() == null || !profileAudit.getUsernameAuditStatus().isBusy()) {
             vo.setUsernameAuditMessage(auditHelper.resolveLatestFieldAuditError(
                     userId, AuditFieldType.USERNAME));
         }
-        if (!auditHelper.isFieldBusy(profileAudit.getSignatureAuditStatus())) {
+        if (profileAudit.getSignatureAuditStatus() == null || !profileAudit.getSignatureAuditStatus().isBusy()) {
             vo.setSignatureAuditMessage(auditHelper.resolveLatestFieldAuditError(
                     userId, AuditFieldType.SIGNATURE));
         }
-        if (!auditHelper.isFieldBusy(profileAudit.getAvatarAuditStatus())) {
+        if (profileAudit.getAvatarAuditStatus() == null || !profileAudit.getAvatarAuditStatus().isBusy()) {
             vo.setAvatarAuditMessage(auditHelper.resolveLatestFieldAuditError(
                     userId, AuditFieldType.AVATAR));
         }
@@ -100,19 +107,27 @@ public class UserProfileServiceImpl implements UserProfileService {
 
     @Override
     public Result<ProfileFieldSubmitVO> updateUsername(UpdateUsernameDTO dto) {
-        Long userId = userSupport.requireUserId();
+        Long userId = UserThreadLocal.getUserId();
+        if (userId == null) {
+            throw new BusinessException(ApiErrorCodes.UNAUTHORIZED, "请先登录");
+        }
         User user = requireEditableUser(userId);
-        assertVersion(user, dto.getVersion());
+        if (!Objects.equals(user.getVersion(), dto.getVersion())) {
+            throw new BusinessException(ApiErrorCodes.CONFLICT, "资料已更新，请刷新后重试");
+        }
         UserProfileAudit profileAudit = auditHelper.getOrCreate(userId);
         String username = dto.getUsername().trim();
         int meaningfulLen = countMeaningfulChars(username);
-        if (meaningfulLen < 2 || meaningfulLen > 20) {
-            throw new BusinessException(ApiErrorCodes.BAD_REQUEST, "昵称有效长度须在2到20个字符之间（空格不计）");
+        if (meaningfulLen < UserConstants.USERNAME_MIN_LENGTH
+                || meaningfulLen > UserConstants.USERNAME_MAX_LENGTH) {
+            throw new BusinessException(ApiErrorCodes.BAD_REQUEST, "昵称有效长度须在"
+                    + UserConstants.USERNAME_MIN_LENGTH + "到" + UserConstants.USERNAME_MAX_LENGTH
+                    + "个字符之间（空格不计）");
         }
         if (Objects.equals(username, user.getUsername())) {
             throw new BusinessException("昵称未变更");
         }
-        if (auditHelper.isFieldBusy(profileAudit.getUsernameAuditStatus())
+        if ((profileAudit.getUsernameAuditStatus() != null && profileAudit.getUsernameAuditStatus().isBusy())
                 || auditHelper.hasInFlightTask(userId, AuditFieldType.USERNAME)) {
             throw new BusinessException(AuditFieldType.USERNAME.busyMessage());
         }
@@ -135,24 +150,34 @@ public class UserProfileServiceImpl implements UserProfileService {
         });
 
         enqueueOrReject(taskId, AuditFieldType.USERNAME, userId, username);
-        return Result.success("昵称已提交审核",
-                buildSubmitVO(taskId, AuditFieldType.USERNAME, username));
+        ProfileFieldSubmitVO vo = new ProfileFieldSubmitVO();
+        vo.setTaskId(taskId);
+        vo.setField(AuditFieldType.USERNAME);
+        vo.setAuditStatus(FieldAuditStatus.AUDITING.getCode());
+        vo.setPendingValue(username);
+        return Result.success("昵称已提交审核", vo);
     }
 
     @Override
     public Result<ProfileFieldSubmitVO> updateSignature(UpdateSignatureDTO dto) {
-        Long userId = userSupport.requireUserId();
+        Long userId = UserThreadLocal.getUserId();
+        if (userId == null) {
+            throw new BusinessException(ApiErrorCodes.UNAUTHORIZED, "请先登录");
+        }
         User user = requireEditableUser(userId);
-        assertVersion(user, dto.getVersion());
+        if (!Objects.equals(user.getVersion(), dto.getVersion())) {
+            throw new BusinessException(ApiErrorCodes.CONFLICT, "资料已更新，请刷新后重试");
+        }
         UserProfileAudit profileAudit = auditHelper.getOrCreate(userId);
         String signature = dto.getSignature() == null ? "" : dto.getSignature().trim();
-        if (countMeaningfulChars(signature) > 50) {
-            throw new BusinessException(ApiErrorCodes.BAD_REQUEST, "个性签名有效长度不能超过50个字符（空格/换行不计）");
+        if (countMeaningfulChars(signature) > UserConstants.SIGNATURE_MAX_LENGTH) {
+            throw new BusinessException(ApiErrorCodes.BAD_REQUEST, "个性签名有效长度不能超过"
+                    + UserConstants.SIGNATURE_MAX_LENGTH + "个字符（空格/换行不计）");
         }
-        if (Objects.equals(signature, nullToEmpty(user.getSignature()))) {
+        if (Objects.equals(signature, UserStrings.orEmpty(user.getSignature()))) {
             throw new BusinessException("个性签名未变更");
         }
-        if (auditHelper.isFieldBusy(profileAudit.getSignatureAuditStatus())
+        if ((profileAudit.getSignatureAuditStatus() != null && profileAudit.getSignatureAuditStatus().isBusy())
                 || auditHelper.hasInFlightTask(userId, AuditFieldType.SIGNATURE)) {
             throw new BusinessException(AuditFieldType.SIGNATURE.busyMessage());
         }
@@ -175,17 +200,26 @@ public class UserProfileServiceImpl implements UserProfileService {
         });
 
         enqueueOrReject(taskId, AuditFieldType.SIGNATURE, userId, signature);
-        return Result.success("签名已提交审核",
-                buildSubmitVO(taskId, AuditFieldType.SIGNATURE, signature));
+        ProfileFieldSubmitVO vo = new ProfileFieldSubmitVO();
+        vo.setTaskId(taskId);
+        vo.setField(AuditFieldType.SIGNATURE);
+        vo.setAuditStatus(FieldAuditStatus.AUDITING.getCode());
+        vo.setPendingValue(signature);
+        return Result.success("签名已提交审核", vo);
     }
 
     @Override
     public Result<ProfileFieldSubmitVO> uploadAvatar(MultipartFile avatarFile, Integer version) {
-        Long userId = userSupport.requireUserId();
+        Long userId = UserThreadLocal.getUserId();
+        if (userId == null) {
+            throw new BusinessException(ApiErrorCodes.UNAUTHORIZED, "请先登录");
+        }
         User user = requireEditableUser(userId);
-        assertVersion(user, version);
+        if (!Objects.equals(user.getVersion(), version)) {
+            throw new BusinessException(ApiErrorCodes.CONFLICT, "资料已更新，请刷新后重试");
+        }
         UserProfileAudit profileAudit = auditHelper.getOrCreate(userId);
-        if (auditHelper.isFieldBusy(profileAudit.getAvatarAuditStatus())
+        if ((profileAudit.getAvatarAuditStatus() != null && profileAudit.getAvatarAuditStatus().isBusy())
                 || auditHelper.hasInFlightTask(userId, AuditFieldType.AVATAR)) {
             throw new BusinessException(AuditFieldType.AVATAR.busyMessage());
         }
@@ -224,7 +258,7 @@ public class UserProfileServiceImpl implements UserProfileService {
 
         try {
             enqueueOrReject(taskId, AuditFieldType.AVATAR, userId,
-                    Map.of("pendingObjectName", pendingObjectName, "oldAvatarUrl", nullToEmpty(user.getAvatar())));
+                    Map.of("pendingObjectName", pendingObjectName, "oldAvatarUrl", UserStrings.orEmpty(user.getAvatar())));
         } catch (BusinessException e) {
             try {
                 minIOUtils.deletePrivateAvatar(pendingObjectName);
@@ -233,10 +267,15 @@ public class UserProfileServiceImpl implements UserProfileService {
             }
             throw e;
         }
-        return Result.success("头像已提交审核",
-                buildSubmitVO(taskId, AuditFieldType.AVATAR, previewUrl));
+        ProfileFieldSubmitVO vo = new ProfileFieldSubmitVO();
+        vo.setTaskId(taskId);
+        vo.setField(AuditFieldType.AVATAR);
+        vo.setAuditStatus(FieldAuditStatus.AUDITING.getCode());
+        vo.setPendingValue(previewUrl);
+        return Result.success("头像已提交审核", vo);
     }
 
+    /** taskId 已在事务中落库；这里只提交任务，拒绝时由执行器回滚占用并记失败日志。 */
     private void enqueueOrReject(Long taskId, AuditFieldType taskType, Long userId, Object requestContent) {
         Map<String, Object> snapshot = new LinkedHashMap<>();
         snapshot.put("taskId", taskId);
@@ -245,9 +284,9 @@ public class UserProfileServiceImpl implements UserProfileService {
         snapshot.put("request", requestContent);
         snapshot.put("submitTime", LocalDateTime.now().toString());
         try {
-            fieldAuditTaskService.enqueueFieldAudit(taskId);
+            auditTaskExecutor.submit(taskId);
         } catch (RejectedExecutionException ex) {
-            fieldAuditTaskService.handleEnqueueRejected(taskId, taskType, userId, snapshot, ex);
+            auditTaskExecutor.handleRejected(taskId, taskType, userId, snapshot, ex);
             throw new BusinessException(ApiErrorCodes.TOO_MANY_REQUESTS, "审核服务繁忙，请稍后重试");
         }
     }
@@ -255,14 +294,19 @@ public class UserProfileServiceImpl implements UserProfileService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<Void> updateUserInfo(UpdateUserInfoDTO dto) {
-        Long userId = userSupport.requireUserId();
+        Long userId = UserThreadLocal.getUserId();
+        if (userId == null) {
+            throw new BusinessException(ApiErrorCodes.UNAUTHORIZED, "请先登录");
+        }
         User user = requireEditableUser(userId);
-        assertVersion(user, dto.getVersion());
+        if (!Objects.equals(user.getVersion(), dto.getVersion())) {
+            throw new BusinessException(ApiErrorCodes.CONFLICT, "资料已更新，请刷新后重试");
+        }
         if (dto.getSteamAccount() == null) {
             return Result.success("资料更新成功");
         }
         String steamAccount = dto.getSteamAccount().trim();
-        if (Objects.equals(steamAccount, nullToEmpty(user.getSteamAccount()))) {
+        if (Objects.equals(steamAccount, UserStrings.orEmpty(user.getSteamAccount()))) {
             return Result.success("资料更新成功");
         }
         boolean updated = userMapper.update(null, new LambdaUpdateWrapper<User>()
@@ -280,17 +324,25 @@ public class UserProfileServiceImpl implements UserProfileService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<Void> changePassword(ChangePasswordDTO dto) {
-        Long userId = userSupport.requireUserId();
+        Long userId = UserThreadLocal.getUserId();
+        if (userId == null) {
+            throw new BusinessException(ApiErrorCodes.UNAUTHORIZED, "请先登录");
+        }
         User user = userMapper.selectById(userId);
         if (user == null) {
             throw new BusinessException("用户不存在");
         }
-        UserSupport.assertValidPassword(dto.getNewPassword());
+        try {
+            PasswordValidator.assertValid(dto.getNewPassword());
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException(ApiErrorCodes.BAD_REQUEST, e.getMessage());
+        }
         if (!dto.getNewPassword().equals(dto.getConfirmPassword())) {
             throw new BusinessException(ApiErrorCodes.BAD_REQUEST, "两次输入的新密码不一致");
         }
 
-        UserAuth userAuth = userSupport.getUserAuth(userId);
+        UserAuth userAuth = userAuthMapper.selectOne(new LambdaQueryWrapper<UserAuth>()
+                .eq(UserAuth::getUserId, userId));
         if (userAuth == null) {
             throw new BusinessException("用户认证数据异常");
         }
@@ -322,21 +374,27 @@ public class UserProfileServiceImpl implements UserProfileService {
 
     @Override
     public Result<SendCodeVO> sendChangeEmailOldCode() {
-        Long userId = userSupport.requireUserId();
+        Long userId = UserThreadLocal.getUserId();
+        if (userId == null) {
+            throw new BusinessException(ApiErrorCodes.UNAUTHORIZED, "请先登录");
+        }
         User user = requireEditableUser(userId);
         String email = requireBoundEmail(user);
         int expireIn = verificationCodeHelper.sendEmailCode(email, CodeBizType.CHANGE_EMAIL_OLD);
         SendCodeVO vo = new SendCodeVO();
         vo.setExpireIn(expireIn);
-        return Result.success("验证码已发送", vo);
+        return Result.success("验证码发送任务已提交，请留意邮箱", vo);
     }
 
     @Override
     public Result<SendCodeVO> prepareChangeEmail(PrepareChangeEmailDTO dto) {
-        Long userId = userSupport.requireUserId();
+        Long userId = UserThreadLocal.getUserId();
+        if (userId == null) {
+            throw new BusinessException(ApiErrorCodes.UNAUTHORIZED, "请先登录");
+        }
         User user = requireEditableUser(userId);
         String oldEmail = requireBoundEmail(user);
-        String newEmail = validateChangeEmailTarget(user, dto.getNewEmail());
+        String newEmail = validateChangeEmailTarget(oldEmail, dto.getNewEmail());
 
         verificationCodeHelper.assertCodeMatches(
                 oldEmail, CodeBizType.CHANGE_EMAIL_OLD, dto.getOldCode());
@@ -344,16 +402,19 @@ public class UserProfileServiceImpl implements UserProfileService {
         int expireIn = verificationCodeHelper.sendEmailCode(newEmail, CodeBizType.CHANGE_EMAIL_NEW);
         SendCodeVO vo = new SendCodeVO();
         vo.setExpireIn(expireIn);
-        return Result.success("新邮箱验证码已发送", vo);
+        return Result.success("新邮箱验证码发送任务已提交，请留意邮箱", vo);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<ChangeEmailVO> confirmChangeEmail(ConfirmChangeEmailDTO dto) {
-        Long userId = userSupport.requireUserId();
+        Long userId = UserThreadLocal.getUserId();
+        if (userId == null) {
+            throw new BusinessException(ApiErrorCodes.UNAUTHORIZED, "请先登录");
+        }
         User user = requireEditableUser(userId);
         String oldEmail = requireBoundEmail(user);
-        String newEmail = validateChangeEmailTarget(user, dto.getNewEmail());
+        String newEmail = validateChangeEmailTarget(oldEmail, dto.getNewEmail());
 
         verificationCodeHelper.verify(
                 oldEmail, CodeBizType.CHANGE_EMAIL_OLD, dto.getOldCode());
@@ -392,28 +453,13 @@ public class UserProfileServiceImpl implements UserProfileService {
         return user;
     }
 
-    private void assertVersion(User user, Integer expectedVersion) {
-        if (!Objects.equals(user.getVersion(), expectedVersion)) {
-            throw new BusinessException(ApiErrorCodes.CONFLICT, "资料已更新，请刷新后重试");
-        }
-    }
-
-    private ProfileFieldSubmitVO buildSubmitVO(Long taskId, AuditFieldType field, String pendingValue) {
-        ProfileFieldSubmitVO vo = new ProfileFieldSubmitVO();
-        vo.setTaskId(taskId);
-        vo.setField(field);
-        vo.setAuditStatus(FieldAuditStatus.AUDITING.getCode());
-        vo.setPendingValue(pendingValue);
-        return vo;
-    }
-
-    private String validateChangeEmailTarget(User user, String rawNewEmail) {
-        String oldEmail = requireBoundEmail(user);
+    private String validateChangeEmailTarget(String oldEmail, String rawNewEmail) {
         String newEmail = EmailValidator.normalize(rawNewEmail);
         if (oldEmail.equalsIgnoreCase(newEmail)) {
             throw new BusinessException(ApiErrorCodes.BAD_REQUEST, "新邮箱不能与当前邮箱相同");
         }
-        if (userSupport.existsByEmail(newEmail)) {
+        if (userMapper.selectCount(new LambdaQueryWrapper<User>()
+                .eq(User::getEmail, newEmail)) > 0) {
             throw new BusinessException(ApiErrorCodes.CONFLICT, "该邮箱已被注册");
         }
         return newEmail;
@@ -421,22 +467,18 @@ public class UserProfileServiceImpl implements UserProfileService {
 
     private UserMeVO convertToMeVO(User user, UserAccount account, UserProfileAudit profileAudit) {
         UserMeVO vo = new UserMeVO();
-        vo.setAccountId(user.getAccountId());
-        vo.setVersion(user.getVersion());
-        vo.setUsername(user.getUsername());
-        vo.setAvatar(user.getAvatar());
-        vo.setSignature(user.getSignature());
-        vo.setEmail(user.getEmail());
+        BeanUtils.copyProperties(user, vo);
         vo.setStatus(account.getStatus().getCode());
         vo.setType(account.getType().getCode());
-        vo.setSteamAccount(user.getSteamAccount());
-        vo.setUsernameAuditStatus(fieldStatusCode(profileAudit.getUsernameAuditStatus()));
-        vo.setSignatureAuditStatus(fieldStatusCode(profileAudit.getSignatureAuditStatus()));
-        vo.setAvatarAuditStatus(fieldStatusCode(profileAudit.getAvatarAuditStatus()));
+        vo.setUsernameAuditStatus((profileAudit.getUsernameAuditStatus() == null
+                ? FieldAuditStatus.NONE : profileAudit.getUsernameAuditStatus()).getCode());
+        vo.setSignatureAuditStatus((profileAudit.getSignatureAuditStatus() == null
+                ? FieldAuditStatus.NONE : profileAudit.getSignatureAuditStatus()).getCode());
+        vo.setAvatarAuditStatus((profileAudit.getAvatarAuditStatus() == null
+                ? FieldAuditStatus.NONE : profileAudit.getAvatarAuditStatus()).getCode());
         vo.setFollowCount(0);
         vo.setFansCount(0);
-        vo.setBanUntil(account.getBanUntil());
-        vo.setBanReason(account.getBanReason());
+        BeanUtils.copyProperties(account, vo, "status", "type", "version");
         return vo;
     }
 
@@ -445,10 +487,6 @@ public class UserProfileServiceImpl implements UserProfileService {
             throw new BusinessException(ApiErrorCodes.BAD_REQUEST, "当前账号未绑定邮箱");
         }
         return EmailValidator.normalize(user.getEmail());
-    }
-
-    private int fieldStatusCode(FieldAuditStatus status) {
-        return (status == null ? FieldAuditStatus.NONE : status).getCode();
     }
 
     private void validateAvatar(MultipartFile avatarFile) {
@@ -465,10 +503,6 @@ public class UserProfileServiceImpl implements UserProfileService {
                 || contentType.equals("image/webp"))) {
             throw new BusinessException("头像仅支持jpg、png、webp格式");
         }
-    }
-
-    private String nullToEmpty(String value) {
-        return value == null ? "" : value;
     }
 
     /** 空格、换行等空白不计有效字符 */

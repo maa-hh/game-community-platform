@@ -23,7 +23,9 @@ public interface CosmeticService {
 
     CosmeticDefVO saveDef(SaveCosmeticDefDTO dto);
 
-    List<UserCosmeticVO> listBackpack(Long userId);
+    PageResult<UserCosmeticVO> pageBackpack(Long userId, Long page, Long size,
+                                             String effectMode, String category,
+                                             Boolean equipped, String state, String keyword);
 
     UserDecorationVO getDecoration(Long userId);
 
@@ -33,7 +35,8 @@ public interface CosmeticService {
 
     CosmeticItemStateVO getItemState(Long userId, String cosmeticCode);
 
-    Map<Long, UserDecorationVO> batchDecorations(List<Long> userIds);
+    /** 按对外 accountId 批量查询装扮，内部完成 accountId -> userId 映射。 */
+    Map<Long, UserDecorationVO> batchDecorationsByAccountIds(List<Long> accountIds);
 
     void equip(Long userId, EquipCosmeticDTO dto);
 

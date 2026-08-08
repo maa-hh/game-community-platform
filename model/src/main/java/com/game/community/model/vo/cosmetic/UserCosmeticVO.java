@@ -28,6 +28,8 @@ public class UserCosmeticVO implements Serializable {
 
     private Boolean canUse;
 
+    private String state;
+
     private LocalDateTime acquiredAt;
 
     private LocalDateTime expireAt;

@@ -9,7 +9,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadPoolExecutor;
 
 /**
- * 邮件发送线程池：控流 + 有界队列，队列满拒绝后向上抛失败
+ * 邮件发送线程池：控流 + 有界队列，队列满时拒绝提交。
  */
 @Configuration
 @EnableConfigurationProperties(EmailAsyncProperties.class)

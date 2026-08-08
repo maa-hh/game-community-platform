@@ -17,6 +17,7 @@ import com.game.community.model.entity.user.AccountIdPool;
 import com.game.community.model.entity.user.User;
 import com.game.community.model.entity.user.UserAccount;
 import com.game.community.model.entity.user.UserAuth;
+import com.game.community.model.entity.user.UserOperationLog;
 import com.game.community.model.enums.user.AccountType;
 import com.game.community.model.enums.user.CodeBizType;
 import com.game.community.model.enums.user.OperationType;
@@ -29,20 +30,22 @@ import com.game.community.model.vo.user.SendCodeVO;
 import com.game.community.model.vo.user.TokenRefreshVO;
 import com.game.community.model.vo.user.UserSessionVO;
 import com.game.community.user.mapper.AccountIdPoolMapper;
-import com.game.community.user.audit.UserAuditHelper;
+import com.game.community.user.common.audit.UserAuditHelper;
 import com.game.community.user.mapper.UserAccountMapper;
 import com.game.community.user.mapper.UserAuthMapper;
 import com.game.community.user.mapper.UserMapper;
+import com.game.community.user.mapper.UserOperationLogMapper;
 import com.game.community.user.service.UserAccountService;
 import com.game.community.user.service.UserAuthService;
 import com.game.community.user.common.session.UserSessionHelper;
-import com.game.community.user.common.support.UserSupport;
 import com.game.community.user.common.verification.VerificationCodeHelper;
 import com.game.community.utils.EncryptUtils;
 import com.game.community.utils.JwtUtils;
 import com.game.community.utils.RedisUtils;
 import com.game.community.utils.config.EmailProperties;
 import com.game.community.utils.email.EmailValidator;
+import com.game.community.utils.email.PasswordValidator;
+import com.game.community.utils.ThreadLocal.UserThreadLocal;
 import com.game.community.utils.web.ClientInfo;
 import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
@@ -79,20 +82,22 @@ public class UserAuthServiceImpl implements UserAuthService {
     private final RedisUtils redisUtils;
     private final EmailProperties emailProperties;
     private final UserAccountService userAccountService;
-    private final UserSupport userSupport;
+    private final UserOperationLogMapper userOperationLogMapper;
     private final UserAuditHelper auditHelper;
 
     @Override
     public Result<SendCodeVO> sendCode(SendCodeDTO dto) {
         String normalized = assertDeliverableEmail(dto.getEmail());
-        CodeBizType type = VerificationCodeHelper.normalizeBizType(dto.getBizType());
+        CodeBizType type = dto.getBizType() == null ? CodeBizType.REGISTER : dto.getBizType();
 
         if (type == CodeBizType.REGISTER) {
-            if (userSupport.existsByEmail(normalized)) {
+            if (userMapper.selectCount(new LambdaQueryWrapper<User>()
+                    .eq(User::getEmail, normalized)) > 0) {
                 throw new BusinessException(ApiErrorCodes.CONFLICT, "该邮箱已被注册");
             }
         } else if (type == CodeBizType.RESET_PASSWORD) {
-            if (!userSupport.existsByEmail(normalized)) {
+            if (userMapper.selectCount(new LambdaQueryWrapper<User>()
+                    .eq(User::getEmail, normalized)) == 0) {
                 throw new BusinessException(ApiErrorCodes.NOT_FOUND, "该邮箱未注册");
             }
         } else if (type == CodeBizType.CANCEL_ACCOUNT) {
@@ -102,33 +107,39 @@ public class UserAuthServiceImpl implements UserAuthService {
         int expireIn = verificationCodeHelper.sendEmailCode(normalized, type);
         SendCodeVO vo = new SendCodeVO();
         vo.setExpireIn(expireIn);
-        return Result.success("验证码已发送", vo);
+        return Result.success("验证码发送任务已提交，请留意邮箱", vo);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<RegisterVO> register(RegisterDTO dto) {
         String email = assertDeliverableEmail(dto.getEmail());
-        UserSupport.assertValidPassword(dto.getPassword());
+        try {
+            PasswordValidator.assertValid(dto.getPassword());
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException(ApiErrorCodes.BAD_REQUEST, e.getMessage());
+        }
         verificationCodeHelper.verify(email, CodeBizType.REGISTER, dto.getCode());
 
         String lockKey = RedisConstants.REGISTER_LOCK_PREFIX + "email:" + email;
-        if (Boolean.FALSE.equals(redisUtils.setIfAbsent(lockKey, "1", 10))) {
+        if (Boolean.FALSE.equals(redisUtils.setIfAbsent(lockKey, "1", UserConstants.REGISTER_LOCK_SECONDS))) {
             throw new BusinessException(ApiErrorCodes.TOO_MANY_REQUESTS, "操作过于频繁，请稍后重试");
         }
 
-        if (userSupport.existsByEmail(email)) {
+        if (userMapper.selectCount(new LambdaQueryWrapper<User>()
+                .eq(User::getEmail, email)) > 0) {
             throw new BusinessException(ApiErrorCodes.CONFLICT, "该邮箱已被注册");
         }
 
         User user = new User();
-        user.setUsername(extractNickname(email));
+        int at = email.indexOf('@');
+        user.setUsername(at > 0 ? email.substring(0, at) : UserConstants.DEFAULT_NICKNAME);
         user.setEmail(email);
         user.setSteamAccount("");
-        user.setVersion(0);
+        user.setVersion(UserConstants.INITIAL_VERSION);
         user.setCreateTime(LocalDateTime.now());
         user.setUpdateTime(LocalDateTime.now());
-        user.setDeleted(0);
+        user.setDeleted(UserConstants.NOT_DELETED);
         Long accountId = reserveAccountId();
         user.setAccountId(accountId);
         try {
@@ -136,7 +147,11 @@ public class UserAuthServiceImpl implements UserAuthService {
         } catch (DuplicateKeyException e) {
             throw new BusinessException(ApiErrorCodes.CONFLICT, "该邮箱已被注册");
         }
-        bindAccountIdToUser(accountId, user.getId());
+        int bound = accountIdPoolMapper.bindUserId(accountId, user.getId());
+        if (bound <= 0) {
+            throw new BusinessException(ApiErrorCodes.INTERNAL_ERROR, "账号ID绑定失败");
+        }
+        log.info("号池绑定成功: userId={}, accountId={}", user.getId(), accountId);
         auditHelper.initProfileAudit(user.getId());
         createUserAccount(user.getId(), RegisterSource.EMAIL);
         createUserAuth(user.getId(), dto.getPassword());
@@ -150,7 +165,11 @@ public class UserAuthServiceImpl implements UserAuthService {
     @Transactional(rollbackFor = Exception.class)
     public Result<Void> resetPassword(ResetPasswordDTO dto) {
         String email = assertDeliverableEmail(dto.getEmail());
-        UserSupport.assertValidPassword(dto.getPassword());
+        try {
+            PasswordValidator.assertValid(dto.getPassword());
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException(ApiErrorCodes.BAD_REQUEST, e.getMessage());
+        }
         verificationCodeHelper.verify(email, CodeBizType.RESET_PASSWORD, dto.getCode());
 
         User user = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getEmail, email));
@@ -158,7 +177,8 @@ public class UserAuthServiceImpl implements UserAuthService {
             throw new BusinessException(ApiErrorCodes.NOT_FOUND, "该邮箱未注册");
         }
 
-        UserAuth userAuth = userSupport.getUserAuth(user.getId());
+        UserAuth userAuth = userAuthMapper.selectOne(new LambdaQueryWrapper<UserAuth>()
+                .eq(UserAuth::getUserId, user.getId()));
         if (userAuth == null) {
             throw new BusinessException(ApiErrorCodes.INTERNAL_ERROR, "账号数据异常");
         }
@@ -168,7 +188,7 @@ public class UserAuthServiceImpl implements UserAuthService {
                 .eq(UserAuth::getVersion, userAuth.getVersion())
                 .set(UserAuth::getPassword, EncryptUtils.bcryptEncode(dto.getPassword()))
                 .set(UserAuth::getSalt, "")
-                .set(UserAuth::getFailCount, 0)
+                .set(UserAuth::getFailCount, UserConstants.INITIAL_FAIL_COUNT)
                 .set(UserAuth::getLockUntil, null)
                 .set(UserAuth::getLastPasswordChange, LocalDateTime.now())
                 .set(UserAuth::getVersion, userAuth.getVersion() + 1)
@@ -178,14 +198,29 @@ public class UserAuthServiceImpl implements UserAuthService {
         }
 
         sessionHelper.invalidateUserSession(user.getId());
-        userSupport.logOperation(user.getId(), OperationType.RESET_PASSWORD, null, null);
+        try {
+            UserOperationLog logEntry = new UserOperationLog();
+            logEntry.setUserId(user.getId());
+            logEntry.setOperatorId(user.getId());
+            logEntry.setOperation(OperationType.RESET_PASSWORD);
+            logEntry.setDetail(UserStrings.EMPTY);
+            logEntry.setIp(UserStrings.EMPTY);
+            logEntry.setCreateTime(LocalDateTime.now());
+            userOperationLogMapper.insert(logEntry);
+        } catch (Exception e) {
+            log.warn("记录操作日志失败: userId={}, operation={}", user.getId(), OperationType.RESET_PASSWORD, e);
+        }
         return Result.success("密码重置成功");
     }
 
     @Override
     public Result<LoginVO> login(AccountLoginDTO dto, ClientInfo clientInfo) {
         String email = assertDeliverableEmail(dto.getEmail());
-        UserSupport.assertValidPassword(dto.getPassword());
+        try {
+            PasswordValidator.assertValid(dto.getPassword());
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException(ApiErrorCodes.BAD_REQUEST, e.getMessage());
+        }
 
         User user = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getEmail, email));
         if (user == null) {
@@ -201,7 +236,8 @@ public class UserAuthServiceImpl implements UserAuthService {
             log.info("冷静期内登录，已撤销注销: userId={}", user.getId());
         }
 
-        UserAuth userAuth = userSupport.getUserAuth(user.getId());
+        UserAuth userAuth = userAuthMapper.selectOne(new LambdaQueryWrapper<UserAuth>()
+                .eq(UserAuth::getUserId, user.getId()));
         if (userAuth == null) {
             throw new BusinessException(ApiErrorCodes.UNAUTHORIZED, "密码错误");
         }
@@ -221,49 +257,51 @@ public class UserAuthServiceImpl implements UserAuthService {
     @Override
     public Result<TokenRefreshVO> refreshToken(String refreshToken) {
         if (!StringUtils.hasText(refreshToken)) {
-            throw refreshExpired("refreshToken Cookie 不存在或已失效");
+            throw new BusinessException(AuthErrorCodes.REFRESH_EXPIRED, "refreshToken Cookie 不存在或已失效");
         }
 
         Claims claims;
         try {
             claims = JwtUtils.parseToken(Constants.REFRESH_JWT_SECRET, refreshToken);
         } catch (Exception e) {
-            throw refreshExpired("refreshToken 无效");
+            throw new BusinessException(AuthErrorCodes.REFRESH_EXPIRED, "refreshToken 无效");
         }
 
-        if (!"refresh".equals(claims.get("tokenType", String.class))) {
-            throw refreshExpired("refreshToken 无效");
+        if (!UserSessionHelper.TOKEN_TYPE_REFRESH.equals(
+                claims.get(UserSessionHelper.CLAIM_TOKEN_TYPE, String.class))) {
+            throw new BusinessException(AuthErrorCodes.REFRESH_EXPIRED, "refreshToken 无效");
         }
-        String sessionId = claims.get("sessionId", String.class);
+        String sessionId = claims.get(UserSessionHelper.CLAIM_SESSION_ID, String.class);
         if (!StringUtils.hasText(sessionId)) {
-            throw refreshExpired("refreshToken 无效");
+            throw new BusinessException(AuthErrorCodes.REFRESH_EXPIRED, "refreshToken 无效");
         }
 
         String refreshLockKey = RedisConstants.REFRESH_LOCK_PREFIX + sessionId;
         String refreshLockToken = UUID.randomUUID().toString();
-        if (Boolean.FALSE.equals(redisUtils.setIfAbsent(refreshLockKey, refreshLockToken, 5))) {
+        if (Boolean.FALSE.equals(redisUtils.setIfAbsent(refreshLockKey, refreshLockToken,
+                UserConstants.SESSION_LOCK_SECONDS))) {
             throw new BusinessException(ApiErrorCodes.TOO_MANY_REQUESTS, "登录态刷新中，请稍后重试");
         }
 
         try {
             UserSessionVO session = sessionHelper.loadSessionForAuth(sessionId);
             if (!sessionHelper.isSessionOnline(session)) {
-                throw refreshExpired("refreshToken 已过期，请重新登录");
+                throw new BusinessException(AuthErrorCodes.REFRESH_EXPIRED, "refreshToken 已过期，请重新登录");
             }
             Long userId = session.getUserId();
             if (userId == null) {
-                throw refreshExpired("refreshToken 无效");
+                throw new BusinessException(AuthErrorCodes.REFRESH_EXPIRED, "refreshToken 无效");
             }
 
             // hashToken：SHA-256(refresh+密钥)，与 session 内存的哈希比对，防旧 refresh 重放
             if (!sessionHelper.hashToken(refreshToken).equals(session.getRefreshTokenHash())) {
-                throw refreshExpired("refreshToken 已失效");
+                throw new BusinessException(AuthErrorCodes.REFRESH_EXPIRED, "refreshToken 已失效");
             }
 
             User user = userMapper.selectById(userId);
             if (user == null) {
                 sessionHelper.invalidateSession(sessionId, userId);
-                throw refreshExpired("用户不存在，请重新登录");
+                throw new BusinessException(AuthErrorCodes.REFRESH_EXPIRED, "用户不存在，请重新登录");
             }
             UserAccount account;
             try {
@@ -271,7 +309,7 @@ public class UserAuthServiceImpl implements UserAuthService {
                 userAccountService.assertLoginAllowed(account);
             } catch (BusinessException e) {
                 sessionHelper.invalidateSession(sessionId, userId);
-                throw refreshExpired("账号状态异常，请重新登录");
+                throw new BusinessException(AuthErrorCodes.REFRESH_EXPIRED, "账号状态异常，请重新登录");
             }
 
             String newRefreshToken = sessionHelper.generateRefreshToken(sessionId);
@@ -299,7 +337,7 @@ public class UserAuthServiceImpl implements UserAuthService {
         if (userId == null && StringUtils.hasText(refreshToken)) {
             try {
                 Claims claims = JwtUtils.parseToken(Constants.REFRESH_JWT_SECRET, refreshToken);
-                String refreshSessionId = claims.get("sessionId", String.class);
+                String refreshSessionId = claims.get(UserSessionHelper.CLAIM_SESSION_ID, String.class);
                 if (StringUtils.hasText(refreshSessionId)) {
                     sessionId = refreshSessionId;
                     UserSessionVO session = sessionHelper.getSession(refreshSessionId);
@@ -318,7 +356,18 @@ public class UserAuthServiceImpl implements UserAuthService {
                     ? sessionId
                     : redisUtils.get(RedisConstants.ACTIVE_SESSION_PREFIX + userId);
             sessionHelper.invalidateSessionWithLock(currentSessionId, userId);
-            userSupport.logOperation(userId, OperationType.LOGOUT, null, null);
+            try {
+                UserOperationLog logEntry = new UserOperationLog();
+                logEntry.setUserId(userId);
+                logEntry.setOperatorId(userId);
+                logEntry.setOperation(OperationType.LOGOUT);
+                logEntry.setDetail(UserStrings.EMPTY);
+                logEntry.setIp(UserStrings.EMPTY);
+                logEntry.setCreateTime(LocalDateTime.now());
+                userOperationLogMapper.insert(logEntry);
+            } catch (Exception e) {
+                log.warn("记录操作日志失败: userId={}, operation={}", userId, OperationType.LOGOUT, e);
+            }
         }
         return Result.success("退出登录成功");
     }
@@ -327,7 +376,8 @@ public class UserAuthServiceImpl implements UserAuthService {
     private LoginVO completeLogin(User user, UserAccount account, UserAuth userAuth, String loginIp) {
         String loginLockKey = RedisConstants.LOGIN_LOCK_PREFIX + user.getId();
         String loginLockToken = UUID.randomUUID().toString();
-        if (Boolean.FALSE.equals(redisUtils.setIfAbsent(loginLockKey, loginLockToken, 5))) {
+        if (Boolean.FALSE.equals(redisUtils.setIfAbsent(loginLockKey, loginLockToken,
+                UserConstants.SESSION_LOCK_SECONDS))) {
             throw new BusinessException(ApiErrorCodes.TOO_MANY_REQUESTS, "登录处理中，请稍后重试");
         }
 
@@ -345,7 +395,18 @@ public class UserAuthServiceImpl implements UserAuthService {
                     .set(UserAccount::getUpdateTime, LocalDateTime.now()));
 
             sessionHelper.invalidateUserSession(user.getId());
-            userSupport.logOperation(user.getId(), OperationType.LOGIN, null, loginIp);
+            try {
+                UserOperationLog logEntry = new UserOperationLog();
+                logEntry.setUserId(user.getId());
+                logEntry.setOperatorId(user.getId());
+                logEntry.setOperation(OperationType.LOGIN);
+                logEntry.setDetail(UserStrings.EMPTY);
+                logEntry.setIp(loginIp == null ? UserStrings.EMPTY : loginIp);
+                logEntry.setCreateTime(LocalDateTime.now());
+                userOperationLogMapper.insert(logEntry);
+            } catch (Exception e) {
+                log.warn("记录操作日志失败: userId={}, operation={}", user.getId(), OperationType.LOGIN, e);
+            }
             return sessionHelper.buildLoginVO(user, account, UUID.randomUUID().toString());
         } finally {
             redisUtils.unlock(loginLockKey, loginLockToken);
@@ -380,11 +441,11 @@ public class UserAuthServiceImpl implements UserAuthService {
     }
 
     private Long reserveAccountId() {
-        int maxRetries = 3;
+        int maxRetries = UserConstants.ACCOUNT_ID_RESERVE_MAX_RETRIES;
         for (int retry = 0; retry < maxRetries; retry++) {
             AccountIdPool available = accountIdPoolMapper.selectOne(
                     new LambdaQueryWrapper<AccountIdPool>()
-                            .eq(AccountIdPool::getStatus, 0)
+                            .eq(AccountIdPool::getStatus, UserConstants.ACCOUNT_POOL_AVAILABLE)
                             .orderByAsc(AccountIdPool::getDigitCount)
                             .orderByAsc(AccountIdPool::getAccountId)
                             .last("LIMIT 1"));
@@ -402,14 +463,6 @@ public class UserAuthServiceImpl implements UserAuthService {
             log.info("号池CAS预占失败，重试: retry={}", retry + 1);
         }
         throw new BusinessException(ApiErrorCodes.INTERNAL_ERROR, "账号ID分配失败，请稍后重试");
-    }
-
-    private void bindAccountIdToUser(Long accountId, Long userId) {
-        int rows = accountIdPoolMapper.bindUserId(accountId, userId);
-        if (rows <= 0) {
-            throw new BusinessException(ApiErrorCodes.INTERNAL_ERROR, "账号ID绑定失败");
-        }
-        log.info("号池绑定成功: userId={}, accountId={}", userId, accountId);
     }
 
     /**
@@ -465,10 +518,10 @@ public class UserAuthServiceImpl implements UserAuthService {
         account.setRegisterSource(registerSource);
         account.setBanReason(UserStrings.EMPTY);
         account.setLastLoginIp(UserStrings.EMPTY);
-        account.setVersion(0);
+        account.setVersion(UserConstants.INITIAL_VERSION);
         account.setCreateTime(LocalDateTime.now());
         account.setUpdateTime(LocalDateTime.now());
-        account.setDeleted(0);
+        account.setDeleted(UserConstants.NOT_DELETED);
         userAccountMapper.insert(account);
     }
 
@@ -478,12 +531,12 @@ public class UserAuthServiceImpl implements UserAuthService {
         userAuth.setUserId(userId);
         userAuth.setPassword(EncryptUtils.bcryptEncode(password));
         userAuth.setSalt("");
-        userAuth.setFailCount(0);
-        userAuth.setVersion(0);
+        userAuth.setFailCount(UserConstants.INITIAL_FAIL_COUNT);
+        userAuth.setVersion(UserConstants.INITIAL_VERSION);
         userAuth.setCreateTime(now);
         userAuth.setUpdateTime(now);
         userAuth.setLastPasswordChange(now);
-        userAuth.setDeleted(0);
+        userAuth.setDeleted(UserConstants.NOT_DELETED);
         userAuthMapper.insert(userAuth);
     }
 
@@ -493,7 +546,8 @@ public class UserAuthServiceImpl implements UserAuthService {
                 .setSql("fail_count = COALESCE(fail_count, 0) + 1")
                 .set(UserAuth::getUpdateTime, LocalDateTime.now()));
         UserAuth current = userAuthMapper.selectById(userAuth.getId());
-        int newFailCount = current == null || current.getFailCount() == null ? 0 : current.getFailCount();
+        int newFailCount = current == null || current.getFailCount() == null
+                ? UserConstants.INITIAL_FAIL_COUNT : current.getFailCount();
         if (newFailCount >= UserConstants.LOGIN_FAIL_LOCK_THRESHOLD) {
             LocalDateTime lockUntil = LocalDateTime.now()
                     .plusMinutes(UserConstants.LOGIN_LOCK_DURATION_MINUTES);
@@ -506,12 +560,4 @@ public class UserAuthServiceImpl implements UserAuthService {
         }
     }
 
-    private static String extractNickname(String email) {
-        int at = email.indexOf('@');
-        return at > 0 ? email.substring(0, at) : "新玩家";
-    }
-
-    private static BusinessException refreshExpired(String message) {
-        return new BusinessException(AuthErrorCodes.REFRESH_EXPIRED, message);
-    }
 }

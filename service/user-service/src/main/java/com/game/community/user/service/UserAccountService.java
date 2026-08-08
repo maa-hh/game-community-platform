@@ -36,13 +36,7 @@ public interface UserAccountService {
     /** 按对外 accountId 解封，内部先解析 t_user.id。 */
     Result<Void> unbanUserByAccountId(Long accountId, Long operatorId);
 
-    /**
-     * 被动刷新账号状态并返回最新实体：
-     * 过期封禁 → 正常；冷静期已结束 → 完成注销。
-     */
-    UserAccount refreshStatus(UserAccount account);
-
-    /** 按 userId 加载并被动刷新状态 */
+    /** 按 userId 加载并被动刷新过期封禁、注销状态。 */
     UserAccount refreshStatus(Long userId);
 
     /** refresh 持有会话锁时使用；注销完成后的会话作废由 refresh 调用方在锁内完成。 */

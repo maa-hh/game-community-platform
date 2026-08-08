@@ -110,7 +110,7 @@ public class UserFeignController {
 
     @PostMapping("/cosmetic/decorations/batch")
     public Result<Map<Long, UserDecorationVO>> batchDecorations(@RequestBody BatchUserIdsDTO dto) {
-        return Result.success(cosmeticService.batchDecorations(dto.getAccountIds()));
+        return Result.success(cosmeticService.batchDecorationsByAccountIds(dto.getAccountIds()));
     }
 
     @PostMapping("/{userId}/steam-account")

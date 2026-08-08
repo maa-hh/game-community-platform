@@ -16,7 +16,6 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.util.Locale;
 import java.security.SecureRandom;
 
 /**
@@ -32,18 +31,22 @@ public class VerificationCodeHelper {
     private final EmailService emailService;
     private final SecureRandom random = new SecureRandom();
 
+    /** 邮箱已由业务入口规范化；这里负责限流、落 Redis 验证码并提交发送任务。 */
     public int sendEmailCode(String email, CodeBizType bizType) {
-        String normalized = normalize(email);
-        CodeBizType type = normalizeBizType(bizType);
+        String normalized = email;
+        CodeBizType type = bizType == null ? CodeBizType.REGISTER : bizType;
         String typeCode = type.getCode();
         assertNotVerifyLocked(normalized);
 
         String cooldownKey = RedisConstants.SEND_CODE_COOLDOWN_PREFIX + typeCode + ":" + normalized;
         String dailyKey = RedisConstants.SEND_CODE_DAILY_PREFIX + typeCode + ":" + normalized;
-        long expireSeconds = resolveExpireSeconds();
+        long configuredExpireSeconds = emailProperties.getCode().getExpireSeconds();
+        long expireSeconds = configuredExpireSeconds > 0
+                ? configuredExpireSeconds : UserConstants.CODE_EXPIRE;
         String code = emailService.useFixedCode(normalized)
                 ? emailService.getMockFixedCode()
-                : randomCode();
+                : String.format("%0" + UserConstants.CODE_LENGTH + "d",
+                random.nextInt(UserConstants.CODE_RANDOM_BOUND));
         long secondsUntilMidnight = Duration.between(
                 LocalDateTime.now(),
                 LocalDate.now().plusDays(1).atTime(LocalTime.MIDNIGHT)
@@ -56,26 +59,22 @@ public class VerificationCodeHelper {
                 code,
                 expireSeconds,
                 UserConstants.SEND_CODE_COOLDOWN,
-                Math.max(1, secondsUntilMidnight),
+                Math.max(UserConstants.MIN_POSITIVE_SECONDS, secondsUntilMidnight),
                 UserConstants.SEND_CODE_DAILY_LIMIT);
-        if (reserved == 0) {
-            long waitSec = Math.max(1, redisUtils.getExpireSeconds(cooldownKey));
+        if (reserved == RedisConstants.RESERVE_COOLDOWN) {
+            long waitSec = Math.max(UserConstants.MIN_POSITIVE_SECONDS,
+                    redisUtils.getExpireSeconds(cooldownKey));
             throw new BusinessException(ApiErrorCodes.TOO_MANY_REQUESTS, "发送过于频繁，请 " + waitSec + " 秒后再试");
         }
-        if (reserved == 2) {
+        if (reserved == RedisConstants.RESERVE_DAILY_LIMIT) {
             throw new BusinessException(ApiErrorCodes.TOO_MANY_REQUESTS, "今日发送次数已达上限，请明天再试");
         }
-        if (reserved < 0) {
+        if (reserved == RedisConstants.RESERVE_UNAVAILABLE) {
             throw new BusinessException(ApiErrorCodes.INTERNAL_ERROR, "验证码服务暂不可用");
         }
 
         emailService.sendVerificationCode(normalized, code, type);
         return (int) expireSeconds;
-    }
-
-    public long resolveExpireSeconds() {
-        long configured = emailProperties.getCode().getExpireSeconds();
-        return configured > 0 ? configured : UserConstants.CODE_EXPIRE;
     }
 
     public void verify(String email, CodeBizType bizType, String inputCode) {
@@ -88,8 +87,8 @@ public class VerificationCodeHelper {
     }
 
     private void assertCodeMatches(String email, CodeBizType bizType, String inputCode, boolean consume) {
-        String normalized = normalize(email);
-        CodeBizType type = normalizeBizType(bizType);
+        String normalized = email;
+        CodeBizType type = bizType == null ? CodeBizType.REGISTER : bizType;
         String typeCode = type.getCode();
         assertNotVerifyLocked(normalized);
 
@@ -107,10 +106,6 @@ public class VerificationCodeHelper {
         if (consume) {
             redisUtils.del(codeKey);
         }
-    }
-
-    public String randomCode() {
-        return String.format("%06d", random.nextInt(1_000_000));
     }
 
     private void assertNotVerifyLocked(String email) {
@@ -132,17 +127,9 @@ public class VerificationCodeHelper {
         log.warn("[验证码验证失败] email={}, failCount={}/{}", email, failCount,
                 UserConstants.CODE_VERIFY_FAIL_THRESHOLD);
 
-        if (failCount < 0) {
+        if (failCount == RedisConstants.RESERVE_UNAVAILABLE) {
             throw new BusinessException(ApiErrorCodes.INTERNAL_ERROR, "验证码服务暂不可用");
         }
-    }
-
-    public static CodeBizType normalizeBizType(CodeBizType bizType) {
-        return bizType == null ? CodeBizType.REGISTER : bizType;
-    }
-
-    private static String normalize(String email) {
-        return email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
     }
 
 }

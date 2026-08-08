@@ -11,9 +11,6 @@ import java.util.List;
 @Mapper
 public interface CosmeticDefMapper extends BaseMapper<CosmeticDef> {
 
-    @Select("SELECT * FROM t_cosmetic_def WHERE code = #{code} LIMIT 1")
-    CosmeticDef selectByCode(String code);
-
     @Select({
             "<script>",
             "SELECT * FROM t_cosmetic_def WHERE code IN",

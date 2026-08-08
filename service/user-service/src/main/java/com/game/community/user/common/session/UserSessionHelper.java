@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.game.community.common.constant.Constants;
 import com.game.community.common.constant.ApiErrorCodes;
 import com.game.community.common.constant.user.RedisConstants;
+import com.game.community.common.constant.user.UserConstants;
 import com.game.community.common.exception.BusinessException;
 import com.game.community.model.entity.user.User;
 import com.game.community.model.entity.user.UserAccount;
@@ -18,6 +19,7 @@ import com.game.community.utils.RedisUtils;
 import com.game.community.utils.session.UserSessionRedisReader;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -38,8 +40,14 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class UserSessionHelper {
 
-    private static final String TOKEN_TYPE_ACCESS = "access";
-    private static final String TOKEN_TYPE_REFRESH = "refresh";
+    public static final String TOKEN_TYPE_ACCESS = "access";
+    public static final String TOKEN_TYPE_REFRESH = "refresh";
+    public static final String CLAIM_ACCOUNT_ID = "accountId";
+    public static final String CLAIM_ACCOUNT_TYPE = "type";
+    public static final String CLAIM_STEAM_ACCOUNT = "steamAccount";
+    public static final String CLAIM_SESSION_ID = "sessionId";
+    public static final String CLAIM_TOKEN_TYPE = "tokenType";
+    private static final String TOKEN_DIGEST_ALGORITHM = "SHA-256";
 
     private final RedisUtils redisUtils;
     private final ObjectMapper objectMapper;
@@ -71,28 +79,25 @@ public class UserSessionHelper {
         vo.setRefreshToken(refreshToken);
 
         LoginUserVO loginUser = new LoginUserVO();
-        loginUser.setAccountId(user.getAccountId());
-        loginUser.setEmail(user.getEmail());
-        loginUser.setUsername(user.getUsername());
-        loginUser.setAvatar(user.getAvatar());
+        BeanUtils.copyProperties(user, loginUser);
         vo.setUser(loginUser);
         return vo;
     }
 
     public String generateAccessToken(User user, UserAccount account, String sessionId) {
         Map<String, Object> claims = new HashMap<>();
-        claims.put("accountId", user.getAccountId());
-        claims.put("type", account.getType().getCode());
-        claims.put("steamAccount", UserStrings.orEmpty(user.getSteamAccount()));
-        claims.put("sessionId", sessionId);
-        claims.put("tokenType", TOKEN_TYPE_ACCESS);
+        claims.put(CLAIM_ACCOUNT_ID, user.getAccountId());
+        claims.put(CLAIM_ACCOUNT_TYPE, account.getType().getCode());
+        claims.put(CLAIM_STEAM_ACCOUNT, UserStrings.orEmpty(user.getSteamAccount()));
+        claims.put(CLAIM_SESSION_ID, sessionId);
+        claims.put(CLAIM_TOKEN_TYPE, TOKEN_TYPE_ACCESS);
         return JwtUtils.generateToken(Constants.ACCESS_JWT_SECRET, claims, Constants.ACCESS_TOKEN_EXPIRE_TIME * 1000);
     }
 
     public String generateRefreshToken(String sessionId) {
         Map<String, Object> claims = new HashMap<>();
-        claims.put("sessionId", sessionId);
-        claims.put("tokenType", TOKEN_TYPE_REFRESH);
+        claims.put(CLAIM_SESSION_ID, sessionId);
+        claims.put(CLAIM_TOKEN_TYPE, TOKEN_TYPE_REFRESH);
         return JwtUtils.generateToken(Constants.REFRESH_JWT_SECRET, claims, Constants.REFRESH_TOKEN_EXPIRE_TIME * 1000);
     }
 
@@ -158,7 +163,7 @@ public class UserSessionHelper {
         }
         String lockKey = RedisConstants.REFRESH_LOCK_PREFIX + sessionId;
         String lockToken = UUID.randomUUID().toString();
-        if (Boolean.FALSE.equals(redisUtils.setIfAbsent(lockKey, lockToken, 5))) {
+        if (Boolean.FALSE.equals(redisUtils.setIfAbsent(lockKey, lockToken, UserConstants.SESSION_LOCK_SECONDS))) {
             throw new BusinessException(ApiErrorCodes.TOO_MANY_REQUESTS, "登录态处理中，请稍后重试");
         }
         try {
@@ -170,7 +175,7 @@ public class UserSessionHelper {
 
     public String hashToken(String token) {
         try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            MessageDigest digest = MessageDigest.getInstance(TOKEN_DIGEST_ALGORITHM);
             byte[] bytes = digest.digest((token + Constants.REFRESH_JWT_SECRET).getBytes(StandardCharsets.UTF_8));
             StringBuilder builder = new StringBuilder();
             for (byte current : bytes) {

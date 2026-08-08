@@ -96,7 +96,7 @@ Feed 信箱只保存文章基础索引，不复制标题、摘要、封面等文
 - 回复：通过 social-service 拉取回复内容；举报采纳后隐藏回复。
 - 用户：通过 user-service 拉取用户资料；举报采纳后封禁用户。
 
-管理员处理时先使用 `claimToken + version + leaseExpireTime` CAS 认领，再提交带 `requestId` 的幂等处理请求；联动目标处理失败时工单回退到待处理，租约过期也会自动回收。通知先写入审核 Outbox，再由后台投递 Kafka，避免数据库已完成但通知丢失。
+管理员处理时先使用 `claimToken + version + leaseExpireTime` CAS 认领，再提交带 `requestId` 的幂等处理请求；联动目标处理失败时工单回退到待处理，租约过期也会自动回收。通知直接发送 Kafka，由 Producer 配置负责重试，最终失败写入 user-service 的失败记录表。
 
 ## 并发与一致性设计
 
