@@ -13,6 +13,7 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
 @EnableFeignClients(basePackages = "com.game.community.feign")
 public class UserServiceApplication {
 
+    /** 执行 main 对应的业务处理。 */
     public static void main(String[] args) {
         SpringApplication.run(UserServiceApplication.class, args);
     }

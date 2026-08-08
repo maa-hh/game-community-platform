@@ -15,6 +15,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 @EnableConfigurationProperties(AuditAsyncProperties.class)
 public class AuditAsyncConfig {
 
+    /** 执行 auditExecutor 对应的业务处理。 */
     @Bean("auditExecutor")
     public Executor auditExecutor(AuditAsyncProperties properties) {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();

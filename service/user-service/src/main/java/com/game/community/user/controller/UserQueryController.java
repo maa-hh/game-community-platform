@@ -28,12 +28,14 @@ public class UserQueryController {
     private final UserQueryService userQueryService;
 
     @LoginCheck
+    /** 执行 getUserById 对应的业务处理。 */
     @GetMapping("/{accountId}")
     public Result<UserPublicVO> getUserById(@PathVariable("accountId") Long accountId) {
         return userQueryService.getUserPublicByAccountId(accountId);
     }
 
     @LoginCheck
+    /** 执行 getUserSimpleById 对应的业务处理。 */
     @GetMapping("/simple/{accountId}")
     public Result<UserCardVO> getUserSimpleById(@PathVariable("accountId") Long accountId) {
         return userQueryService.getUserCardByAccountId(accountId);
@@ -46,6 +48,7 @@ public class UserQueryController {
     }
 
     @LoginCheck
+    /** 执行 searchUsers 对应的业务处理。 */
     @GetMapping("/simple/search")
     public PageResult<UserCardVO> searchUsers(@Valid UserSearchPageDTO dto) {
         return userQueryService.searchUsers(dto);

@@ -46,6 +46,7 @@ public class AuditTaskExecutor {
     private final ModerationTaskProducer moderationTaskProducer;
     private final ObjectMapper objectMapper;
 
+    /** 执行 AuditTaskExecutor 对应的业务处理。 */
     public AuditTaskExecutor(@Qualifier("auditExecutor") Executor auditExecutor,
                              UserAuditTaskMapper taskMapper,
                              UserAuditRejectLogMapper rejectLogMapper,
@@ -72,6 +73,7 @@ public class AuditTaskExecutor {
 
     /** 任务已在事务中落库；这里只负责提交到审核线程池。 */
     public void submit(Long taskId) {
+        // 任务已经在业务事务中落库；这里只提交 Runnable，不在调用线程执行审核。
         auditExecutor.execute(() -> run(taskId));
     }
 
@@ -116,6 +118,7 @@ public class AuditTaskExecutor {
                 .eq(UserAuditTask::getStatus, AuditTaskStatus.PENDING)
                 .set(UserAuditTask::getStatus, AuditTaskStatus.PROCESSING)
                 .set(UserAuditTask::getUpdateTime, LocalDateTime.now())) == 0) {
+            // CAS 抢占失败表示任务已被其他线程处理，直接结束本次重复执行。
             return;
         }
 
@@ -151,6 +154,7 @@ public class AuditTaskExecutor {
 
             Integer score = result.score();
             String reason = result.reason();
+            // 先保存审核分数，再按分数推进最终状态，便于人工排查和后续通知。
             updateTask(taskId, AuditTaskStatus.PROCESSING, score, reason);
             if (result.reject()) {
                 rollbackField(task.getTaskType(), task.getUserId(), payload);
@@ -159,6 +163,7 @@ public class AuditTaskExecutor {
                 return;
             }
             if (result.humanReview()) {
+                // 人工复核保留 pending 内容，不清理占用，等待人工接口继续处理。
                 switch (task.getTaskType()) {
                     case USERNAME -> auditHelper.markUsernameHumanReview(task.getUserId());
                     case SIGNATURE -> auditHelper.markSignatureHumanReview(task.getUserId());
@@ -178,6 +183,7 @@ public class AuditTaskExecutor {
                 notificationProducer.publishRejected(task.getUserId(), task.getTaskType(), score, "审核结果回写失败");
                 return;
             }
+            // 资料回写成功后才标记 PASSED，避免任务状态领先于业务数据。
             updateTask(taskId, AuditTaskStatus.PASSED, null, UserStrings.EMPTY);
             notificationProducer.publishPassed(task.getUserId(), task.getTaskType(), score, reason);
         } catch (Exception e) {
@@ -196,6 +202,7 @@ public class AuditTaskExecutor {
             case USERNAME -> auditHelper.applyUsernamePassed(userId, payload.getUserVersion(), payload.getContent());
             case SIGNATURE -> auditHelper.applySignaturePassed(userId, payload.getUserVersion(), payload.getContent());
             case AVATAR -> {
+                // 头像发布和资料 CAS 必须配套；CAS 失败时删除新公开对象，避免泄漏。
                 String publicUrl = minIOUtils.publishPrivateAvatar(payload.getPendingObjectName());
                 boolean updated = auditHelper.applyAvatarPassed(
                         userId, payload.getUserVersion(), payload.getPendingObjectName(), publicUrl);
@@ -238,6 +245,7 @@ public class AuditTaskExecutor {
         }
     }
 
+    /** 执行 result 对应的业务处理。 */
     private AuditFieldResult result(String fieldLabel, AuditResult auditResult) {
         if (auditResult == null) {
             return new AuditFieldResult(UserConstants.AuditScore.REJECT_DEFAULT,
@@ -253,6 +261,7 @@ public class AuditTaskExecutor {
         return new AuditFieldResult(score, reason);
     }
 
+    /** 执行 updateTask 对应的业务处理。 */
     public void updateTask(Long taskId, AuditTaskStatus status, Integer score, String errorMessage) {
         LambdaUpdateWrapper<UserAuditTask> update = new LambdaUpdateWrapper<UserAuditTask>()
                 .eq(UserAuditTask::getId, taskId)
@@ -267,6 +276,7 @@ public class AuditTaskExecutor {
         taskMapper.update(null, update);
     }
 
+    /** 执行 abbreviate 对应的业务处理。 */
     private String abbreviate(String message) {
         if (!StringUtils.hasText(message)) {
             return UserStrings.EMPTY;

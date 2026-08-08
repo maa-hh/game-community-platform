@@ -40,24 +40,28 @@ public class UserProfileController {
     private final CookieHelper cookieHelper;
 
     @LoginCheck
+    /** 执行 getCurrentUser 对应的业务处理。 */
     @GetMapping("/me")
     public Result<UserMeVO> getCurrentUser() {
         return userProfileService.getCurrentUser();
     }
 
     @LoginCheck
+    /** 执行 updateUsername 对应的业务处理。 */
     @PutMapping("/username")
     public Result<ProfileFieldSubmitVO> updateUsername(@Valid @RequestBody UpdateUsernameDTO dto) {
         return userProfileService.updateUsername(dto);
     }
 
     @LoginCheck
+    /** 执行 updateSignature 对应的业务处理。 */
     @PutMapping("/signature")
     public Result<ProfileFieldSubmitVO> updateSignature(@Valid @RequestBody UpdateSignatureDTO dto) {
         return userProfileService.updateSignature(dto);
     }
 
     @LoginCheck
+    /** 执行 uploadAvatar 对应的业务处理。 */
     @PostMapping("/avatar")
     public Result<ProfileFieldSubmitVO> uploadAvatar(@RequestParam("avatar") MultipartFile avatar,
                                                      @RequestParam("version") Integer version) {
@@ -66,12 +70,14 @@ public class UserProfileController {
 
     /** 更新无需审核的资料（Steam 账号） */
     @LoginCheck
+    /** 执行 updateUserInfo 对应的业务处理。 */
     @PutMapping("/info")
     public Result<Void> updateUserInfo(@Valid @RequestBody UpdateUserInfoDTO dto) {
         return userProfileService.updateUserInfo(dto);
     }
 
     @LoginCheck
+    /** 执行 changePassword 对应的业务处理。 */
     @PutMapping("/password")
     public Result<Void> changePassword(@Valid @RequestBody ChangePasswordDTO dto,
                                        HttpServletRequest request,
@@ -84,6 +90,7 @@ public class UserProfileController {
 
     /** 改邮箱第一步：向当前绑定邮箱发验证码 */
     @LoginCheck
+    /** 执行 sendChangeEmailOldCode 对应的业务处理。 */
     @PostMapping("/email/send-old-code")
     public Result<SendCodeVO> sendChangeEmailOldCode() {
         return userProfileService.sendChangeEmailOldCode();
@@ -91,6 +98,7 @@ public class UserProfileController {
 
     /** 改邮箱第二步：校验原邮箱验证码后，向新邮箱发码 */
     @LoginCheck
+    /** 执行 prepareChangeEmail 对应的业务处理。 */
     @PostMapping("/email/prepare")
     public Result<SendCodeVO> prepareChangeEmail(@Valid @RequestBody PrepareChangeEmailDTO dto) {
         return userProfileService.prepareChangeEmail(dto);
@@ -98,6 +106,7 @@ public class UserProfileController {
 
     /** 改邮箱第三步：双码确认更换（成功后清除登录态） */
     @LoginCheck
+    /** 执行 confirmChangeEmail 对应的业务处理。 */
     @PutMapping("/email")
     public Result<ChangeEmailVO> confirmChangeEmail(@Valid @RequestBody ConfirmChangeEmailDTO dto,
                                                     HttpServletRequest request,

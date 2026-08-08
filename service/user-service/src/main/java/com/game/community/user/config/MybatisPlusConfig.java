@@ -15,6 +15,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Configuration
 public class MybatisPlusConfig {
 
+    /** 执行 mybatisPlusInterceptor 对应的业务处理。 */
     @Bean
     public MybatisPlusInterceptor mybatisPlusInterceptor() {
         MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
@@ -23,6 +24,7 @@ public class MybatisPlusConfig {
         return interceptor;
     }
 
+    /** 执行 transactionTemplate 对应的业务处理。 */
     @Bean
     public TransactionTemplate transactionTemplate(PlatformTransactionManager transactionManager) {
         return new TransactionTemplate(transactionManager);

@@ -31,6 +31,7 @@ public class UserFilter implements Filter {
     @Value("${gateway.internal-secret}")
     private String internalSecret;
 
+    /** 执行 doFilter 对应的业务处理。 */
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
             throws IOException, ServletException {

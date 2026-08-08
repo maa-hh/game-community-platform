@@ -12,6 +12,7 @@ import java.util.List;
 @Mapper
 public interface UserActiveEffectMapper extends BaseMapper<UserActiveEffect> {
 
+    /** 批量查询尚未过期的用户主动效果。 */
     @Select({
             "<script>",
             "SELECT * FROM t_user_active_effect",

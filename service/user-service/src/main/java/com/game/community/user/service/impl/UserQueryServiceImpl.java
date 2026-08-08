@@ -33,17 +33,20 @@ public class UserQueryServiceImpl implements UserQueryService {
     private final UserMapper userMapper;
     private final UserAccountService userAccountService;
 
+    /** 执行 getUserPublicByAccountId 对应的业务处理。 */
     @Override
     public Result<UserPublicVO> getUserPublicByAccountId(Long accountId) {
         User user = getByAccountId(accountId);
         return Result.success("查询成功", convertToPublicVO(user));
     }
 
+    /** 执行 getUserCardByAccountId 对应的业务处理。 */
     @Override
     public Result<UserCardVO> getUserCardByAccountId(Long accountId) {
         return Result.success("查询成功", convertToCardVO(getByAccountId(accountId)));
     }
 
+    /** 执行 getUsersByAccountIds 对应的业务处理。 */
     @Override
     public Result<List<UserCardVO>> getUsersByAccountIds(List<Long> accountIds) {
         if (accountIds == null || accountIds.isEmpty()) {
@@ -58,6 +61,7 @@ public class UserQueryServiceImpl implements UserQueryService {
         return Result.success("查询成功", list);
     }
 
+    /** 执行 getUsersByUserIds 对应的业务处理。 */
     @Override
     public Result<List<UserCardInternalVO>> getUsersByUserIds(List<Long> userIds) {
         if (userIds == null || userIds.isEmpty()) {
@@ -71,11 +75,13 @@ public class UserQueryServiceImpl implements UserQueryService {
         return Result.success("查询成功", list);
     }
 
+    /** 执行 getUserInternalByAccountId 对应的业务处理。 */
     @Override
     public Result<UserCardInternalVO> getUserInternalByAccountId(Long accountId) {
         return Result.success("查询成功", convertToInternalCardVO(getByAccountId(accountId)));
     }
 
+    /** 执行 getUsersInternalByAccountIds 对应的业务处理。 */
     @Override
     public Result<List<UserCardInternalVO>> getUsersInternalByAccountIds(List<Long> accountIds) {
         if (accountIds == null || accountIds.isEmpty()) {
@@ -92,6 +98,7 @@ public class UserQueryServiceImpl implements UserQueryService {
         return Result.success("查询成功", list);
     }
 
+    /** 执行 searchUsers 对应的业务处理。 */
     @Override
     public PageResult<UserCardVO> searchUsers(UserSearchPageDTO dto) {
         int current = dto == null || dto.getPage() == null || dto.getPage() < UserConstants.FIRST_PAGE
@@ -132,6 +139,7 @@ public class UserQueryServiceImpl implements UserQueryService {
         return PageResult.of(records, (long) current, (long) pageSize, userPage.getTotal());
     }
 
+    /** 执行 getUserAccountVO 对应的业务处理。 */
     @Override
     public Result<UserAccountVO> getUserAccountVO(Long userId) {
         UserAccount account;
@@ -150,6 +158,7 @@ public class UserQueryServiceImpl implements UserQueryService {
         return Result.success("查询成功", vo);
     }
 
+    /** 执行 getByAccountId 对应的业务处理。 */
     private User getByAccountId(Long accountId) {
         if (accountId == null) {
             throw new BusinessException("用户不存在");
@@ -162,6 +171,7 @@ public class UserQueryServiceImpl implements UserQueryService {
         return user;
     }
 
+    /** 执行 convertToPublicVO 对应的业务处理。 */
     private UserPublicVO convertToPublicVO(User user) {
         UserPublicVO vo = new UserPublicVO();
         BeanUtils.copyProperties(user, vo);
@@ -170,12 +180,14 @@ public class UserQueryServiceImpl implements UserQueryService {
         return vo;
     }
 
+    /** 执行 convertToCardVO 对应的业务处理。 */
     private UserCardVO convertToCardVO(User user) {
         UserCardVO vo = new UserCardVO();
         BeanUtils.copyProperties(user, vo);
         return vo;
     }
 
+    /** 执行 convertToInternalCardVO 对应的业务处理。 */
     private UserCardInternalVO convertToInternalCardVO(User user) {
         UserCardInternalVO vo = new UserCardInternalVO();
         BeanUtils.copyProperties(user, vo);

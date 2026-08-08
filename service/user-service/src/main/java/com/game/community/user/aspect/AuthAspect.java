@@ -18,6 +18,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class AuthAspect {
 
+    /** 执行 aroundLoginCheck 对应的业务处理。 */
     @Around("@annotation(com.game.community.common.annotation.LoginCheck)")
     public Object aroundLoginCheck(ProceedingJoinPoint joinPoint) throws Throwable {
         Long userId = UserThreadLocal.getUserId();
@@ -28,6 +29,7 @@ public class AuthAspect {
         return joinPoint.proceed();
     }
 
+    /** 执行 aroundAdminCheck 对应的业务处理。 */
     @Around("@annotation(com.game.community.common.annotation.AdminCheck)")
     public Object aroundAdminCheck(ProceedingJoinPoint joinPoint) throws Throwable {
         Long userId = UserThreadLocal.getUserId();

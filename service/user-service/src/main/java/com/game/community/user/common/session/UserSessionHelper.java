@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.game.community.common.constant.Constants;
 import com.game.community.common.constant.ApiErrorCodes;
 import com.game.community.common.constant.user.RedisConstants;
+import com.game.community.common.constant.user.UserSessionConstants;
 import com.game.community.common.constant.user.UserConstants;
 import com.game.community.common.exception.BusinessException;
 import com.game.community.model.entity.user.User;
@@ -39,16 +40,6 @@ import java.util.UUID;
 @Component
 @RequiredArgsConstructor
 public class UserSessionHelper {
-
-    public static final String TOKEN_TYPE_ACCESS = "access";
-    public static final String TOKEN_TYPE_REFRESH = "refresh";
-    public static final String CLAIM_ACCOUNT_ID = "accountId";
-    public static final String CLAIM_ACCOUNT_TYPE = "type";
-    public static final String CLAIM_STEAM_ACCOUNT = "steamAccount";
-    public static final String CLAIM_SESSION_ID = "sessionId";
-    public static final String CLAIM_TOKEN_TYPE = "tokenType";
-    private static final String TOKEN_DIGEST_ALGORITHM = "SHA-256";
-
     private final RedisUtils redisUtils;
     private final ObjectMapper objectMapper;
     private final UserSessionRedisReader sessionRedisReader;
@@ -57,6 +48,7 @@ public class UserSessionHelper {
      * 构建登录响应：创建会话 + 生成双令牌
      */
     public LoginVO buildLoginVO(User user, UserAccount account, String sessionId) {
+        // 先保存带 refresh 哈希的 Redis 会话，再把双令牌返回给认证流程。
         String refreshToken = generateRefreshToken(sessionId);
 
         UserSessionVO session = new UserSessionVO();
@@ -84,24 +76,28 @@ public class UserSessionHelper {
         return vo;
     }
 
+    /** 执行 generateAccessToken 对应的业务处理。 */
     public String generateAccessToken(User user, UserAccount account, String sessionId) {
         Map<String, Object> claims = new HashMap<>();
-        claims.put(CLAIM_ACCOUNT_ID, user.getAccountId());
-        claims.put(CLAIM_ACCOUNT_TYPE, account.getType().getCode());
-        claims.put(CLAIM_STEAM_ACCOUNT, UserStrings.orEmpty(user.getSteamAccount()));
-        claims.put(CLAIM_SESSION_ID, sessionId);
-        claims.put(CLAIM_TOKEN_TYPE, TOKEN_TYPE_ACCESS);
+        claims.put(UserSessionConstants.CLAIM_ACCOUNT_ID, user.getAccountId());
+        claims.put(UserSessionConstants.CLAIM_ACCOUNT_TYPE, account.getType().getCode());
+        claims.put(UserSessionConstants.CLAIM_STEAM_ACCOUNT, UserStrings.orEmpty(user.getSteamAccount()));
+        claims.put(UserSessionConstants.CLAIM_SESSION_ID, sessionId);
+        claims.put(UserSessionConstants.CLAIM_TOKEN_TYPE, UserSessionConstants.TOKEN_TYPE_ACCESS);
         return JwtUtils.generateToken(Constants.ACCESS_JWT_SECRET, claims, Constants.ACCESS_TOKEN_EXPIRE_TIME * 1000);
     }
 
+    /** 执行 generateRefreshToken 对应的业务处理。 */
     public String generateRefreshToken(String sessionId) {
         Map<String, Object> claims = new HashMap<>();
-        claims.put(CLAIM_SESSION_ID, sessionId);
-        claims.put(CLAIM_TOKEN_TYPE, TOKEN_TYPE_REFRESH);
+        claims.put(UserSessionConstants.CLAIM_SESSION_ID, sessionId);
+        claims.put(UserSessionConstants.CLAIM_TOKEN_TYPE, UserSessionConstants.TOKEN_TYPE_REFRESH);
         return JwtUtils.generateToken(Constants.REFRESH_JWT_SECRET, claims, Constants.REFRESH_TOKEN_EXPIRE_TIME * 1000);
     }
 
+    /** 执行 saveSession 对应的业务处理。 */
     public void saveSession(String sessionId, Long userId, UserSessionVO session) {
+        // 三个 Redis 索引一起写入，保证按 sessionId 和 userId 都能找到当前会话。
         boolean saved = redisUtils.saveSession(
                 RedisConstants.SESSION_PREFIX + sessionId,
                 RedisConstants.SESSION_ACTIVE_PREFIX + sessionId,
@@ -123,6 +119,7 @@ public class UserSessionHelper {
         }
     }
 
+    /** 执行 getSession 对应的业务处理。 */
     public UserSessionVO getSession(String sessionId) {
         try {
             return sessionRedisReader.loadSession(sessionId);
@@ -167,15 +164,17 @@ public class UserSessionHelper {
             throw new BusinessException(ApiErrorCodes.TOO_MANY_REQUESTS, "登录态处理中，请稍后重试");
         }
         try {
+            // 作废与 refresh 共用锁，避免 refresh 在作废之后重新保存会话。
             invalidateSession(sessionId, userId);
         } finally {
             redisUtils.unlock(lockKey, lockToken);
         }
     }
 
+    /** 执行 hashToken 对应的业务处理。 */
     public String hashToken(String token) {
         try {
-            MessageDigest digest = MessageDigest.getInstance(TOKEN_DIGEST_ALGORITHM);
+            MessageDigest digest = MessageDigest.getInstance(UserSessionConstants.TOKEN_DIGEST_ALGORITHM);
             byte[] bytes = digest.digest((token + Constants.REFRESH_JWT_SECRET).getBytes(StandardCharsets.UTF_8));
             StringBuilder builder = new StringBuilder();
             for (byte current : bytes) {
@@ -187,10 +186,12 @@ public class UserSessionHelper {
         }
     }
 
+    /** 执行 isSessionOnline 对应的业务处理。 */
     public boolean isSessionOnline(UserSessionVO session) {
         return session != null && SessionStatus.ONLINE == session.getStatus();
     }
 
+    /** 执行 writeSession 对应的业务处理。 */
     private String writeSession(UserSessionVO session) {
         try {
             return objectMapper.writeValueAsString(session);

@@ -11,6 +11,7 @@ import java.util.List;
 @Mapper
 public interface CosmeticDefMapper extends BaseMapper<CosmeticDef> {
 
+    /** 批量查询装扮定义，避免逐条查定义表。 */
     @Select({
             "<script>",
             "SELECT * FROM t_cosmetic_def WHERE code IN",

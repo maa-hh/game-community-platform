@@ -40,16 +40,19 @@ public class UserFeignController {
     private final UserFieldAuditTaskService userFieldAuditTaskService;
     private final CosmeticService cosmeticService;
 
+    /** 执行 getUsersByUserIds 对应的业务处理。 */
     @GetMapping("/ids")
     public Result<List<UserCardInternalVO>> getUsersByUserIds(@RequestParam("ids") List<Long> ids) {
         return userQueryService.getUsersByUserIds(ids);
     }
 
+    /** 执行 getUsersByAccountIds 对应的业务处理。 */
     @GetMapping("/account-ids")
     public Result<List<UserCardVO>> getUsersByAccountIds(@RequestParam("ids") List<Long> accountIds) {
         return userQueryService.getUsersByAccountIds(accountIds);
     }
 
+    /** 执行 getUserByAccountId 对应的业务处理。 */
     @GetMapping("/by-account/{accountId}")
     public Result<UserCardInternalVO> getUserByAccountId(@PathVariable("accountId") Long accountId) {
         return userQueryService.getUserInternalByAccountId(accountId);
@@ -75,44 +78,52 @@ public class UserFeignController {
         return userQueryService.getUserAccountVO(userId);
     }
 
+    /** 执行 approveProfileManualAudit 对应的业务处理。 */
     @PostMapping("/audit-tasks/{taskId}/approve")
     public Result<Void> approveProfileManualAudit(@PathVariable("taskId") Long taskId) {
         return userFieldAuditTaskService.approveHumanReview(taskId);
     }
 
+    /** 执行 rejectProfileManualAudit 对应的业务处理。 */
     @PostMapping("/audit-tasks/{taskId}/reject")
     public Result<Void> rejectProfileManualAudit(@PathVariable("taskId") Long taskId,
                                                @RequestParam(value = "reason", required = false) String reason) {
         return userFieldAuditTaskService.rejectHumanReview(taskId, reason);
     }
 
+    /** 执行 getAuditTaskBrief 对应的业务处理。 */
     @GetMapping("/audit-tasks/{taskId}")
     public Result<UserAuditTaskBriefVO> getAuditTaskBrief(@PathVariable("taskId") Long taskId) {
         return Result.success(userFieldAuditTaskService.getAuditTaskBrief(taskId));
     }
 
+    /** 执行 grantCosmetic 对应的业务处理。 */
     @PostMapping("/cosmetic/grant")
     public Result<CosmeticGrantResultVO> grantCosmetic(@RequestBody GrantCosmeticDTO dto) {
         return Result.success(cosmeticService.grantCosmetic(dto));
     }
 
+    /** 执行 checkCosmeticOwnership 对应的业务处理。 */
     @GetMapping("/cosmetic/purchase-check")
     public Result<CosmeticPurchaseCheckVO> checkCosmeticOwnership(@RequestParam("userId") Long userId,
                                                                   @RequestParam("cosmeticCode") String cosmeticCode) {
         return Result.success(cosmeticService.checkOwnershipBlock(userId, cosmeticCode));
     }
 
+    /** 执行 getCosmeticItemState 对应的业务处理。 */
     @GetMapping("/cosmetic/state")
     public Result<CosmeticItemStateVO> getCosmeticItemState(@RequestParam("userId") Long userId,
                                                             @RequestParam("cosmeticCode") String cosmeticCode) {
         return Result.success(cosmeticService.getItemState(userId, cosmeticCode));
     }
 
+    /** 执行 batchDecorations 对应的业务处理。 */
     @PostMapping("/cosmetic/decorations/batch")
     public Result<Map<Long, UserDecorationVO>> batchDecorations(@RequestBody BatchUserIdsDTO dto) {
         return Result.success(cosmeticService.batchDecorationsByAccountIds(dto.getAccountIds()));
     }
 
+    /** 执行 updateSteamAccount 对应的业务处理。 */
     @PostMapping("/{userId}/steam-account")
     public Result<Void> updateSteamAccount(@PathVariable("userId") Long userId,
                                            @RequestParam("steamAccount") String steamAccount) {

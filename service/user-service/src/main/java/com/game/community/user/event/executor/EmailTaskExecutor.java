@@ -18,6 +18,7 @@ public class EmailTaskExecutor {
     private final Executor emailExecutor;
     private final SmtpMailClient smtpMailClient;
 
+    /** 执行 EmailTaskExecutor 对应的业务处理。 */
     public EmailTaskExecutor(@Qualifier("emailExecutor") Executor emailExecutor,
                              SmtpMailClient smtpMailClient) {
         this.emailExecutor = emailExecutor;
@@ -26,6 +27,7 @@ public class EmailTaskExecutor {
 
     /** 发送参数已由验证码入口校验；此处只负责在线程池中执行 SMTP。 */
     public void submit(String email, String code, CodeBizType type, long expireSeconds) {
+        // 邮件发送不阻塞接口；失败只记录日志，重试交给调用方明确配置的消息机制。
         emailExecutor.execute(() -> {
             try {
                 String subject = switch (type) {
@@ -39,11 +41,13 @@ public class EmailTaskExecutor {
                 smtpMailClient.sendText(email, subject, body);
                 log.info("[邮箱发送成功-{}] email={}", type, email);
             } catch (Exception e) {
+                // 发送失败不能回滚验证码 Redis 记录，只记录可检索告警。
                 log.error("[邮箱发送失败-不重试-告警] email={}, type={}", email, type, e);
             }
         });
     }
 
+    /** 执行 formatExpireHint 对应的业务处理。 */
     private String formatExpireHint(long expireSeconds) {
         long seconds = Math.max(UserConstants.MIN_POSITIVE_SECONDS, expireSeconds);
         if (seconds % UserConstants.SECONDS_PER_MINUTE == 0) {
