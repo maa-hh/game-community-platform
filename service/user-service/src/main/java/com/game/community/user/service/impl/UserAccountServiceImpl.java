@@ -202,12 +202,22 @@ public class UserAccountServiceImpl implements UserAccountService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public UserAccount refreshStatus(Long userId) {
-        return refreshStatus(getAccount(userId));
+        return refreshStatus(getAccount(userId), true);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public UserAccount refreshStatusForToken(Long userId) {
+        return refreshStatus(getAccount(userId), false);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public UserAccount refreshStatus(UserAccount account) {
+        return refreshStatus(account, true);
+    }
+
+    private UserAccount refreshStatus(UserAccount account, boolean invalidateSession) {
         if (account == null) {
             throw new BusinessException("用户账号数据异常");
         }
@@ -224,7 +234,7 @@ public class UserAccountServiceImpl implements UserAccountService {
         if (account.getStatus() == UserAccountStatus.CANCELLING
                 && account.getCancelAt() != null
                 && account.getCancelAt().isBefore(now)) {
-            completeCancellation(account);
+            completeCancellation(account, invalidateSession);
             log.info("被动完成注销: userId={}", account.getUserId());
             return getAccount(account.getUserId());
         }
@@ -272,7 +282,7 @@ public class UserAccountServiceImpl implements UserAccountService {
         return true;
     }
 
-    private boolean completeCancellation(UserAccount account) {
+    private boolean completeCancellation(UserAccount account, boolean invalidateSession) {
         int updated = userAccountMapper.update(null, new LambdaUpdateWrapper<UserAccount>()
                 .eq(UserAccount::getId, account.getId())
                 .eq(UserAccount::getVersion, account.getVersion())
@@ -295,7 +305,9 @@ public class UserAccountServiceImpl implements UserAccountService {
                     .set(User::getUpdateTime, LocalDateTime.now()));
         }
 
-        sessionHelper.invalidateUserSession(account.getUserId());
+        if (invalidateSession) {
+            sessionHelper.invalidateUserSession(account.getUserId());
+        }
         userSupport.logOperation(account.getUserId(), OperationType.CANCEL_COMPLETE, null, null);
         return true;
     }

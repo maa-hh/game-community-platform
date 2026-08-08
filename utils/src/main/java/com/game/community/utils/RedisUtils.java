@@ -41,6 +41,15 @@ public class RedisUtils {
                     + "redis.call('set', KEYS[3], ARGV[2], 'EX', ARGV[3]); return 1",
             Long.class);
 
+    private static final DefaultRedisScript<Long> INVALIDATE_SESSION_SCRIPT = new DefaultRedisScript<>(
+            "redis.call('del', KEYS[1]); redis.call('del', KEYS[2]); "
+                    + "if redis.call('get', KEYS[3]) == ARGV[1] then redis.call('del', KEYS[3]); end; return 1",
+            Long.class);
+
+    private static final DefaultRedisScript<Long> INVALIDATE_SESSION_WITHOUT_USER_SCRIPT = new DefaultRedisScript<>(
+            "redis.call('del', KEYS[1]); redis.call('del', KEYS[2]); return 1",
+            Long.class);
+
     private static final DefaultRedisScript<Long> RESERVE_VERIFY_CODE_SCRIPT = new DefaultRedisScript<>(
             "if redis.call('exists', KEYS[1]) == 1 then return 0 end; "
                     + "local count = tonumber(redis.call('get', KEYS[2]) or '0'); "
@@ -157,6 +166,27 @@ public class RedisUtils {
                 SAVE_SESSION_SCRIPT,
                 Arrays.asList(sessionKey, activeKey, userActiveKey),
                 sessionJson, sessionId, String.valueOf(seconds));
+        return result != null && result == 1L;
+    }
+
+    /**
+     * 原子删除会话正文、活跃标记，并且仅在用户指针仍指向本会话时删除用户指针。
+     * 这样并发登录创建的新会话不会被旧会话的清理动作误删。
+     */
+    public boolean invalidateSession(String sessionKey, String activeKey,
+                                     String userActiveKey, String sessionId) {
+        Long result = stringRedisTemplate.execute(
+                INVALIDATE_SESSION_SCRIPT,
+                Arrays.asList(sessionKey, activeKey, userActiveKey),
+                sessionId);
+        return result != null && result == 1L;
+    }
+
+    /** 原子删除没有用户指针参与的会话键。 */
+    public boolean invalidateSession(String sessionKey, String activeKey) {
+        Long result = stringRedisTemplate.execute(
+                INVALIDATE_SESSION_WITHOUT_USER_SCRIPT,
+                Arrays.asList(sessionKey, activeKey));
         return result != null && result == 1L;
     }
 

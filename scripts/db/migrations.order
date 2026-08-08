@@ -3,6 +3,7 @@ user.sql
 user-service-v2-migration.sql
 user-notification-outbox-migration.sql
 cosmetic.sql
+cosmetic-loadout-version-migration.sql
 cosmetic-performance.sql
 user-audit-reject-log.sql
 content.sql

@@ -47,6 +47,9 @@ public class UserConstants {
     /** 审核任务超时时间（分钟） */
     public static final int AUDIT_TASK_STALE_MINUTES = 30;
 
+    /** 服务启动恢复审核任务时每批最多读入的任务数 */
+    public static final int AUDIT_RECOVERY_BATCH_SIZE = 100;
+
     /** 合规分阈值：0-3 拒绝，4-6 人工，7-10 通过 */
     public static final class AuditScore {
         public static final int MIN = 0;

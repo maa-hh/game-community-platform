@@ -321,7 +321,11 @@ public class UserAuditHelper {
 
     private void ensureProfileAuditRow(Long userId) {
         if (profileAuditMapper.selectById(userId) == null) {
-            initProfileAudit(userId);
+            try {
+                initProfileAudit(userId);
+            } catch (DuplicateKeyException ignored) {
+                // 并发首次访问时由主键唯一约束裁决，调用方继续执行 CAS 更新。
+            }
         }
     }
 }

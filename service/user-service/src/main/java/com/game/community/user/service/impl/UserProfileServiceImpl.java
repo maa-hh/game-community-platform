@@ -267,10 +267,12 @@ public class UserProfileServiceImpl implements UserProfileService {
         }
         boolean updated = userMapper.update(null, new LambdaUpdateWrapper<User>()
                 .eq(User::getId, userId)
+                .eq(User::getVersion, user.getVersion())
                 .set(User::getSteamAccount, steamAccount)
+                .set(User::getVersion, user.getVersion() + 1)
                 .set(User::getUpdateTime, LocalDateTime.now())) > 0;
         if (!updated) {
-            throw new BusinessException("资料更新失败，请重试");
+            throw new BusinessException(ApiErrorCodes.CONFLICT, "资料已被更新，请刷新后重试");
         }
         return Result.success("资料更新成功");
     }

@@ -112,6 +112,17 @@ CREATE TABLE t_user_operation_log (
   create_time DATETIME NOT NULL
 );
 
+CREATE TABLE t_user_cosmetic_loadout (
+  user_id BIGINT PRIMARY KEY,
+  avatar_frame_code VARCHAR(64),
+  comment_card_code VARCHAR(64),
+  comment_font_code VARCHAR(64),
+  post_card_code VARCHAR(64),
+  profile_bg_code VARCHAR(64),
+  version INT NOT NULL DEFAULT 0,
+  update_time DATETIME NOT NULL
+);
+
 CREATE UNIQUE INDEX uk_account_id ON t_user(account_id);
 CREATE UNIQUE INDEX uk_email_deleted ON t_user(email, deleted);
 CREATE INDEX idx_username ON t_user(username);
