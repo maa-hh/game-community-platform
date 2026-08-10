@@ -1,0 +1,43 @@
+.game-discover-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+
+  &__sort {
+    min-width: 132px;
+  }
+
+  &__order {
+    min-width: 120px;
+  }
+
+  &__panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: min(360px, calc(100vw - 48px));
+  }
+
+  &__field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  &__label {
+    font-size: 12px;
+    color: var(--color-text-secondary);
+  }
+
+  &__checks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  &__reset {
+    align-self: flex-start;
+    padding-inline: 0;
+  }
+}

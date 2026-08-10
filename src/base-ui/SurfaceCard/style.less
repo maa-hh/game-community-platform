@@ -1,0 +1,17 @@
+.surface-card {
+  border-radius: 12px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+
+  &.is-padded {
+    padding: 16px 18px;
+  }
+
+  &:not(.is-flush) {
+    margin-bottom: var(--card-stack-gap);
+  }
+
+  &.is-flush {
+    margin-bottom: 0;
+  }
+}

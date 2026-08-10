@@ -1,0 +1,54 @@
+@import (reference) '@/assets/css/common.less';
+
+.post-display-tags {
+  min-width: 0;
+
+  &__tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--color-bg-secondary);
+    color: var(--color-text);
+    font-size: 11px;
+    line-height: 1.4;
+    text-decoration: none;
+
+    &--game {
+      color: var(--color-primary);
+      background: rgba(255, 102, 0, 0.08);
+
+      &:hover {
+        background: rgba(255, 102, 0, 0.14);
+        color: var(--color-primary);
+      }
+    }
+
+    &--repost {
+      background: rgba(255, 102, 0, 0.08);
+      color: var(--color-primary);
+    }
+
+    &--overflow {
+      color: var(--color-text-secondary);
+    }
+  }
+
+  &__repost-icon {
+    font-size: 12px;
+    line-height: 1;
+  }
+
+  &__tag-icon {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+
+  &__tag-text {
+    white-space: nowrap;
+  }
+}

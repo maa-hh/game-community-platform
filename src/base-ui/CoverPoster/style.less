@@ -1,0 +1,60 @@
+.cover-poster {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 148px;
+  padding: 28px 16px 20px;
+  overflow: hidden;
+
+  &__orb {
+    position: absolute;
+    border-radius: 50%;
+    opacity: 0.14;
+    pointer-events: none;
+
+    &--left {
+      top: -18px;
+      left: -18px;
+      width: 72px;
+      height: 72px;
+    }
+
+    &--right {
+      right: -12px;
+      bottom: -20px;
+      width: 88px;
+      height: 88px;
+    }
+  }
+
+  &__badge {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    padding: 2px 8px;
+    border: 1px solid;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.72);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+  }
+
+  &__title {
+    position: relative;
+    z-index: 1;
+    margin: 0;
+    padding: 0 4px;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.35;
+    text-align: center;
+    color: var(--color-text);
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-break: break-word;
+  }
+}

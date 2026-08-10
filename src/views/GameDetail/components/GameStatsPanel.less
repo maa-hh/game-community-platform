@@ -1,0 +1,209 @@
+@import (reference) '@/assets/css/common.less';
+
+.game-stats-panel {
+  &__loading,
+  &__empty {
+    display: flex;
+    justify-content: center;
+    padding: 48px 0;
+  }
+
+  &__link {
+    border: none;
+    background: none;
+    color: var(--color-primary);
+    cursor: pointer;
+    font-size: 14px;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  &__summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  &__toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 0 0 18px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: var(--color-bg-secondary);
+  }
+
+  &__achievement-loading {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin: 20px 0;
+    padding: 18px;
+    border-radius: 10px;
+    background: var(--color-bg-secondary);
+  }
+
+  &__achievement-loading-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  &__achievement-loading-icon,
+  &__achievement-loading-line {
+    display: block;
+    background: linear-gradient(90deg, #e9eaec 25%, #f5f6f7 37%, #e9eaec 63%);
+    background-size: 400% 100%;
+    animation: game-stats-shimmer 1.4s ease infinite;
+  }
+
+  &__achievement-loading-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+  }
+
+  &__achievement-loading-line {
+    width: min(60%, 420px);
+    height: 14px;
+    border-radius: 999px;
+  }
+
+  &__trophy-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin: 8px 0 14px;
+    color: var(--color-text-secondary);
+    font-size: 12px;
+  }
+
+  &__card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg-secondary);
+
+    strong {
+      font-size: 15px;
+      line-height: 1.4;
+      color: var(--color-text);
+      word-break: break-word;
+    }
+  }
+
+  &__progress {
+    margin-bottom: 24px;
+    padding: 16px;
+    border-radius: 10px;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg-secondary);
+  }
+
+  &__progress-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+
+  &__progress-title,
+  &__list-title {
+    margin: 0 0 12px !important;
+  }
+
+  &__achievement {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+
+    &.is-unlocked .game-stats-panel__achievement-name {
+      color: var(--color-text);
+    }
+
+    &:not(.is-unlocked) .game-stats-panel__achievement-icon {
+      filter: grayscale(1);
+      opacity: 0.55;
+    }
+  }
+
+  &__achievement-icon {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    border-radius: 4px;
+    object-fit: cover;
+
+    &--placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--color-bg);
+      color: var(--color-text-secondary);
+      font-size: 16px;
+    }
+  }
+
+  &__achievement-name {
+    color: var(--color-text-secondary);
+    .text-ellipsis();
+  }
+
+  &__trophy {
+    flex: 0 0 auto;
+    margin-left: auto;
+    font-size: 16px;
+
+    &--gold {
+      color: #e9a400;
+    }
+
+    &--silver {
+      color: #9aa3ad;
+    }
+  }
+
+  .ant-table {
+    background: transparent;
+  }
+}
+
+@keyframes game-stats-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+@media (max-width: 900px) {
+  .game-stats-panel {
+    &__summary {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+}
+
+@media (max-width: 520px) {
+  .game-stats-panel {
+    &__toolbar {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    &__summary {
+      grid-template-columns: 1fr;
+    }
+  }
+}

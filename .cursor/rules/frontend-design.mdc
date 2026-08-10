@@ -1,0 +1,23 @@
+---
+description: 前端视觉与布局必须遵循 DESIGN.md，保证全站风格统一
+globs: src/**/*.{tsx,ts,less,css}
+alwaysApply: false
+---
+
+# 前端设计规范（强制）
+
+写或修改前端 UI / 样式 / 布局前，**先读根目录 [DESIGN.md](mdc:DESIGN.md)**，并按其中约定实现。
+
+## 必须遵守
+
+1. **站内宽度**：只用 `MainLayout` 的 `main-layout__container`（`--page-content-max-width` / `--page-content-gutter`），页面内禁止再套一套 max-width。
+2. **登录落地**：`/login` 用 `LoginLayout`（有顶栏、**不**套内容盒），视频全幅；不要把登录塞进 Main 限宽盒。
+3. **背景**：站内空区与盒外空白用 `--color-bg-secondary`，与盒内空区一致。
+4. **主色**：`#ff6600`，避免紫系/默认 AI 审美套装。
+5. **Token**：颜色/间距/圆角优先 `var(--*)`（见 `src/assets/css/common.less`）。
+6. **顶栏搜索**：胶囊形、图标在右；头像菜单仅 click；悬停头像蒙层；箭头开合切换。
+7. **个人主页**：昵称+accountId+签名；可编辑蒙层淡底可读字、只盖文字不盖铅笔；回车提交；空白不计字数。
+8. **通栏与卡片同列同宽**：不要给列表单独加左右 padding 造成上宽下窄。
+9. **帖子卡片**：列表/信息流中的帖子类内容统一用 `base-ui/ContentCard`（图文/文章/视频），禁止手搓另一套卡片；细节见 `DESIGN.md` §5.1 与 `src/base-ui/ContentCard/README.md`。
+
+细节、检查清单与例外以 **DESIGN.md** 为准；有冲突时更新 DESIGN.md 后再改代码。

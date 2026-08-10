@@ -1,0 +1,16 @@
+# 依赖目录
+node_modules/
+
+# 构建产物
+build/
+dist/
+coverage/
+
+# 自动生成文件
+src/react-app-env.d.ts
+
+# 配置文件（如需 lint 请单独开启）
+craco.config.js
+
+# 文档
+*.md

@@ -1,0 +1,53 @@
+// =============================================================
+// index.less — 全局样式统一入口
+// 作用：聚合 normalize + reset + common，由应用入口 src/index.tsx 引入一次
+// 规范：新增全局样式请优先扩展 reset.less / common.less，不要在此堆砌
+// =============================================================
+
+// 0. normalize.css — 浏览器默认样式归一化（第三方，必须最先引入）
+@import (css) 'normalize.css/normalize.css';
+
+// 1. 项目自定义重置（在 normalize 基础上进一步清零/统一）
+@import './reset.less';
+
+// 2. Ant Design 基础样式重置（antd 5 组件样式由 CSS-in-JS 按需注入，此处引入 reset）
+@import (css) 'antd/dist/reset.css';
+
+// 3. 公共变量与工具类
+@import './common.less';
+
+// 3. 全局基础样式（基于上述变量做轻量补充）
+// 应用容器：避免 height:100% 锁死滚动容器导致 sticky/fixed 失效
+html,
+body {
+  min-height: 100%;
+  overflow-anchor: none;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+// 异步列表返回时，滚动位置恢复完成前不绘制顶部帧，避免视觉跳闪。
+html.is-restoring-scroll .site-main {
+  visibility: hidden;
+}
+
+// 选中文字的颜色（可选）
+::selection {
+  background: fade(@primary-color, 20%);
+  color: @text-color;
+}
+
+// 滚动条美化（Webkit 内核）
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.35);
+}

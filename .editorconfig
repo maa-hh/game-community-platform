@@ -1,0 +1,38 @@
+# EditorConfig: https://editorconfig.org
+# 让不同编辑器/IDE（VSCode、JetBrains、Vim 等）自动保持一致的底层编码风格
+# 编辑器安装对应 EditorConfig 插件后会自动读取本文件
+
+# root=true 表示停止向上层目录继续查找 .editorconfig 文件
+root = true
+
+# 对所有文件生效的默认规则
+[*]
+# 文件字符编码
+charset = utf-8
+# 缩进风格：space=空格，tab=Tab
+indent_style = space
+# 缩进列数（与 Prettier 的 tabWidth 保持一致）
+indent_size = 2
+# 换行符：lf | crlf | cr（与 Prettier 的 endOfLine 保持一致）
+end_of_line = lf
+# 文件末尾是否插入一个空行
+insert_final_newline = true
+# 是否删除行尾多余空白字符
+trim_trailing_whitespace = true
+# 单行最大字符数（与 Prettier 的 printWidth 保持一致）
+max_line_length = 80
+
+# Markdown 文件特殊规则
+[*.md]
+# Markdown 中行尾两个空格代表软换行，不能被删除
+trim_trailing_whitespace = false
+# Markdown 段落自由换行，不强制限制单行长度
+max_line_length = off
+
+# JSON/YAML 文件统一缩进
+[*.{json,yml,yaml}]
+indent_size = 2
+
+# Makefile 必须使用 Tab 缩进（make 工具的硬性要求）
+[Makefile]
+indent_style = tab

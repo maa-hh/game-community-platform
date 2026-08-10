@@ -1,0 +1,147 @@
+@import (reference) '@/assets/css/common.less';
+
+.share-card {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: background 0.2s;
+
+  &:hover {
+    background: fade(#ff6600, 4%);
+  }
+
+  &__cover {
+    flex-shrink: 0;
+    width: 88px;
+    height: 66px;
+    overflow: hidden;
+    border-radius: 6px;
+
+    .media-cover,
+    .video-cover {
+      width: 100%;
+      height: 100%;
+      border-radius: inherit;
+      aspect-ratio: auto;
+    }
+
+    .media-cover__play {
+      font-size: 22px;
+    }
+
+    .video-cover--loading,
+    .video-cover--fallback {
+      min-height: 0;
+      height: 100%;
+    }
+
+    .text-cover-poster {
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+
+      &__image {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      &__title {
+        padding: 6px 8px;
+        font-size: 11px;
+        -webkit-line-clamp: 3;
+      }
+    }
+  }
+
+  &__body {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+  }
+
+  &__author {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--color-text-placeholder);
+    margin-bottom: 4px;
+  }
+
+  &__author-link {
+    min-width: 0;
+  }
+
+  &__title {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.4;
+    color: var(--color-text);
+    .text-ellipsis-multi(2);
+  }
+
+  &__footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: auto;
+    padding-top: 6px;
+    min-height: 22px;
+  }
+
+  &__summary {
+    margin: 0;
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--color-text);
+    .text-ellipsis();
+  }
+
+  &__stats {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    gap: 4px 10px;
+    margin-left: auto;
+  }
+
+  /* 无摘要时统计仍贴右；有封面时 footer 贴内容区底部与缩略图底对齐 */
+  &.has-cover &__body {
+    min-height: 66px;
+  }
+
+  &--preview {
+    cursor: default;
+
+    &:hover {
+      background: var(--color-bg-secondary);
+    }
+  }
+
+  &--unavailable {
+    cursor: default;
+    border-style: dashed;
+    background: var(--color-bg);
+
+    &:hover {
+      background: var(--color-bg);
+    }
+
+    .share-card__title {
+      color: var(--color-text-secondary);
+    }
+
+    .share-card__summary {
+      color: var(--color-text-placeholder);
+    }
+  }
+}

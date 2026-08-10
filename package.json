@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@ant-design/icons": "^6.3.2",
+    "@reduxjs/toolkit": "^2.12.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -11,23 +13,32 @@
     "@types/node": "^16.18.126",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "antd": "^6.5.1",
+    "axios": "^1.18.1",
+    "dplayer": "^1.27.1",
+    "normalize.css": "^8.0.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "react-easy-crop": "^6.2.2",
+    "react-image-crop": "^11.1.2",
+    "react-redux": "^9.3.0",
+    "react-router-dom": "^7.18.1",
     "react-scripts": "5.0.1",
+    "spark-md5": "^3.0.2",
+    "styled-components": "^6.4.3",
     "typescript": "^4.9.5",
     "web-vitals": "^2.1.4"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject"
-  },
-  "eslintConfig": {
-    "extends": [
-      "react-app",
-      "react-app/jest"
-    ]
+    "start": "craco start",
+    "build": "craco build",
+    "test": "craco test",
+    "eject": "react-scripts eject",
+    "lint": "eslint src --ext .ts,.tsx,.js,.jsx --max-warnings=0",
+    "lint:fix": "eslint src --ext .ts,.tsx,.js,.jsx --fix",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css,scss,md}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,css,scss,md}\""
   },
   "browserslist": {
     "production": [
@@ -40,5 +51,20 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "devDependencies": {
+    "@craco/craco": "^7.1.0",
+    "@types/dplayer": "^1.25.6",
+    "@types/mockjs": "^1.0.10",
+    "@types/spark-md5": "^3.0.5",
+    "@types/styled-components": "^5.1.36",
+    "@typescript-eslint/parser": "^5.62.0",
+    "craco-less": "^3.0.1",
+    "eslint-config-prettier": "^9.1.2",
+    "eslint-plugin-prettier": "^5.5.6",
+    "less": "^4.6.7",
+    "less-loader": "^11.1.4",
+    "mockjs": "^1.1.0",
+    "prettier": "^3.9.5"
   }
 }

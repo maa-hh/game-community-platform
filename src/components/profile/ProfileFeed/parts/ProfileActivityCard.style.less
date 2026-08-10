@@ -1,0 +1,139 @@
+@import (reference) '@/assets/css/common.less';
+
+.profile-activity-card {
+  padding: 16px 18px 14px;
+  border-radius: 12px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+
+  &__head,
+  &__quote-only,
+  &__parent,
+  &__actor {
+    &.is-clickable {
+      cursor: pointer;
+      border-radius: 8px;
+      transition: background 0.2s;
+
+      &:hover {
+        background: var(--header-link-hover-bg);
+      }
+    }
+  }
+
+  &__head {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 8px;
+    padding: 2px 4px;
+  }
+
+  &__avatar {
+    flex-shrink: 0;
+  }
+
+  &__head-main {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 8px;
+    min-width: 0;
+    flex: 1;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--color-text);
+  }
+
+  &__nickname {
+    font-weight: 600;
+    color: var(--color-text);
+    flex-shrink: 0;
+  }
+
+  &__time {
+    font-size: 12px;
+    color: var(--color-text-placeholder);
+    flex-shrink: 0;
+
+    &--inline {
+      display: block;
+      margin-bottom: 4px;
+    }
+  }
+
+  &__actor {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+    padding: 2px 4px;
+  }
+
+  &__quote {
+    margin: 0;
+    color: var(--color-text-secondary);
+    word-break: break-word;
+  }
+
+  &__quote-sep,
+  &__quote-text {
+    color: var(--color-text);
+  }
+
+  &__quote-only {
+    margin-bottom: 8px;
+    padding: 4px 6px;
+
+    &.is-highlight {
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: var(--color-bg-secondary);
+    }
+
+    .profile-activity-card__quote {
+      color: var(--color-text);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+  }
+
+  &__parent {
+    margin: 0 0 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: var(--color-bg-secondary);
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--color-text-secondary);
+    .text-ellipsis-multi(2);
+  }
+
+  &__parent-link {
+    flex-shrink: 0;
+  }
+
+  &__parent-name {
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  &__post {
+    margin-top: 4px;
+  }
+
+  &__actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 8px;
+    border-top: 1px solid var(--color-border);
+  }
+}
+
+.profile-feed__item + .profile-feed__item {
+  margin-top: var(--card-stack-gap, 12px);
+}

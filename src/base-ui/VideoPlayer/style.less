@@ -1,0 +1,120 @@
+.video-player {
+  --vp-radius: 12px;
+  --vp-chrome-h: 40px;
+  width: 100%;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--vp-radius);
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(20, 25, 30, 0.08);
+}
+
+.video-player__stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+}
+
+.video-player__dplayer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.video-player__overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.video-player__dplayer .dplayer {
+  width: 100%;
+  height: 100%;
+}
+
+.video-player__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--color-bg);
+  border-top: 1px solid var(--color-border);
+}
+
+.video-player__hint {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.video-player__chrome {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: var(--vp-chrome-h);
+  padding: 0 8px 0 12px;
+  background: var(--color-bg-secondary);
+  border-bottom: 1px solid var(--color-border);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+.video-player__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.video-player__chrome-actions {
+  flex-shrink: 0;
+}
+
+/* 浮动：可拖动，默认右下附近由 left/top 控制 */
+.video-player--floating {
+  position: fixed;
+  z-index: 1100;
+  width: min(560px, calc(100vw - 32px));
+  box-shadow: 0 16px 40px rgba(20, 25, 30, 0.18);
+}
+
+.video-player--floating.video-player--mini {
+  width: min(320px, calc(100vw - 24px));
+
+  .video-player__hint {
+    display: none;
+  }
+}
+
+.video-player--inline {
+  max-width: 100%;
+}
+
+@media (max-width: 640px) {
+  .video-player__toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .video-player__hint {
+    white-space: normal;
+  }
+
+  .video-player--floating {
+    width: calc(100vw - 16px);
+  }
+}

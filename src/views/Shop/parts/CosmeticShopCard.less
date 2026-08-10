@@ -1,0 +1,137 @@
+.cosmetic-shop-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+
+  .ant-card-cover {
+    margin: 0;
+    flex-shrink: 0;
+  }
+
+  .ant-card-body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 16px 16px;
+    text-align: center;
+  }
+
+  &--profile-bg {
+    overflow: hidden;
+  }
+
+  &--avatar-frame {
+    .ant-card-cover {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: visible;
+
+      > * {
+        width: 100%;
+      }
+    }
+  }
+
+  &--equipped {
+    border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary) 12%, transparent);
+  }
+
+  &__cover {
+    width: 100%;
+    overflow: hidden;
+    background: var(--color-bg-secondary);
+
+    &--profile-bg {
+      aspect-ratio: 1200 / 280;
+
+      .profile-bg-shop-preview {
+        width: 100%;
+        height: 100%;
+        border-radius: 0;
+      }
+    }
+
+    &--frame,
+    &--comment-card,
+    &--icon,
+    &--placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+    }
+
+    &--frame {
+      min-height: 116px;
+      padding: 16px 12px;
+      overflow: visible;
+      text-align: center;
+    }
+
+    &--comment-card {
+      min-height: 116px;
+      padding: 16px;
+      overflow: hidden;
+    }
+
+    &--icon,
+    &--placeholder {
+      min-height: 116px;
+      padding: 16px;
+    }
+  }
+
+  &__frame-stage {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 84px;
+    margin: 0 auto;
+
+    .decorated-avatar {
+      margin: 0 auto;
+    }
+  }
+
+  &__icon {
+    max-width: 100%;
+    max-height: 84px;
+    object-fit: contain;
+  }
+
+  &__title {
+    width: 100%;
+    margin: 0 !important;
+    font-size: 16px !important;
+    text-align: center;
+  }
+
+  &__desc {
+    width: 100%;
+    margin: 0 !important;
+    min-height: 40px;
+    text-align: center;
+  }
+
+  &__tags {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    min-height: 24px;
+  }
+
+  &__action {
+    width: 100%;
+    margin-top: auto;
+  }
+
+  &__extra {
+    width: 100%;
+    margin-top: auto;
+  }
+}

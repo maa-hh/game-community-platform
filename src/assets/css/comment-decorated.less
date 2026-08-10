@@ -1,0 +1,61 @@
+.comment-decorated-text-light() {
+  color: rgba(255, 255, 255, 0.92);
+
+  .profile-user-link__name {
+    color: rgba(255, 255, 255, 0.95);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+  }
+
+  .comment-item__meta,
+  .comment-reply__meta,
+  .comment-reply__at {
+    color: rgba(255, 255, 255, 0.72);
+  }
+
+  .clamp-text__body {
+    color: inherit;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  }
+
+  .clamp-text__more {
+    color: #8ec8ff;
+  }
+
+  .comment-ops__text,
+  .comment-ops__icon,
+  .stat-action {
+    color: rgba(255, 255, 255, 0.78);
+  }
+
+  .comment-ops__text,
+  .comment-ops__icon {
+    &:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.14);
+    }
+  }
+
+  .stat-action {
+    &:is(button):hover:not(:disabled) {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.14);
+    }
+
+    &.is-active {
+      color: #8ec8ff;
+    }
+  }
+
+  .profile-user-link--name.is-clickable:hover .profile-user-link__name,
+  .profile-user-link--name.is-clickable:focus-visible .profile-user-link__name {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.14);
+  }
+}
+
+.comment-decorated-text-dark() {
+  .clamp-text__body,
+  .profile-user-link__name {
+    color: inherit;
+  }
+}

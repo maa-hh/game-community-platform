@@ -1,0 +1,53 @@
+---
+description: UI 默认使用 Ant Design 5；写 antd 组件前查 API
+globs: src/**/*.{ts,tsx}
+alwaysApply: true
+---
+
+# Ant Design 规范
+
+本项目 **UI 组件库默认 antd 5**，不要手写原生表单/表格/弹窗替代 antd 已有能力。
+
+## 引入
+
+```tsx
+import { Button, Form, Input, Table, Modal, message } from 'antd';
+import { UserOutlined } from '@ant-design/icons';
+```
+
+- 图标：`@ant-design/icons`
+- 全局主题 / 语言：`App.tsx` 的 `ConfigProvider`（`zhCN`、`theme.token.colorPrimary`）
+- 全局 reset：`assets/css/index.less` 已引入 `antd/dist/reset.css`
+
+## 写代码前查 API（Skill + CLI）
+
+详细流程见 `.agents/skills/antd/SKILL.md`。写任何 antd 组件前先查，不要凭记忆写 props：
+
+```bash
+antd info <Component> --format json
+antd demo <Component> basic --format json
+antd doc <Component> --lang zh --format json
+```
+
+## 组件选用
+
+| 场景 | 用 |
+|------|-----|
+| 表单 | `Form` + `Form.Item` + `Input` / `Select` 等 |
+| 列表 | `Table` 或 `List` |
+| 弹窗 | `Modal` / `Drawer` |
+| 反馈 | `message` / `notification` |
+| 布局 | `Layout` / `Row` + `Col` / `Space` / `Flex` |
+| 加载 | `Spin` / `Skeleton` |
+
+## 与项目结构配合
+
+- 页面级 UI：`views/` 内直接用 antd
+- 可复用业务块：`components/`（内部可用 antd）
+- 无业务原子封装：`base-ui/`（可薄封装 antd，对外暴露 props）
+- 样式：优先 antd props / `ConfigProvider` token；局部用 styled-components 或同目录 less
+
+## 禁止
+
+- 不要引入第二套 UI 库（Material UI、Chakra 等）
+- 不要在组件里改 antd 全局 less 主题文件（antd 5 用 CSS-in-JS + ConfigProvider）

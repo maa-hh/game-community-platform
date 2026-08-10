@@ -1,0 +1,35 @@
+@import (reference) '@/assets/css/common.less';
+
+.post-row-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+
+  &__btn {
+    min-width: 64px;
+    padding: 5px 14px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-size: 13px;
+    line-height: 1.4;
+    cursor: pointer;
+    transition:
+      color 0.2s,
+      border-color 0.2s,
+      background 0.2s;
+
+    &:hover {
+      color: var(--color-primary);
+      border-color: fade(#ff6600, 35%);
+    }
+
+    &.is-danger:hover {
+      color: #ff4d4f;
+      border-color: fade(#ff4d4f, 35%);
+    }
+  }
+}

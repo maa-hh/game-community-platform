@@ -1,0 +1,34 @@
+.post-owner-links {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+  margin-left: auto;
+
+  &__sep {
+    color: var(--color-text-placeholder);
+    font-size: 12px;
+    user-select: none;
+  }
+
+  &__btn {
+    padding: 0 2px;
+    border: none;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: 13px;
+    line-height: 1.4;
+    cursor: pointer;
+    transition: color 0.2s;
+
+    &:hover {
+      color: var(--color-primary);
+    }
+
+    &.is-danger:hover {
+      color: #ff4d4f;
+    }
+  }
+}

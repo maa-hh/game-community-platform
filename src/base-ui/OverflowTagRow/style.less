@@ -1,0 +1,75 @@
+.overflow-tag-row {
+  position: relative;
+  min-width: 0;
+
+  &__measure {
+    position: absolute;
+    left: 0;
+    top: 0;
+    z-index: -1;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 6px;
+    width: 100%;
+    visibility: hidden;
+    pointer-events: none;
+    overflow: visible;
+  }
+
+  &__visible {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  &__tag--full {
+    flex: 0 0 auto;
+    max-width: 100%;
+  }
+
+  &__tag--partial {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  &__partial-measure {
+    display: inline-flex;
+    flex: 0 0 auto;
+    min-width: 0;
+  }
+}
+
+.feed-masonry-card__tag--overflow,
+.post-display-tags__tag--overflow,
+.game-card__tag--overflow {
+  flex: 0 0 auto;
+  cursor: default;
+}
+
+.feed-masonry-card__tags.overflow-tag-row,
+.post-display-tags.overflow-tag-row,
+.game-card__tags.overflow-tag-row {
+  .overflow-tag-row__tag--full {
+    .feed-masonry-card__tag-text,
+    .post-display-tags__tag-text,
+    .game-card__tag-text {
+      white-space: nowrap;
+    }
+  }
+
+  .overflow-tag-row__tag--partial {
+    .feed-masonry-card__tag-text,
+    .post-display-tags__tag-text,
+    .game-card__tag-text {
+      display: block;
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+  }
+}

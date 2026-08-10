@@ -1,0 +1,1 @@
+export const ARTICLE_PROGRESS_POLL_MS = 2000;

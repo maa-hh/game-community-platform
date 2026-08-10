@@ -1,0 +1,62 @@
+.shop-page {
+  &__tabs {
+    .ant-tabs-nav {
+      margin-bottom: 16px;
+    }
+  }
+
+  &__points {
+    margin: 0;
+    font-size: 14px;
+    padding: 4px 12px;
+  }
+
+  &__category {
+    margin-bottom: 12px;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  &__filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  &__filter {
+    flex: 1 1 240px;
+  }
+
+  &__backpack-filters {
+    .ant-input-search {
+      min-width: 240px;
+    }
+  }
+
+  &__section {
+    margin: 8px 0 12px !important;
+  }
+
+  &__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+    align-items: stretch;
+  }
+
+  &__backpack-grid {
+    margin-bottom: 20px;
+  }
+
+  &__action {
+    width: 100%;
+    margin-top: auto;
+  }
+
+  &__pagination {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 24px;
+  }
+}

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <circle cx="64" cy="64" r="49" stroke="#c0392b" stroke-width="4"/>
+  <path d="M64 10c-14 8-22 20-22 32 0 14 10 24 22 24s22-10 22-24c0-12-8-24-22-32z" fill="#e74c3c"/>
+  <circle cx="54" cy="36" r="3" fill="#fff"/>
+  <circle cx="74" cy="36" r="3" fill="#fff"/>
+  <path d="M58 44c4 4 8 4 12 0" stroke="#fff" stroke-width="2" fill="none"/>
+  <path d="M40 18l6 10-12 2 8-8-6-10zM88 18l-6 10 12 2-8-8 6-10z" fill="#f39c12"/>
+  <rect x="34" y="96" width="60" height="12" rx="3" fill="#922b21"/>
+  <text x="64" y="105" text-anchor="middle" font-size="7" fill="#fdebd0" font-family="sans-serif">BLAZE</text>
+</svg>

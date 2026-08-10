@@ -1,0 +1,48 @@
+---
+description: 项目目录结构与代码归属规范（必读）
+alwaysApply: true
+---
+
+# 项目开发规范
+
+完整文档见根目录 `PROJECT_STRUCTURE.md`。开发前必须按此归位代码。
+
+## 目录归属（快速决策）
+
+| 写什么 | 放哪 |
+|--------|------|
+| 布局壳（Header+Outlet） | `layouts/Main/` 或 `layouts/Login/` |
+| 顶栏 AppHeader | `components/AppHeader/` |
+| 站内页内容宽度 | 由 `MainLayout` 的 `main-layout__container` 统一限制（`--page-content-max-width`），页面内不要再套一层 max-width |
+| 登录落地（全屏视频） | `views/Login/` + `layouts/Login/`（有顶栏、**不**套内容盒） |
+| 视觉/交互规范 | 根目录 `DESIGN.md`（写前端必遵） |
+| 站内页面内容 | `views/xxx/`（路由挂 MainLayout） |
+| 无业务原子组件 | `base-ui/` |
+| 帖子列表卡片 | **必须** `base-ui/ContentCard/`（图文/文章/视频），禁止手搓；见 `DESIGN.md` §5.1 |
+| 业务复用组件（≥2页） | `components/`（结构见 `src/components/COMPONENT_STRUCTURE.md`） |
+| API 请求 | `service/xxx.ts`（组件禁止直接 axios） |
+| 异步数据 | `store/modules/` + `createAsyncThunk` |
+| 跨页 Hook | `hooks/useXxx.ts` |
+| 路由 | 只改 `router/routes.tsx` |
+
+## 硬性规则
+
+- import 一律 `@/`，禁止深层相对路径
+- 函数组件 + Hooks，不用 class
+- 页面不写在 layouts 里；layouts 不写业务表单
+- 网络：`dispatch(thunk)` → service → HYRequest，不在 useEffect 里直接 getBanners()
+- UI 默认 **antd 5**（规则 `.cursor/rules/ant-design.mdc`，Skill `.agents/skills/antd/`）
+- antd 主题在 `App.tsx` ConfigProvider；全局 LESS 在 `assets/css/`
+- 首屏页同步 import，冷门页 `lazy()` + Suspense
+- **UTF-8**：源码/Mock/含中文配置均 UTF-8；接口中文乱码先查后端 DB 种子字符集（勿在前端打补丁转码）
+- **交付前自测**：改完代码必须跑 `npm run lint` 与 `npm run typecheck`，通过后再结束；不要把编译红字留给用户
+- **业务组件结构**：`src/components/` 内新组件按 `COMPONENT_STRUCTURE.md` 拆分（参照 `AppHeader/`）
+
+## 子文档
+
+- 设计 `DESIGN.md`
+- 组件结构 `src/components/COMPONENT_STRUCTURE.md`
+- 路由 `src/router/README.md`
+- 请求 `src/service/README.md`
+- 状态 `src/store/README.md`
+- 样式 `src/assets/css/README.md`

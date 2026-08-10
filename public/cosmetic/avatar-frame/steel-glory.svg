@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <circle cx="64" cy="64" r="48" stroke="#95a5a6" stroke-width="3"/>
+  <circle cx="64" cy="64" r="38" stroke="#bdc3c7" stroke-width="2" stroke-dasharray="6 4"/>
+  <path d="M64 8 L70 24 L64 20 L58 24Z" fill="#7f8c8d"/>
+  <path d="M20 64 L36 70 L32 64 L36 58Z" fill="#7f8c8d"/>
+  <path d="M108 64 L92 70 L96 64 L92 58Z" fill="#7f8c8d"/>
+  <path d="M48 96 L58 84 L64 92 L70 84 L80 96" stroke="#ecf0f1" stroke-width="3" fill="none"/>
+  <rect x="34" y="100" width="60" height="11" rx="3" fill="#566573"/>
+  <text x="64" y="108" text-anchor="middle" font-size="6.5" fill="#ecf0f1" font-family="sans-serif">GLORY</text>
+</svg>

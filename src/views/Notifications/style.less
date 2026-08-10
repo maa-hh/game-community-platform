@@ -1,0 +1,36 @@
+@import '@/components/notifications/style.less';
+
+.notifications-page {
+  --page-sub-top-bar: 52px;
+
+  box-sizing: border-box;
+  padding-top: calc(var(--page-sub-top-bar) + 16px);
+  padding-bottom: 32px;
+
+  &__align-track {
+    width: 100%;
+    max-width: var(--page-content-max-width);
+    margin: 0 auto;
+    padding: 0 var(--page-content-gutter);
+    box-sizing: border-box;
+  }
+
+  &__top-dock {
+    position: fixed;
+    top: var(--app-header-height);
+    right: 0;
+    left: 0;
+    z-index: 90;
+    pointer-events: none;
+
+    .notifications-page__align-track > * {
+      pointer-events: auto;
+    }
+  }
+}
+
+@media (max-width: 640px) {
+  .notifications-page {
+    --page-sub-top-bar: 48px;
+  }
+}

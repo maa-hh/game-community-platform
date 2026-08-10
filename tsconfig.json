@@ -1,26 +1,53 @@
 {
   "compilerOptions": {
+    /* ============ 编译目标 ============ */
+    // 编译后的 JS 目标版本（'es5' | 'es2015' | 'esnext' 等），影响降阶语法
     "target": "es5",
+    // 编译时包含的 API 类型声明库
     "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
+      "dom", // 浏览器 DOM API（document、window 等）
+      "dom.iterable", // DOM 可迭代对象（NodeList、DOMTokenList 等）
+      "esnext" // 最新 ES 标准库
     ],
+
+    /* ============ 模块与文件处理 ============ */
+    // 允许编译 JS 文件（不只是 TS）
     "allowJs": true,
+    // 跳过 .d.ts 类型声明文件的类型检查，加快编译
     "skipLibCheck": true,
+    // 兼容 CommonJS 默认导入语义（import React from 'react' 需要）
     "esModuleInterop": true,
+    // 允许对没有默认导出的模块使用默认导入（与 esModuleInterop 配合使用）
     "allowSyntheticDefaultImports": true,
-    "strict": true,
-    "forceConsistentCasingInFileNames": true,
-    "noFallthroughCasesInSwitch": true,
+    // 模块输出规范：'esnext'=保留 ES Module（交给 webpack 处理）
     "module": "esnext",
+    // 模块解析策略：'node'=Node.js 经典解析（CRA 兼容）
     "moduleResolution": "node",
+    // 允许 import xxx from './data.json' 导入 JSON 文件
     "resolveJsonModule": true,
+    // 每个文件当作独立模块编译，加快构建（CRA/Babel 必需）
     "isolatedModules": true,
+    // 不输出编译产物（由 webpack/babel 负责打包，tsc 仅做类型检查）
     "noEmit": true,
-    "jsx": "react-jsx"
+    // JSX 处理方式：'react-jsx'=React 17+ 新 JSX 转换，无需 import React
+    "jsx": "react-jsx",
+
+    /* ============ 严格性 ============ */
+    // 开启所有严格类型检查选项的总开关
+    "strict": true,
+    // 强制 import 路径大小写一致（macOS 不敏感但 Linux 敏感，避免跨平台 bug）
+    "forceConsistentCasingInFileNames": true,
+    // 禁止 switch 语句 case 穿透（必须 break/return/throw）
+    "noFallthroughCasesInSwitch": true,
+
+    /* ============ 路径别名（与 craco.config.js / .eslintrc.js 保持一致） ============ */
+    // 路径解析基准目录，'.'=项目根目录
+    "baseUrl": ".",
+    // 路径别名映射：@/* 指向 src/*
+    "paths": {
+      "@/*": ["src/*"]
+    }
   },
-  "include": [
-    "src"
-  ]
+  // 参与编译/类型检查的文件范围
+  "include": ["src"]
 }

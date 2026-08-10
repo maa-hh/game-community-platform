@@ -1,0 +1,130 @@
+.share-sheet {
+  &__preview {
+    margin-bottom: 12px;
+  }
+
+  &__card {
+    width: 100%;
+  }
+
+  &__copy-block {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+  }
+
+  &__copy-label {
+    margin-bottom: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-text-placeholder);
+    letter-spacing: 0.02em;
+  }
+
+  &__copy-text {
+    margin: 0;
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--color-text-secondary);
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  &__preview-tip {
+    margin: 8px 0 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--color-text-secondary);
+  }
+
+  &__item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 14px 4px;
+    border: none;
+    border-bottom: 1px solid var(--color-border);
+    background: transparent;
+    color: var(--color-text);
+    font-size: 15px;
+    text-align: left;
+    cursor: pointer;
+
+    &:last-child {
+      border-bottom: none;
+    }
+
+    &:hover {
+      color: var(--color-primary);
+    }
+
+    &:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+
+      &:hover {
+        color: var(--color-text);
+      }
+    }
+
+    > span:first-of-type {
+      flex: 1;
+    }
+  }
+
+  &__hint {
+    color: var(--color-text-placeholder);
+  }
+
+  &__desc {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--color-text-placeholder);
+    white-space: nowrap;
+  }
+
+  &__repost-tip {
+    margin: 0 0 12px;
+    font-size: 13px;
+    color: var(--color-text-secondary);
+  }
+
+  &__repost-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 12px;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+
+  &__repost-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-text);
+  }
+
+  &__textarea-wrap {
+    position: relative;
+
+    .ant-input {
+      padding-bottom: 28px;
+    }
+  }
+
+  &__count {
+    position: absolute;
+    right: 12px;
+    bottom: 8px;
+    font-size: 12px;
+    color: var(--color-text-placeholder);
+    pointer-events: none;
+    line-height: 1;
+  }
+}

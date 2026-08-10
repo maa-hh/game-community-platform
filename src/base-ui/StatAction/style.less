@@ -1,0 +1,43 @@
+.stat-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  padding: 4px 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  line-height: 1;
+  cursor: default;
+  transition: color 0.2s;
+
+  &--sm {
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+
+  &:is(button) {
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      color: var(--color-text);
+    }
+
+    &:disabled {
+      opacity: 0.45;
+      cursor: default;
+    }
+  }
+
+  &.is-active {
+    color: var(--color-primary);
+  }
+}
+
+button.stat-action--sm:hover:not(:disabled) {
+  background: var(--header-link-hover-bg);
+}

@@ -1,0 +1,360 @@
+import type { LatestPostItem, PostComment, PostDetailData } from '@/types/post';
+
+const DEMO_VIDEO =
+  'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4';
+
+const authorA = {
+  accountId: 100101,
+  nickname: '攻略达人',
+  avatar: 'https://picsum.photos/seed/post-a/96/96',
+};
+
+const authorB = {
+  accountId: 100102,
+  nickname: '盒友玩家',
+  avatar: 'https://picsum.photos/seed/post-b/96/96',
+};
+
+const authorC = {
+  accountId: 100103,
+  nickname: '演示账号',
+  avatar: 'https://picsum.photos/seed/gc-demo-user/96/96',
+};
+
+/** 首页最新帖（列表） */
+export const MOCK_LATEST_POSTS: LatestPostItem[] = [
+  {
+    id: '1001',
+    postType: 'image_text',
+    title: '【图文】周末开荒截图合集',
+    content:
+      '封面多图横排展示：限高等比缩放，一行放不下时末张右上角标总张数。正文超过三行自动省略。',
+    images: [
+      'https://picsum.photos/seed/gc-it-1/640/360',
+      'https://picsum.photos/seed/gc-it-2/360/480',
+      'https://picsum.photos/seed/gc-it-3/400/400',
+      'https://picsum.photos/seed/gc-it-4/520/300',
+      'https://picsum.photos/seed/gc-it-5/300/420',
+    ],
+    author: authorC,
+    createdAt: '刚刚',
+    tags: [
+      { text: '开荒', icon: 'https://picsum.photos/seed/cat-kaifu/32/32' },
+    ],
+    gameTags: [
+      {
+        appId: 1245620,
+        name: '艾尔登法环',
+        iconUrl: 'https://picsum.photos/seed/game-elden/32/32',
+      },
+    ],
+    viewCount: 3200,
+    likeCount: 86,
+    commentCount: 12,
+    favoriteCount: 40,
+  },
+  {
+    id: '1002',
+    postType: 'article',
+    title: '【文章】从正文抽图的攻略卡片',
+    content: '文章没有独立封面，列表里的图来自正文插图。展示规则与图文相同。',
+    images: [
+      'https://picsum.photos/seed/gc-art-1/520/300',
+      'https://picsum.photos/seed/gc-art-2/360/480',
+      'https://picsum.photos/seed/gc-art-3/640/360',
+    ],
+    author: authorA,
+    createdAt: '10 分钟前',
+    tags: [
+      { text: '攻略', icon: 'https://picsum.photos/seed/cat-guide/32/32' },
+    ],
+    viewCount: 9800,
+    likeCount: 241,
+    commentCount: 38,
+    favoriteCount: 18,
+  },
+  {
+    id: '1003',
+    postType: 'video',
+    title: '【视频】春日花开 · 点击进入详情试播',
+    content:
+      '视频帖点进详情后小窗常驻播放，可一边看评论一边看视频，支持静音与全屏。',
+    coverUrl: 'https://picsum.photos/seed/gc-video-demo/960/540',
+    author: authorC,
+    createdAt: '20 分钟前',
+    tags: [{ text: '演示', icon: 'https://picsum.photos/seed/cat-demo/32/32' }],
+    viewCount: 5600,
+    likeCount: 128,
+    commentCount: 16,
+    favoriteCount: 22,
+  },
+  {
+    id: '1004',
+    postType: 'repost',
+    title: '转发：周末开荒截图合集',
+    content: '这组图太真实了，周末也要肝！',
+    author: authorB,
+    createdAt: '1 小时前',
+    refPost: {
+      id: '1001',
+      title: '【图文】周末开荒截图合集',
+      summary: '封面多图横排展示，限高等比，溢出标总张数。',
+      coverUrl: 'https://picsum.photos/seed/gc-it-1/640/360',
+      postType: 'image_text',
+      author: authorC,
+      viewCount: 3200,
+      commentCount: 12,
+      likeCount: 86,
+    },
+    tags: [
+      { text: '综合讨论', icon: 'https://picsum.photos/seed/cat-talk/32/32' },
+    ],
+    viewCount: 420,
+    likeCount: 12,
+    commentCount: 3,
+    favoriteCount: 2,
+  },
+];
+
+const baseStats = {
+  viewCount: 3200,
+  likeCount: 86,
+  commentCount: 2,
+  favoriteCount: 40,
+  shareCount: 9,
+  liked: false,
+  favorited: false,
+};
+
+export const MOCK_POST_DETAILS: Record<string, PostDetailData> = {
+  '1001': {
+    id: '1001',
+    postType: 'image_text',
+    title: '【图文】周末开荒截图合集',
+    content:
+      '这是图文帖详情正文。整理了本周开荒路线和几个容易漏的宝箱点，附图按探索顺序排列，欢迎补充。\n\n第二段：注意带上抗性道具，Boss 战少走弯路。',
+    images: [
+      'https://picsum.photos/seed/gc-it-1/960/540',
+      'https://picsum.photos/seed/gc-it-2/720/960',
+      'https://picsum.photos/seed/gc-it-3/800/800',
+    ],
+    categoryName: '开荒',
+    tags: [{ text: '图文' }, { text: '开荒' }],
+    author: authorC,
+    createdAt: '2026-07-24 12:00',
+    stats: { ...baseStats, likeCount: 86, commentCount: 2 },
+    followedAuthor: false,
+  },
+  '1002': {
+    id: '1002',
+    postType: 'article',
+    title: '【文章】从正文抽图的攻略卡片',
+    content: '长文攻略正文。第一章讲资源规划，第二章讲配队，第三章讲周常效率。',
+    contentHtml:
+      '<p>长文攻略正文。第一章讲资源规划，第二章讲配队，第三章讲周常效率。</p><p><img src="https://picsum.photos/seed/gc-art-1/800/450" alt=""/></p><p>配队推荐以功能位优先，输出其次。</p>',
+    images: [
+      'https://picsum.photos/seed/gc-art-1/800/450',
+      'https://picsum.photos/seed/gc-art-2/600/800',
+    ],
+    categoryName: '攻略',
+    tags: [{ text: '文章' }, { text: '攻略' }],
+    author: authorA,
+    createdAt: '2026-07-24 11:40',
+    stats: {
+      ...baseStats,
+      likeCount: 241,
+      commentCount: 1,
+      viewCount: 9800,
+    },
+    followedAuthor: false,
+  },
+  '1003': {
+    id: '1003',
+    postType: 'video',
+    title: '【视频】春日花开 · 详情试播',
+    content:
+      '视频介绍：本地样例花视频。播放器小窗吸顶，滚动评论区时仍可继续观看，可静音、全屏。',
+    coverUrl: 'https://picsum.photos/seed/gc-video-demo/960/540',
+    videoUrl: DEMO_VIDEO,
+    categoryName: '视频',
+    tags: [{ text: '视频' }, { text: '演示' }],
+    author: authorC,
+    createdAt: '2026-07-24 11:20',
+    stats: {
+      ...baseStats,
+      likeCount: 128,
+      commentCount: 2,
+      viewCount: 5600,
+    },
+    followedAuthor: false,
+  },
+  '1004': {
+    id: '1004',
+    postType: 'repost',
+    title: '转发：周末开荒截图合集',
+    content: '这组图太真实了，周末也要肝！',
+    categoryName: '转发',
+    tags: [{ text: '转发' }],
+    author: authorB,
+    createdAt: '2026-07-24 11:00',
+    refPost: {
+      id: '1001',
+      title: '【图文】周末开荒截图合集',
+      summary: '封面多图横排展示，限高等比，溢出标总张数。',
+      coverUrl: 'https://picsum.photos/seed/gc-it-1/640/360',
+      postType: 'image_text',
+      author: authorC,
+      viewCount: 3200,
+      commentCount: 12,
+      likeCount: 86,
+    },
+    stats: {
+      ...baseStats,
+      likeCount: 12,
+      commentCount: 1,
+      viewCount: 420,
+    },
+    followedAuthor: false,
+  },
+};
+
+export const MOCK_COMMENTS: Record<string, PostComment[]> = {
+  '1001': [
+    {
+      id: 'c1',
+      accountId: 100201,
+      nickname: '萌新一号',
+      avatar: 'https://picsum.photos/seed/c1/64/64',
+      content:
+        '宝箱点第三张图那个我找了半小时，感谢分享！顺便问一下抗性药水在哪买比较便宜，周末开荒预算有限。',
+      likeCount: 8,
+      liked: false,
+      replyCount: 4,
+      createdAt: '30 分钟前',
+      replies: [
+        {
+          id: 'r1',
+          accountId: 100101,
+          nickname: '攻略达人',
+          avatar: 'https://picsum.photos/seed/post-a/64/64',
+          replyToAccountId: 201,
+          replyToNickname: '萌新一号',
+          content: '杂货商人每周刷新，记得清一下。',
+          likeCount: 3,
+          liked: false,
+          createdAt: '20 分钟前',
+        },
+        {
+          id: 'r2',
+          accountId: 100201,
+          nickname: '萌新一号',
+          avatar: 'https://picsum.photos/seed/c1/64/64',
+          replyToAccountId: 101,
+          replyToNickname: '攻略达人',
+          content: '收到，这就去！',
+          likeCount: 1,
+          liked: false,
+          createdAt: '15 分钟前',
+        },
+        {
+          id: 'r2b',
+          accountId: 100202,
+          nickname: '肝帝',
+          avatar: 'https://picsum.photos/seed/c2/64/64',
+          replyToAccountId: 201,
+          replyToNickname: '萌新一号',
+          content: '同问抗性，一起开荒可以组队。',
+          likeCount: 0,
+          liked: false,
+          createdAt: '12 分钟前',
+        },
+        {
+          id: 'r2c',
+          accountId: 100103,
+          nickname: '演示账号',
+          avatar: 'https://picsum.photos/seed/gc-demo-user/64/64',
+          replyToAccountId: 202,
+          replyToNickname: '肝帝',
+          content: '评论区见，晚上八点语音房。',
+          likeCount: 2,
+          liked: false,
+          createdAt: '10 分钟前',
+        },
+      ],
+    },
+    {
+      id: 'c2',
+      accountId: 100202,
+      nickname: '肝帝',
+      avatar: 'https://picsum.photos/seed/c2/64/64',
+      content: '已收藏，周末开荒队缺一个辅助。',
+      likeCount: 2,
+      liked: false,
+      replyCount: 0,
+      createdAt: '1 小时前',
+      replies: [],
+    },
+  ],
+  '1002': [
+    {
+      id: 'c3',
+      accountId: 100203,
+      nickname: '长文爱好者',
+      content: '配队那章写得很清楚。',
+      likeCount: 5,
+      liked: false,
+      replyCount: 0,
+      createdAt: '昨天',
+      replies: [],
+    },
+  ],
+  '1003': [
+    {
+      id: 'c4',
+      accountId: 100204,
+      nickname: '影像党',
+      content: '小窗边看边评是真的香。',
+      likeCount: 6,
+      liked: false,
+      replyCount: 1,
+      createdAt: '刚刚',
+      replies: [
+        {
+          id: 'r3',
+          accountId: 100103,
+          nickname: '演示账号',
+          replyToAccountId: 204,
+          replyToNickname: '影像党',
+          content: '全屏和静音也试一下～',
+          likeCount: 2,
+          liked: false,
+          createdAt: '刚刚',
+        },
+      ],
+    },
+    {
+      id: 'c5',
+      accountId: 100205,
+      nickname: '路人甲',
+      content: '花开得真好。',
+      likeCount: 0,
+      liked: false,
+      replyCount: 0,
+      createdAt: '5 分钟前',
+      replies: [],
+    },
+  ],
+  '1004': [
+    {
+      id: 'c6',
+      accountId: 100206,
+      nickname: '路过',
+      content: '附议，周末冲。',
+      likeCount: 1,
+      liked: false,
+      replyCount: 0,
+      createdAt: '50 分钟前',
+      replies: [],
+    },
+  ],
+};

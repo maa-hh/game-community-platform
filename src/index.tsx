@@ -1,19 +1,22 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import './index.css';
+// 须在 App/store 之前执行：一次性清除旧登录态，便于测试鉴权跳转
+import './bootstrap-clear-auth';
 import App from './App';
-import reportWebVitals from './reportWebVitals';
+
+// 全局样式入口：reset + common + 基础样式
+import '@/assets/css/index.less';
+
+// 开发环境：启用 mock 虚拟数据
+if (process.env.NODE_ENV === 'development') {
+  require('@/mock');
+}
 
 const root = ReactDOM.createRoot(
-  document.getElementById('root') as HTMLElement
+  document.getElementById('root') as HTMLElement,
 );
 root.render(
   <React.StrictMode>
     <App />
-  </React.StrictMode>
+  </React.StrictMode>,
 );
-
-// If you want to start measuring performance in your app, pass a function
-// to log results (for example: reportWebVitals(console.log))
-// or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
-reportWebVitals();

@@ -1,0 +1,29 @@
+@import (reference) '@/assets/css/common.less';
+
+.clamp-text {
+  &__body {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.65;
+    color: var(--color-text);
+    white-space: pre-wrap;
+    word-break: break-word;
+    .text-ellipsis-multi(2);
+
+    &.is-expanded {
+      display: block;
+      -webkit-line-clamp: unset;
+      overflow: visible;
+    }
+  }
+
+  &__more {
+    margin-top: 4px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--color-primary);
+    font-size: 13px;
+    cursor: pointer;
+  }
+}

@@ -1,0 +1,45 @@
+---
+description: React/TS 组件与 Redux 写法约定
+globs: src/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# React + TypeScript 约定
+
+## 组件模板（base-ui / components）
+
+```tsx
+import React, { memo } from 'react';
+import type { FC } from 'react';
+
+interface IProps {
+  title: string;
+  optional?: string;
+}
+
+const MyComp: FC<IProps> = (props) => <div>{props.title}</div>;
+export default memo(MyComp);
+```
+
+## 页面数据
+
+```tsx
+// ✅ store 异步
+useEffect(() => { dispatch(fetchHomeData()); }, [dispatch]);
+const { data, loading } = useAppSelector((s) => s.home);
+
+// ❌ 组件里直接调 service
+useEffect(() => { getBanners().then(...) }, []);
+```
+
+## Redux 异步
+
+- `createAsyncThunk` + `extraReducers` 处理 pending/fulfilled/rejected
+- 多字段 selector 用 `appShallowEqual`
+- 使用 `useAppDispatch` / `useAppSelector`，不用原生 useDispatch
+
+## UI 与样式
+
+- **UI 组件**：默认 antd 5（见 `.cursor/rules/ant-design.mdc`）
+- 全局：LESS `assets/css/`
+- 组件：antd 优先；需自定义时用 styled-components 或同目录 less

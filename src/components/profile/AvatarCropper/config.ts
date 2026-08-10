@@ -1,0 +1,15 @@
+export const avatarCropperConfig = {
+  title: '裁剪头像',
+  okText: '确认使用',
+  cancelText: '取消',
+  width: 520,
+  aspect: 1,
+  cropShape: 'round' as const,
+  showGrid: false,
+  zoomMin: 1,
+  zoomMax: 3,
+  zoomStep: 0.05,
+  zoomLabel: '缩放',
+  hint: '拖动调整位置，滑动缩放大小',
+  errorMessage: '裁剪失败，请重试',
+} as const;

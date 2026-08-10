@@ -1,0 +1,58 @@
+.post-bottom-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  margin: 12px 0 0;
+  /* 左右更宽，与内容盒边距拉开但仍铺满横幅 */
+  padding: 12px 20px;
+  box-sizing: border-box;
+  border-radius: 12px 12px 0 0;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-bottom: none;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.06);
+
+  &__composer {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+
+    .ant-input-affix-wrapper,
+    .ant-input {
+      flex: 1 1 auto;
+      min-width: 0;
+      width: 100%;
+    }
+
+    .ant-btn {
+      flex-shrink: 0;
+    }
+  }
+
+  /* 右侧只占内容宽度，不再 flex:1 对半空着 */
+  &__actions {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding-left: 4px;
+  }
+}
+
+@media (max-width: 640px) {
+  .post-bottom-bar {
+    gap: 10px;
+    padding: 10px 14px;
+
+    &__actions {
+      gap: 14px;
+    }
+  }
+}

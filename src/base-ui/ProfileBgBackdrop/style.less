@@ -1,0 +1,20 @@
+.profile-bg-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+
+  &__image {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: var(--profile-bg-object-position, center 32%);
+  }
+
+  &__overlay {
+    position: absolute;
+    inset: 0;
+  }
+}

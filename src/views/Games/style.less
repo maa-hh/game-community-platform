@@ -1,0 +1,84 @@
+@import (reference) '@/assets/css/common.less';
+
+.games-page {
+  padding: var(--card-stack-gap) 0 48px;
+
+  &__tabs {
+    margin-bottom: 12px;
+
+    .ant-tabs-nav {
+      margin-bottom: 0;
+    }
+  }
+
+  &__panel {
+    padding: 12px;
+    border-radius: 12px;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+  }
+
+  &__toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+
+    &--discover {
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+  }
+
+  &__discover-search {
+    width: 280px;
+    flex: 0 1 280px;
+  }
+
+  .game-discover-filters {
+    margin-bottom: 12px;
+  }
+
+  &__hint {
+    color: var(--color-text-secondary);
+    font-size: 13px;
+  }
+
+  &__loading {
+    display: flex;
+    justify-content: center;
+    padding: 48px 16px;
+  }
+
+  &__waterfall--modal {
+    margin-top: 12px;
+  }
+
+  &__pager {
+    margin-top: 16px;
+    text-align: center;
+  }
+
+  &__search-results {
+    margin-top: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .games-page {
+    &__panel {
+      padding: 10px 8px;
+    }
+
+    &__toolbar--discover {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    &__discover-search {
+      width: 100%;
+      flex-basis: auto;
+    }
+  }
+}

@@ -1,0 +1,48 @@
+.masonry-grid {
+  --masonry-gap: 2px;
+
+  /* 按容器宽度自动 1～N 列：列宽不小于 280px，能放几列就放几列 */
+  column-width: 280px;
+  column-gap: var(--masonry-gap);
+  column-fill: balance;
+
+  > * {
+    margin-bottom: var(--masonry-gap);
+  }
+
+  &--scroll {
+    max-height: 420px;
+    overflow: auto;
+    padding-right: 4px;
+    column-width: 220px;
+  }
+
+  &--row-fill {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--masonry-gap);
+    column-width: auto;
+
+    > * {
+      margin-bottom: 0;
+    }
+  }
+
+  &__col {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--masonry-gap);
+    min-width: 0;
+
+    > * {
+      margin-bottom: 0;
+    }
+  }
+}
+
+@media (max-width: 480px) {
+  .masonry-grid {
+    column-width: 260px;
+  }
+}

@@ -1,0 +1,36 @@
+.cover-cropper {
+  &__aspect {
+    margin-bottom: 12px;
+  }
+
+  &__stage {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 280px;
+    max-height: 420px;
+    overflow: auto;
+    border-radius: 8px;
+    background: #111;
+  }
+
+  .ReactCrop {
+    max-width: 100%;
+    max-height: 420px;
+  }
+
+  &__image {
+    display: block;
+    max-width: 100%;
+    max-height: 420px;
+    width: auto;
+    height: auto;
+  }
+
+  &__hint {
+    display: block;
+    margin-top: 12px;
+    font-size: 12px;
+  }
+}

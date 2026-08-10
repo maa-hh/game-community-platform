@@ -1,0 +1,43 @@
+.lazy-image {
+  position: relative;
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  background: var(--color-bg-secondary);
+
+  &__placeholder {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-bg-secondary);
+  }
+
+  &__img {
+    display: block;
+    width: 100%;
+    height: auto;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+
+  &.is-loaded {
+    .lazy-image__img {
+      opacity: 1;
+    }
+
+    .lazy-image__placeholder {
+      opacity: 0;
+      pointer-events: none;
+    }
+  }
+
+  &--fallback {
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    min-height: inherit;
+  }
+}

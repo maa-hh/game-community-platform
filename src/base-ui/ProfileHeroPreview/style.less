@@ -1,0 +1,90 @@
+@import (reference) '@/assets/css/common.less';
+
+.profile-hero-preview {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  background: #101418;
+  container-type: size;
+
+  &__backdrop {
+    border-radius: inherit;
+  }
+
+  &__inner {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: flex-start;
+    gap: 8.57cqh;
+    height: 100%;
+    box-sizing: border-box;
+    padding: 8.57cqh 1.67cqw 10cqh;
+  }
+
+  &__lead {
+    flex-shrink: 0;
+  }
+
+  &__avatar {
+    display: block;
+    width: 31.43cqh;
+    height: 31.43cqh;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.85);
+    background: rgba(255, 255, 255, 0.35);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  }
+
+  &__info {
+    display: flex;
+    flex-direction: column;
+    gap: 4.29cqh;
+    min-width: 0;
+    padding-top: 1.43cqh;
+  }
+
+  &__name {
+    font-size: 10cqh;
+    font-weight: 700;
+    line-height: 1.2;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
+  }
+
+  &__account-id,
+  &__bio {
+    font-size: 7.14cqh;
+    line-height: 1.2;
+    opacity: 0.88;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
+  }
+
+  &--text-light {
+    .profile-hero-preview__name,
+    .profile-hero-preview__account-id,
+    .profile-hero-preview__bio {
+      color: #fff;
+    }
+
+    .profile-hero-preview__avatar {
+      border-color: rgba(255, 255, 255, 0.9);
+      background: rgba(255, 255, 255, 0.22);
+    }
+  }
+
+  &--text-dark {
+    .profile-hero-preview__name,
+    .profile-hero-preview__account-id,
+    .profile-hero-preview__bio {
+      color: rgba(20, 25, 30, 0.92);
+      text-shadow:
+        0 0 2px rgba(255, 255, 255, 0.9),
+        0 1px 2px rgba(255, 255, 255, 0.75);
+    }
+
+    .profile-hero-preview__avatar {
+      border-color: rgba(255, 255, 255, 0.95);
+      background: rgba(255, 255, 255, 0.55);
+    }
+  }
+}

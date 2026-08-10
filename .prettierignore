@@ -1,0 +1,18 @@
+# 依赖目录
+node_modules/
+
+# 构建产物
+build/
+dist/
+
+# 配置文件本身（避免格式化破坏特殊语法）
+craco.config.js
+.eslintrc.js
+
+# 自动生成文件
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# 第三方代码
+coverage/

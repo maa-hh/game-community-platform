@@ -1,0 +1,21 @@
+.video-cover {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--color-bg-secondary);
+  overflow: hidden;
+
+  &--loading,
+  &--fallback {
+    min-height: 120px;
+    color: var(--color-text-placeholder);
+    font-size: 32px;
+  }
+
+  &--fallback {
+    color: rgba(255, 255, 255, 0.92);
+    background: linear-gradient(135deg, #2a2a2a, #4a4a4a);
+  }
+}

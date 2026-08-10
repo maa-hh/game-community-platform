@@ -1,0 +1,31 @@
+.user-avatar {
+  flex-shrink: 0;
+  font-weight: 600;
+
+  &.ant-avatar {
+    border: none;
+    background: transparent !important;
+
+    &:not(.ant-avatar-image) {
+      background: linear-gradient(135deg, #ff6600, #ff8533) !important;
+      color: #fff !important;
+    }
+  }
+}
+
+.user-avatar--block {
+  display: block;
+  border-radius: 50%;
+  object-fit: cover;
+  background: transparent;
+
+  &.is-fallback {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #ff6600, #ff8533);
+    color: #fff;
+    font-weight: 600;
+    line-height: 1;
+  }
+}

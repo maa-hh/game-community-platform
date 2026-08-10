@@ -8,6 +8,20 @@ export function steamHighResolutionCapsuleUrl(appId: number): string {
   return `https://cdn.akamai.steamstatic.com/steam/apps/${appId}/capsule_616x353.jpg`;
 }
 
+/** 判断 Steam 地址是否为不适合游戏卡片展示的小尺寸资源。 */
+export function isLowResolutionSteamCover(url?: string | null): boolean {
+  const lower = url?.trim().toLowerCase();
+  if (!lower) return false;
+  return (
+    lower.includes('capsule_sm_120') ||
+    lower.includes('capsule_231x87') ||
+    lower.includes('capsule_184x69') ||
+    lower.includes('small_capsule') ||
+    lower.includes('/logo') ||
+    lower.includes('/icon')
+  );
+}
+
 /** 按优先级返回封面候选 URL（加载失败时依次尝试） */
 export function steamCoverCandidates(
   appId: number,
@@ -23,19 +37,9 @@ export function steamCoverCandidates(
   };
 
   const cover = coverUrl?.trim();
-  const isLowResolutionCover = (url: string) => {
-    const lower = url.toLowerCase();
-    return (
-      lower.includes('capsule_sm_120') ||
-      lower.includes('capsule_231x87') ||
-      lower.includes('/logo') ||
-      lower.includes('/icon')
-    );
-  };
-
   // 数据库中的 hashed store_item_assets 地址通常是唯一可靠的地址，
   // 先保留高清版本；低清地址放到末尾作为最终兜底，不能直接丢弃。
-  if (cover && !isLowResolutionCover(cover)) {
+  if (cover && !isLowResolutionSteamCover(cover)) {
     push(cover);
   }
 

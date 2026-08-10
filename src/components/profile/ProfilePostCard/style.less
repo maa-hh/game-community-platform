@@ -1,0 +1,58 @@
+@import (reference) '@/assets/css/common.less';
+
+.profile-post-card {
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+
+  &__section {
+    &--preview {
+      padding-bottom: 12px;
+    }
+
+    &--actions {
+      padding-top: 12px;
+      border-top: 1px solid var(--color-border);
+    }
+  }
+
+  &__action-bar {
+    gap: 12px;
+
+    .post-row-action-bar__btn {
+      flex: 1;
+      min-width: 0;
+    }
+  }
+}
+
+.profile-post-stats {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 8px;
+
+  &__item {
+    color: var(--color-text-secondary);
+
+    &.is-active {
+      color: var(--color-primary);
+    }
+  }
+}
+
+.profile-feed__rows {
+  .profile-post-card {
+    border: none;
+    border-radius: 0;
+    border-bottom: 1px solid var(--color-border);
+
+    &:last-child {
+      border-bottom: none;
+    }
+  }
+}

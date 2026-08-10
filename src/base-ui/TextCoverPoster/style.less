@@ -1,0 +1,42 @@
+.text-cover-poster {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  min-height: 96px;
+  background: linear-gradient(135deg, #d94e00 0%, #ff6600 48%, #ff9a4d 100%);
+
+  &--feed {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+  }
+
+  &__image {
+    display: block;
+    width: 100%;
+    height: auto;
+    vertical-align: middle;
+  }
+
+  &--feed &__image {
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+  }
+
+  &__title {
+    margin: 0;
+    padding: 14px 16px;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.45;
+    text-align: center;
+    color: #fff;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-break: break-word;
+  }
+}

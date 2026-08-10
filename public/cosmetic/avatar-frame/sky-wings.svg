@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <circle cx="64" cy="64" r="48" stroke="#2e86c1" stroke-width="3.5"/>
+  <path d="M8 58c16-10 28-8 36 2s20 8 20 8-10-2-20-8-20-2-36 2z" fill="#5dade2" opacity="0.9"/>
+  <path d="M120 58c-16-10-28-8-36 2s-20 8-20 8 10-2 20-8 20-2 36 2z" fill="#5dade2" opacity="0.9"/>
+  <path d="M64 14 L76 34 L64 28 L52 34Z" fill="#1b4f72"/>
+  <circle cx="64" cy="22" r="5" fill="#f4d03f"/>
+  <rect x="36" y="98" width="56" height="11" rx="3" fill="#1b4f72"/>
+  <text x="64" y="106" text-anchor="middle" font-size="6.5" fill="#d6eaf8" font-family="sans-serif">SKYWING</text>
+</svg>
