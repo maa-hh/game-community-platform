@@ -15,8 +15,10 @@ import com.game.community.model.entity.game.UserSteamBind;
 import com.game.community.model.entity.game.UserSteamGame;
 import com.game.community.model.entity.game.GameAchievement;
 import com.game.community.model.entity.game.UserGameAchievement;
-import com.game.community.model.vo.game.GameAchievementVO;
-import com.game.community.model.vo.game.GameDetailVO;
+import com.game.community.model.payload.steam.SteamOwnedGamePayload;
+import com.game.community.model.payload.steam.SteamOwnedGamesPayload;
+import com.game.community.model.payload.steam.SteamPlayerAchievementPayload;
+import com.game.community.model.payload.steam.SteamPlayerSummaryPayload;
 import com.game.community.model.vo.game.SteamBindVO;
 import com.game.community.model.vo.game.SteamGameStatsVO;
 import com.game.community.model.vo.game.SteamGameVO;
@@ -115,7 +117,7 @@ public class SteamServiceImpl implements SteamService {
             throw new BusinessException("该 Steam 账号已绑定其他社区用户");
         }
 
-        SteamApiClient.PlayerSummary summary = steamApiClient.getPlayerSummary(steamId);
+        SteamPlayerSummaryPayload summary = steamApiClient.getPlayerSummary(steamId);
         int steamLevel = steamApiClient.getSteamLevel(steamId);
 
         UserSteamBind bind = userSteamBindMapper.selectById(userId);
@@ -278,7 +280,7 @@ public class SteamServiceImpl implements SteamService {
             throw new BusinessException("游戏库正在同步中，请稍后再试");
         }
         try {
-            SteamApiClient.OwnedGamesResult ownedGames;
+            SteamOwnedGamesPayload ownedGames;
             if (StringUtils.hasText(syncId)) {
                 ownedGames = readLibrarySyncData(userId, syncId);
             } else {
@@ -291,7 +293,7 @@ public class SteamServiceImpl implements SteamService {
                 cacheLibrarySyncData(userId, syncId, ownedGames);
             }
 
-            List<SteamApiClient.OwnedGame> ownedList = ownedGames.getGames() == null
+            List<SteamOwnedGamePayload> ownedList = ownedGames.getGames() == null
                     ? List.of()
                     : ownedGames.getGames();
             int total = ownedGames.getGameCount() > 0
@@ -310,7 +312,7 @@ public class SteamServiceImpl implements SteamService {
                 int batchEnd = Math.min(
                         batchStart + SteamApiConstants.LIBRARY_SYNC_BATCH_SIZE,
                         ownedList.size());
-                List<SteamApiClient.OwnedGame> batch = ownedList.subList(batchStart, batchEnd);
+                List<SteamOwnedGamePayload> batch = ownedList.subList(batchStart, batchEnd);
                 syncLibraryBatch(userId, syncId, batch);
                 processedCount = batchEnd;
                 nextPage++;
@@ -343,13 +345,13 @@ public class SteamServiceImpl implements SteamService {
     }
 
     /** 查询当前同步会话缓存，避免每一页重复请求 Steam 游戏清单。 */
-    private SteamApiClient.OwnedGamesResult readLibrarySyncData(Long userId, String syncId) {
+    private SteamOwnedGamesPayload readLibrarySyncData(Long userId, String syncId) {
         String json = redisUtils.get(librarySyncDataKey(userId, syncId));
         if (!StringUtils.hasText(json)) {
             throw new BusinessException("游戏库同步会话已过期，请重新同步");
         }
         try {
-            return objectMapper.readValue(json, SteamApiClient.OwnedGamesResult.class);
+            return objectMapper.readValue(json, SteamOwnedGamesPayload.class);
         } catch (JsonProcessingException e) {
             throw new BusinessException("游戏库同步会话无效");
         }
@@ -359,7 +361,7 @@ public class SteamServiceImpl implements SteamService {
     private void cacheLibrarySyncData(
             Long userId,
             String syncId,
-            SteamApiClient.OwnedGamesResult ownedGames) {
+            SteamOwnedGamesPayload ownedGames) {
         try {
             redisUtils.set(
                     librarySyncDataKey(userId, syncId),
@@ -375,16 +377,16 @@ public class SteamServiceImpl implements SteamService {
     private void syncLibraryBatch(
             Long userId,
             String syncId,
-            List<SteamApiClient.OwnedGame> batch) {
+            List<SteamOwnedGamePayload> batch) {
         transactionTemplate.executeWithoutResult(status -> upsertLibraryBatch(
                 userId, syncId, batch));
         scheduleBasicInfoEnrichment(batch);
     }
 
     /** 将当前批次缺少公共基础信息的游戏提交到有界线程池。 */
-    private void scheduleBasicInfoEnrichment(List<SteamApiClient.OwnedGame> batch) {
+    private void scheduleBasicInfoEnrichment(List<SteamOwnedGamePayload> batch) {
         List<Long> appIds = batch.stream()
-                .map(SteamApiClient.OwnedGame::getAppId)
+                .map(SteamOwnedGamePayload::getAppId)
                 .toList();
         List<Long> missingIds = gameCatalogService.findMissingBasicInfoIds(appIds);
         for (Long appId : missingIds) {
@@ -398,8 +400,8 @@ public class SteamServiceImpl implements SteamService {
     private void scheduleAchievementEnrichment(
             Long userId,
             String steamId,
-            List<SteamApiClient.OwnedGame> firstPage) {
-        for (SteamApiClient.OwnedGame game : firstPage) {
+            List<SteamOwnedGamePayload> firstPage) {
+        for (SteamOwnedGamePayload game : firstPage) {
             if (game.getPlaytimeForever() <= 0 && game.getPlaytimeTwoWeeks() <= 0) {
                 continue;
             }
@@ -412,11 +414,14 @@ public class SteamServiceImpl implements SteamService {
     /** 读取单个游戏成就汇总并原子更新用户游戏记录。 */
     private void refreshAchievementSummary(Long userId, String steamId, long appId) {
         try {
-            SteamApiClient.AchievementProgress progress =
-                    steamApiClient.getPlayerAchievements(steamId, appId);
-            if (progress == null) {
+            List<SteamPlayerAchievementPayload> achievements =
+                    steamApiClient.getPlayerAchievementDetails(steamId, appId);
+            if (achievements.isEmpty()) {
                 return;
             }
+            int unlocked = (int) achievements.stream()
+                    .filter(SteamPlayerAchievementPayload::isUnlocked)
+                    .count();
             transactionTemplate.executeWithoutResult(status -> {
                 UserSteamGame game = userSteamGameMapper.selectOne(new LambdaQueryWrapper<UserSteamGame>()
                         .eq(UserSteamGame::getUserId, userId)
@@ -425,8 +430,8 @@ public class SteamServiceImpl implements SteamService {
                 if (game == null) {
                     return;
                 }
-                game.setAchievementUnlocked(progress.getUnlocked());
-                game.setAchievementTotal(progress.getTotal());
+                game.setAchievementUnlocked(unlocked);
+                game.setAchievementTotal(achievements.size());
                 userSteamGameMapper.updateById(game);
             });
         } catch (Exception e) {
@@ -454,11 +459,11 @@ public class SteamServiceImpl implements SteamService {
     private void upsertLibraryBatch(
             Long userId,
             String syncId,
-            List<SteamApiClient.OwnedGame> batch) {
+            List<SteamOwnedGamePayload> batch) {
         if (batch.isEmpty()) {
             return;
         }
-        List<Long> appIds = batch.stream().map(SteamApiClient.OwnedGame::getAppId).toList();
+        List<Long> appIds = batch.stream().map(SteamOwnedGamePayload::getAppId).toList();
         Map<Long, UserSteamGame> existingMap = new HashMap<>();
         userSteamGameMapper.selectList(new LambdaQueryWrapper<UserSteamGame>()
                         .eq(UserSteamGame::getUserId, userId)
@@ -466,7 +471,7 @@ public class SteamServiceImpl implements SteamService {
                 .forEach(game -> existingMap.put(game.getAppId(), game));
 
         LocalDateTime now = LocalDateTime.now();
-        for (SteamApiClient.OwnedGame game : batch) {
+        for (SteamOwnedGamePayload game : batch) {
             UserSteamGame entity = existingMap.get(game.getAppId());
             boolean newGame = entity == null;
             if (newGame) {
@@ -668,120 +673,8 @@ public class SteamServiceImpl implements SteamService {
                 .replace("cdn.akamai.steamstatic.com", "media.steampowered.com");
     }
 
-    /** 优先读取游戏百科成就定义，缺失时回退到 Steam 官方 Schema。 */
-    private List<SteamApiClient.AchievementDefinition> loadAchievementDefinitions(long appId) {
-        try {
-            GameDetailVO detail = gameCatalogService.getDetail(appId);
-            if (detail != null
-                    && detail.getAchievementHighlights() != null
-                    && !detail.getAchievementHighlights().isEmpty()) {
-                List<SteamApiClient.AchievementDefinition> definitions = new ArrayList<>();
-                for (GameAchievementVO item : detail.getAchievementHighlights()) {
-                    if (!StringUtils.hasText(item.getApiName()) && !StringUtils.hasText(item.getName())) {
-                        continue;
-                    }
-                    if (!StringUtils.hasText(item.getApiName())) {
-                        return steamApiClient.getAchievementSchema(appId);
-                    }
-                    SteamApiClient.AchievementDefinition definition =
-                            new SteamApiClient.AchievementDefinition();
-                    definition.setApiName(StringUtils.hasText(item.getApiName())
-                            ? item.getApiName()
-                            : item.getName());
-                    definition.setName(item.getName());
-                    definition.setDescription(item.getDescription());
-                    definition.setIconUrl(item.getIconUrl());
-                    definitions.add(definition);
-                }
-                if (!definitions.isEmpty()) {
-                    return definitions;
-                }
-            }
-        } catch (Exception e) {
-            log.debug("读取游戏百科成就失败: appId={}", appId, e);
-        }
-        return steamApiClient.getAchievementSchema(appId);
-    }
-
-    /** 合并成就定义、用户解锁状态和全球解锁比例，并按展示规则排序。 */
-    private List<SteamUserAchievementVO> mergeAchievements(
-            List<SteamApiClient.AchievementDefinition> definitions,
-            Map<String, SteamApiClient.PlayerAchievement> playerMap,
-            Map<String, Double> globalPercents) {
-        List<SteamUserAchievementVO> achievements = new ArrayList<>();
-        if (!definitions.isEmpty()) {
-            for (SteamApiClient.AchievementDefinition definition : definitions) {
-                SteamUserAchievementVO vo = new SteamUserAchievementVO();
-                vo.setApiName(definition.getApiName());
-                vo.setName(definition.getName());
-                vo.setDescription(definition.getDescription());
-                vo.setIconUrl(definition.getIconUrl());
-                SteamApiClient.PlayerAchievement player = playerMap.get(definition.getApiName());
-                if (player != null) {
-                    vo.setUnlocked(player.isUnlocked());
-                    vo.setUnlockTime(toUnlockTime(player.getUnlockEpoch()));
-                } else {
-                    vo.setUnlocked(false);
-                }
-                vo.setGlobalPercent(globalPercents.get(definition.getApiName()));
-                achievements.add(vo);
-            }
-        } else {
-            for (SteamApiClient.PlayerAchievement player : playerMap.values()) {
-                SteamUserAchievementVO vo = new SteamUserAchievementVO();
-                vo.setApiName(player.getApiName());
-                vo.setName(player.getApiName());
-                vo.setUnlocked(player.isUnlocked());
-                vo.setUnlockTime(toUnlockTime(player.getUnlockEpoch()));
-                vo.setGlobalPercent(globalPercents.get(player.getApiName()));
-                achievements.add(vo);
-            }
-        }
-        achievements.sort(Comparator
-                .comparing((SteamUserAchievementVO item) -> Boolean.TRUE.equals(item.getUnlocked()))
-                .reversed()
-                .thenComparing(
-                        (SteamUserAchievementVO item) -> item.getUnlockTime() == null
-                                ? LocalDateTime.MIN
-                                : item.getUnlockTime(),
-                        Comparator.reverseOrder())
-                .thenComparing(
-                        (SteamUserAchievementVO item) -> item.getGlobalPercent() == null
-                                ? 0D
-                                : item.getGlobalPercent(),
-                        Comparator.reverseOrder())
-                .thenComparing(
-                        SteamUserAchievementVO::getName,
-                        Comparator.nullsLast(String::compareToIgnoreCase)));
-        return achievements;
-    }
-
-    /** 将实时获取的成就汇总回写到用户游戏快照。 */
-    private void persistAchievementSummary(
-            Long userId,
-            long appId,
-            int unlocked,
-            int total) {
-        UserSteamGame update = new UserSteamGame();
-        update.setAchievementUnlocked(unlocked);
-        update.setAchievementTotal(total);
-        userSteamGameMapper.update(
-                update,
-                new LambdaQueryWrapper<UserSteamGame>()
-                        .eq(UserSteamGame::getUserId, userId)
-                        .eq(UserSteamGame::getAppId, appId));
-    }
-
     /** 将 Steam 的 Unix 秒级时间戳转换为本地时间。 */
     private LocalDateTime toLastPlayedAt(long epochSeconds) {
-        if (epochSeconds <= 0) {
-            return null;
-        }
-        return LocalDateTime.ofInstant(Instant.ofEpochSecond(epochSeconds), ZoneId.systemDefault());
-    }
-
-    /** 将成就解锁 Unix 秒级时间戳转换为本地时间。 */
-    private LocalDateTime toUnlockTime(long epochSeconds) {
         if (epochSeconds <= 0) {
             return null;
         }

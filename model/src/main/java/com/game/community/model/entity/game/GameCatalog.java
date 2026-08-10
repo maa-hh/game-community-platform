@@ -5,9 +5,6 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
-import com.game.community.model.vo.game.GameAchievementVO;
-import com.game.community.model.vo.game.GameMovieVO;
-import com.game.community.model.vo.game.GameScreenshotVO;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -31,13 +28,6 @@ public class GameCatalog implements Serializable {
     private String nameEn;
 
     private String displayName;
-
-    /** Steam 富详情载荷，仅在服务间传递，详情正文存 MongoDB。 */
-    @TableField(exist = false)
-    private String steamShortDesc;
-
-    @TableField(exist = false)
-    private String steamAboutHtml;
 
     private String headerImage;
 
@@ -74,15 +64,6 @@ public class GameCatalog implements Serializable {
     /** Steam 评价总数 */
     private Integer steamReviewCount;
 
-    @TableField(exist = false)
-    private List<GameScreenshotVO> steamScreenshots;
-
-    @TableField(exist = false)
-    private List<GameMovieVO> steamMovies;
-
-    @TableField(exist = false)
-    private List<String> steamCategories;
-
     private Boolean steamIsFree;
 
     private String priceCurrency;
@@ -97,24 +78,6 @@ public class GameCatalog implements Serializable {
     private Long priceDiscountEndAt;
 
     private String priceFormatted;
-
-    @TableField(exist = false)
-    private Integer metacriticScore;
-
-    @TableField(exist = false)
-    private String metacriticUrl;
-
-    @TableField(exist = false)
-    private Integer achievementTotal;
-
-    @TableField(exist = false)
-    private List<GameAchievementVO> achievementHighlights;
-
-    @TableField(exist = false)
-    private String pcRequirementsMin;
-
-    @TableField(exist = false)
-    private String pcRequirementsRec;
 
     private LocalDateTime steamSyncedAt;
 

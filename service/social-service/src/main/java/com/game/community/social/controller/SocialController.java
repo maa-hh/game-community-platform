@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonView;
 import com.game.community.model.base.PageResult;
 import com.game.community.model.base.Result;
 import com.game.community.model.dto.social.AddCommentDTO;
+import com.game.community.model.dto.social.AddGameReviewReplyDTO;
 import com.game.community.model.dto.social.AddReplyDTO;
 import com.game.community.model.dto.social.CommentPageDTO;
 import com.game.community.model.dto.social.ReplyPageDTO;
@@ -15,8 +16,10 @@ import com.game.community.model.vo.article.ArticleListVO;
 import com.game.community.model.vo.social.ArticleStatsVO;
 import com.game.community.model.vo.social.BrowseHistoryVO;
 import com.game.community.model.vo.social.CommentVO;
+import com.game.community.model.vo.social.GameReviewReplyVO;
 import com.game.community.model.vo.social.MyCommentFeedVO;
 import com.game.community.model.vo.social.ReplyVO;
+import com.game.community.social.service.GameReviewSocialService;
 import com.game.community.social.service.SocialService;
 import com.game.community.social.aspect.SocialRateLimit;
 import com.game.community.social.client.SocialRemoteClient;
@@ -32,8 +35,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @RestController
 @RequestMapping("/social")
@@ -42,6 +45,8 @@ public class SocialController {
 
     private final SocialService socialService;
     private final SocialRemoteClient remoteClient;
+
+    private final GameReviewSocialService gameReviewSocialService;
 
     @LoginCheck
     @SocialRateLimit(action = "comment:create", limit = 10, windowSeconds = 60)
@@ -146,6 +151,55 @@ public class SocialController {
     @DeleteMapping("/like/reply/{replyId}")
     public Result<Void> unlikeReply(@PathVariable("replyId") Long replyId) {
         socialService.unlikeReply(UserThreadLocal.getUserId(), replyId);
+        return Result.success(null);
+    }
+
+    @GetMapping("/game-reviews/{reviewId}/replies")
+    public PageResult<GameReviewReplyVO> listGameReviewReplies(@PathVariable("reviewId") String reviewId,
+                                                               @RequestParam(value = "page", defaultValue = "1") Long page,
+                                                               @RequestParam(value = "size", defaultValue = "20") Long size) {
+        return gameReviewSocialService.listReplies(UserThreadLocal.getUserId(), reviewId, page, size);
+    }
+
+    @LoginCheck
+    @PostMapping("/game-reviews/{reviewId}/replies")
+    public Result<String> addGameReviewReply(@PathVariable("reviewId") String reviewId,
+                                             @Valid @RequestBody AddGameReviewReplyDTO dto) {
+        return Result.success(gameReviewSocialService.addReply(UserThreadLocal.getUserId(), reviewId, dto));
+    }
+
+    @LoginCheck
+    @DeleteMapping("/game-reviews/replies/{replyId}")
+    public Result<Void> deleteGameReviewReply(@PathVariable("replyId") String replyId) {
+        gameReviewSocialService.deleteReply(UserThreadLocal.getUserId(), replyId);
+        return Result.success(null);
+    }
+
+    @LoginCheck
+    @PostMapping("/game-reviews/{reviewId}/like")
+    public Result<Void> likeGameReview(@PathVariable("reviewId") String reviewId) {
+        gameReviewSocialService.likeReview(UserThreadLocal.getUserId(), reviewId);
+        return Result.success(null);
+    }
+
+    @LoginCheck
+    @DeleteMapping("/game-reviews/{reviewId}/like")
+    public Result<Void> unlikeGameReview(@PathVariable("reviewId") String reviewId) {
+        gameReviewSocialService.unlikeReview(UserThreadLocal.getUserId(), reviewId);
+        return Result.success(null);
+    }
+
+    @LoginCheck
+    @PostMapping("/game-reviews/replies/{replyId}/like")
+    public Result<Void> likeGameReviewReply(@PathVariable("replyId") String replyId) {
+        gameReviewSocialService.likeReply(UserThreadLocal.getUserId(), replyId);
+        return Result.success(null);
+    }
+
+    @LoginCheck
+    @DeleteMapping("/game-reviews/replies/{replyId}/like")
+    public Result<Void> unlikeGameReviewReply(@PathVariable("replyId") String replyId) {
+        gameReviewSocialService.unlikeReply(UserThreadLocal.getUserId(), replyId);
         return Result.success(null);
     }
 

@@ -58,4 +58,7 @@ public class GameDetailVO implements Serializable {
     private String pcRequirementsRec;
 
     private LocalDateTime steamSyncedAt;
+
+    /** Steam 富详情是否已经完成至少一次后台同步。 */
+    private Boolean detailReady;
 }

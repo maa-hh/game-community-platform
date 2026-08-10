@@ -4,11 +4,11 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.game.community.common.exception.BusinessException;
 import com.game.community.common.constant.steam.SteamRedisConstants;
-import com.game.community.steam.client.SteamStoreClient;
 import com.game.community.steam.event.GameSearchIndexProducer;
 import com.game.community.steam.mapper.GameCatalogMapper;
 import com.game.community.steam.mapper.GameReviewMapper;
 import com.game.community.steam.service.GameReviewService;
+import com.game.community.steam.service.GameCatalogService;
 import com.game.community.feign.UserFeignClient;
 import com.game.community.feign.SocialFeignClient;
 import com.game.community.model.base.PageResult;
@@ -16,6 +16,7 @@ import com.game.community.model.dto.game.SaveGameReviewDTO;
 import com.game.community.model.dto.game.GameReviewPageQuery;
 import com.game.community.model.entity.game.GameCatalog;
 import com.game.community.model.entity.game.GameReview;
+import com.game.community.model.enums.game.GameReviewStatus;
 import com.game.community.model.vo.game.GameRatingStatsVO;
 import com.game.community.model.vo.game.GameReviewVO;
 import com.game.community.model.vo.user.UserCardInternalVO;
@@ -46,7 +47,7 @@ public class GameReviewServiceImpl implements GameReviewService {
 
     private final GameReviewMapper gameReviewMapper;
     private final GameCatalogMapper gameCatalogMapper;
-    private final SteamStoreClient steamStoreClient;
+    private final GameCatalogService gameCatalogService;
     private final UserFeignClient userFeignClient;
     private final GameSearchIndexProducer gameSearchIndexProducer;
     private final SocialFeignClient socialFeignClient;
@@ -68,10 +69,11 @@ public class GameReviewServiceImpl implements GameReviewService {
             existing.setReviewId(newPublicReviewId());
             existing.setAppId(appId);
             existing.setUserId(userId);
-            existing.setStatus(1);
+            existing.setStatus(GameReviewStatus.ACTIVE.getCode());
             existing.setCreateTime(now);
-        } else if (existing.getStatus() != null && existing.getStatus() == 0) {
-            existing.setStatus(1);
+        } else if (existing.getStatus() != null
+                && existing.getStatus() == GameReviewStatus.DELETED.getCode()) {
+            existing.setStatus(GameReviewStatus.ACTIVE.getCode());
         }
         existing.setScore(dto.getScore());
         existing.setContent(StringUtils.hasText(dto.getContent()) ? dto.getContent().trim() : null);
@@ -100,7 +102,7 @@ public class GameReviewServiceImpl implements GameReviewService {
             result = gameReviewMapper.selectPage(new Page<>(pageNo, pageSize),
                     new LambdaQueryWrapper<GameReview>()
                             .eq(GameReview::getAppId, resolved.getAppId())
-                            .eq(GameReview::getStatus, 1)
+                            .eq(GameReview::getStatus, GameReviewStatus.ACTIVE.getCode())
                             .orderByDesc(GameReview::getCreateTime)
                             .orderByDesc(GameReview::getId));
         }
@@ -117,7 +119,7 @@ public class GameReviewServiceImpl implements GameReviewService {
         GameReview review = gameReviewMapper.selectOne(new LambdaQueryWrapper<GameReview>()
                 .eq(GameReview::getAppId, appId)
                 .eq(GameReview::getUserId, userId)
-                .eq(GameReview::getStatus, 1)
+                .eq(GameReview::getStatus, GameReviewStatus.ACTIVE.getCode())
                 .last("LIMIT 1"));
         if (review == null) {
             return null;
@@ -136,12 +138,12 @@ public class GameReviewServiceImpl implements GameReviewService {
         GameReview review = gameReviewMapper.selectOne(new LambdaQueryWrapper<GameReview>()
                 .eq(GameReview::getAppId, appId)
                 .eq(GameReview::getUserId, userId)
-                .eq(GameReview::getStatus, 1)
+                .eq(GameReview::getStatus, GameReviewStatus.ACTIVE.getCode())
                 .last("LIMIT 1"));
         if (review == null) {
             return;
         }
-        review.setStatus(0);
+        review.setStatus(GameReviewStatus.DELETED.getCode());
         review.setUpdateTime(LocalDateTime.now());
         gameReviewMapper.updateById(review);
         syncReviewRemovalToSocial(review);
@@ -232,7 +234,8 @@ public class GameReviewServiceImpl implements GameReviewService {
             if (ranked != null && ranked.getData() != null && !ranked.getData().isEmpty()) {
                 List<String> ids = ranked.getData().stream().map(GameReviewSocialStatsVO::getReviewId).toList();
                 List<GameReview> reviews = gameReviewMapper.selectList(new LambdaQueryWrapper<GameReview>()
-                        .in(GameReview::getReviewId, ids).eq(GameReview::getStatus, 1));
+                        .in(GameReview::getReviewId, ids)
+                        .eq(GameReview::getStatus, GameReviewStatus.ACTIVE.getCode()));
                 Map<String, GameReview> reviewMap = reviews.stream()
                         .collect(Collectors.toMap(GameReview::getReviewId, item -> item, (a, b) -> a));
                 Page<GameReview> page = new Page<>(pageNo, pageSize);
@@ -245,7 +248,8 @@ public class GameReviewServiceImpl implements GameReviewService {
         }
         return gameReviewMapper.selectPage(new Page<>(pageNo, pageSize),
                 new LambdaQueryWrapper<GameReview>().eq(GameReview::getAppId, appId)
-                        .eq(GameReview::getStatus, 1).orderByDesc(GameReview::getCreateTime));
+                        .eq(GameReview::getStatus, GameReviewStatus.ACTIVE.getCode())
+                        .orderByDesc(GameReview::getCreateTime));
     }
 
     private Map<String, GameReviewSocialStatsVO> socialStats(List<GameReview> reviews) {
@@ -314,10 +318,7 @@ public class GameReviewServiceImpl implements GameReviewService {
         if (gameCatalogMapper.selectById(appId) != null) {
             return;
         }
-        GameCatalog fetched = steamStoreClient.fetchAppDetails(appId);
-        fetched.setCreateTime(LocalDateTime.now());
-        fetched.setUpdateTime(LocalDateTime.now());
-        gameCatalogMapper.insert(fetched);
+        gameCatalogService.getDetail(appId);
     }
 
     /** 兼容迁移前的历史短评，首次读到时补齐公开标识。 */

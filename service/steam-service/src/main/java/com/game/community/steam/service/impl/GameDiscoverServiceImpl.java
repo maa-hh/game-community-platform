@@ -12,6 +12,7 @@ import com.game.community.model.base.PageResult;
 import com.game.community.model.dto.game.GameDiscoverQuery;
 import com.game.community.model.entity.game.GameCatalog;
 import com.game.community.model.entity.game.GameChartSnapshot;
+import com.game.community.model.enums.game.GameCatalogStatus;
 import com.game.community.model.vo.game.GameChartItemVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -52,8 +53,9 @@ public class GameDiscoverServiceImpl implements GameDiscoverService {
         List<GameChartItemVO> records = page.getRecords().stream()
                 .map(this::toChartItem)
                 .toList();
-        gameCatalogService.refreshMetricsPriceAsync(
-                records.stream().map(GameChartItemVO::getAppId).toList());
+        List<Long> appIds = records.stream().map(GameChartItemVO::getAppId).toList();
+        gameCatalogService.refreshMetricsPriceAsync(appIds);
+        gameCatalogService.warmupBasicInfoAsync(appIds);
         return PageResult.of(records, page.getCurrent(), page.getSize(), page.getTotal());
     }
 
@@ -93,8 +95,9 @@ public class GameDiscoverServiceImpl implements GameDiscoverService {
                     return vo;
                 })
                 .toList();
-        gameCatalogService.refreshMetricsPriceAsync(
-                records.stream().map(GameChartItemVO::getAppId).toList());
+        List<Long> visibleAppIds = records.stream().map(GameChartItemVO::getAppId).toList();
+        gameCatalogService.refreshMetricsPriceAsync(visibleAppIds);
+        gameCatalogService.warmupBasicInfoAsync(visibleAppIds);
         return chartPageResult(records, query, total);
     }
 
@@ -142,7 +145,8 @@ public class GameDiscoverServiceImpl implements GameDiscoverService {
     }
 
     private LambdaQueryWrapper<GameCatalog> baseWrapper() {
-        return new LambdaQueryWrapper<GameCatalog>().eq(GameCatalog::getStatus, 1);
+        return new LambdaQueryWrapper<GameCatalog>()
+                .eq(GameCatalog::getStatus, GameCatalogStatus.ENABLED.getCode());
     }
 
     private void applyFilters(LambdaQueryWrapper<GameCatalog> wrapper, GameDiscoverQuery query) {

@@ -4,6 +4,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.game.community.common.constant.steam.SteamApiConstants;
 import com.game.community.common.exception.BusinessException;
+import com.game.community.model.payload.steam.SteamAchievementDefinitionPayload;
+import com.game.community.model.payload.steam.SteamOwnedGamePayload;
+import com.game.community.model.payload.steam.SteamOwnedGamesPayload;
+import com.game.community.model.payload.steam.SteamPlayerAchievementPayload;
+import com.game.community.model.payload.steam.SteamPlayerSummaryPayload;
 import com.game.community.steam.config.SteamProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,7 +32,7 @@ public class SteamApiClient {
     private final ObjectMapper objectMapper;
 
     /** 获取 Steam 用户公开资料。 */
-    public PlayerSummary getPlayerSummary(String steamId) {
+    public SteamPlayerSummaryPayload getPlayerSummary(String steamId) {
         requireApiKey();
         String url = UriComponentsBuilder.fromHttpUrl(SteamApiConstants.PLAYER_SUMMARIES_URL)
                 .queryParam("key", steamProperties.getWebApiKey())
@@ -41,7 +46,7 @@ public class SteamApiClient {
                 throw new BusinessException("未找到 Steam 用户资料");
             }
             JsonNode player = players.get(0);
-            PlayerSummary summary = new PlayerSummary();
+            SteamPlayerSummaryPayload summary = new SteamPlayerSummaryPayload();
             summary.setSteamId(player.path("steamid").asText());
             summary.setPersonaName(player.path("personaname").asText(null));
             summary.setAvatarUrl(player.path("avatarfull").asText(null));
@@ -73,22 +78,22 @@ public class SteamApiClient {
     }
 
     /** 获取用户拥有的游戏卡片数据，并分别补齐中文名和英文名。 */
-    public OwnedGamesResult getOwnedGames(String steamId) {
+    public SteamOwnedGamesPayload getOwnedGames(String steamId) {
         requireApiKey();
-        OwnedGamesResult chineseResult = fetchOwnedGames(
+        SteamOwnedGamesPayload chineseResult = fetchOwnedGames(
                 steamId, SteamApiConstants.LIBRARY_NAME_ZH_LANGUAGE);
         if (!chineseResult.isLibraryPublic()) {
             return chineseResult;
         }
 
-        OwnedGamesResult englishResult = fetchOwnedGames(
+        SteamOwnedGamesPayload englishResult = fetchOwnedGames(
                 steamId, SteamApiConstants.LIBRARY_NAME_EN_LANGUAGE);
         mergeLibraryNames(chineseResult, englishResult);
         return chineseResult;
     }
 
     /** 按语言拉取 Steam 游戏库，只解析游戏卡片需要的基础字段。 */
-    private OwnedGamesResult fetchOwnedGames(String steamId, String language) {
+    private SteamOwnedGamesPayload fetchOwnedGames(String steamId, String language) {
         String url = UriComponentsBuilder.fromHttpUrl(SteamApiConstants.OWNED_GAMES_URL)
                 .queryParam("key", steamProperties.getWebApiKey())
                 .queryParam("steamid", steamId)
@@ -96,7 +101,7 @@ public class SteamApiClient {
                 .queryParam("include_played_free_games", 1)
                 .queryParam("l", language)
                 .toUriString();
-        OwnedGamesResult result = new OwnedGamesResult();
+        SteamOwnedGamesPayload result = new SteamOwnedGamesPayload();
         result.setGames(new ArrayList<>());
         try {
             String body = restTemplate.getForObject(url, String.class);
@@ -111,7 +116,7 @@ public class SteamApiClient {
                 return result;
             }
             for (JsonNode game : games) {
-                OwnedGame ownedGame = new OwnedGame();
+                SteamOwnedGamePayload ownedGame = new SteamOwnedGamePayload();
                 long appId = game.path("appid").asLong();
                 ownedGame.setAppId(appId);
                 ownedGame.setName(game.path("name").asText(null));
@@ -138,17 +143,17 @@ public class SteamApiClient {
 
     /** 将中文请求结果和英文请求结果按 App ID 合并。 */
     private void mergeLibraryNames(
-            OwnedGamesResult chineseResult,
-            OwnedGamesResult englishResult) {
-        Map<Long, OwnedGame> englishGames = new HashMap<>();
+            SteamOwnedGamesPayload chineseResult,
+            SteamOwnedGamesPayload englishResult) {
+        Map<Long, SteamOwnedGamePayload> englishGames = new HashMap<>();
         if (englishResult != null && englishResult.getGames() != null) {
-            for (OwnedGame game : englishResult.getGames()) {
+            for (SteamOwnedGamePayload game : englishResult.getGames()) {
                 englishGames.put(game.getAppId(), game);
             }
         }
-        for (OwnedGame game : chineseResult.getGames()) {
+        for (SteamOwnedGamePayload game : chineseResult.getGames()) {
             game.setNameZh(game.getName());
-            OwnedGame englishGame = englishGames.get(game.getAppId());
+            SteamOwnedGamePayload englishGame = englishGames.get(game.getAppId());
             game.setNameEn(englishGame == null ? null : englishGame.getName());
             game.setName(resolveDisplayName(game.getNameZh(), game.getNameEn()));
         }
@@ -162,26 +167,8 @@ public class SteamApiClient {
         return StringUtils.hasText(nameEn) ? nameEn : null;
     }
 
-    /** 获取指定游戏的成就汇总。 */
-    public AchievementProgress getPlayerAchievements(String steamId, long appId) {
-        List<PlayerAchievement> details = getPlayerAchievementDetails(steamId, appId);
-        if (details.isEmpty()) {
-            return null;
-        }
-        int unlocked = 0;
-        for (PlayerAchievement item : details) {
-            if (item.isUnlocked()) {
-                unlocked++;
-            }
-        }
-        AchievementProgress progress = new AchievementProgress();
-        progress.setUnlocked(unlocked);
-        progress.setTotal(details.size());
-        return progress;
-    }
-
     /** 获取用户指定游戏的逐项成就解锁状态。 */
-    public List<PlayerAchievement> getPlayerAchievementDetails(String steamId, long appId) {
+    public List<SteamPlayerAchievementPayload> getPlayerAchievementDetails(String steamId, long appId) {
         if (!StringUtils.hasText(steamProperties.getWebApiKey())) {
             return List.of();
         }
@@ -202,13 +189,13 @@ public class SteamApiClient {
             if (!achievements.isArray() || achievements.isEmpty()) {
                 return List.of();
             }
-            List<PlayerAchievement> result = new ArrayList<>();
+            List<SteamPlayerAchievementPayload> result = new ArrayList<>();
             for (JsonNode item : achievements) {
                 String apiName = item.path("apiname").asText(null);
                 if (!StringUtils.hasText(apiName)) {
                     continue;
                 }
-                PlayerAchievement achievement = new PlayerAchievement();
+                SteamPlayerAchievementPayload achievement = new SteamPlayerAchievementPayload();
                 achievement.setApiName(apiName);
                 achievement.setUnlocked(item.path("achieved").asInt(0) == 1);
                 achievement.setUnlockEpoch(item.path("unlocktime").asLong(0));
@@ -252,7 +239,7 @@ public class SteamApiClient {
     }
 
     /** 获取指定游戏的官方成就定义。 */
-    public List<AchievementDefinition> getAchievementSchema(long appId) {
+    public List<SteamAchievementDefinitionPayload> getAchievementSchema(long appId) {
         if (!StringUtils.hasText(steamProperties.getWebApiKey())) {
             return List.of();
         }
@@ -270,7 +257,7 @@ public class SteamApiClient {
             if (!achievements.isArray() || achievements.isEmpty()) {
                 return List.of();
             }
-            List<AchievementDefinition> result = new ArrayList<>();
+            List<SteamAchievementDefinitionPayload> result = new ArrayList<>();
             for (JsonNode item : achievements) {
                 String apiName = item.path("name").asText(null);
                 if (!StringUtils.hasText(apiName)) {
@@ -280,7 +267,7 @@ public class SteamApiClient {
                 if (!StringUtils.hasText(displayName)) {
                     displayName = apiName;
                 }
-                AchievementDefinition definition = new AchievementDefinition();
+                SteamAchievementDefinitionPayload definition = new SteamAchievementDefinitionPayload();
                 definition.setApiName(apiName);
                 definition.setName(displayName);
                 definition.setDescription(item.path("description").asText(null));
@@ -327,52 +314,4 @@ public class SteamApiClient {
         }
     }
 
-    @lombok.Data
-    public static class PlayerSummary {
-        private String steamId;
-        private String personaName;
-        private String avatarUrl;
-        private String profileUrl;
-    }
-
-    @lombok.Data
-    public static class OwnedGamesResult {
-        private int gameCount;
-        private boolean libraryPublic;
-        private List<OwnedGame> games;
-    }
-
-    @lombok.Data
-    public static class OwnedGame {
-        private long appId;
-        private String name;
-        private String nameZh;
-        private String nameEn;
-        private String iconUrl;
-        private String coverUrl;
-        private int playtimeForever;
-        private int playtimeTwoWeeks;
-        private long lastPlayedEpoch;
-    }
-
-    @lombok.Data
-    public static class AchievementProgress {
-        private int unlocked;
-        private int total;
-    }
-
-    @lombok.Data
-    public static class PlayerAchievement {
-        private String apiName;
-        private boolean unlocked;
-        private long unlockEpoch;
-    }
-
-    @lombok.Data
-    public static class AchievementDefinition {
-        private String apiName;
-        private String name;
-        private String description;
-        private String iconUrl;
-    }
 }

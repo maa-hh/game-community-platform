@@ -2,8 +2,13 @@ package com.game.community.steam.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.game.community.common.constant.steam.SteamRedisConstants;
+import com.game.community.common.constant.steam.GameCatalogConstants;
 import com.game.community.model.entity.game.GameCatalog;
-import com.game.community.model.vo.game.GamePriceVO;
+import com.game.community.model.enums.game.GameCatalogRefreshStatus;
+import com.game.community.model.enums.game.GameCatalogStatus;
+import com.game.community.model.payload.steam.SteamPricePayload;
+import com.game.community.model.payload.steam.SteamReviewSummaryPayload;
+import com.game.community.steam.client.SteamReviewClient;
 import com.game.community.steam.client.SteamStoreClient;
 import com.game.community.steam.event.GameSearchIndexProducer;
 import com.game.community.steam.mapper.GameCatalogMapper;
@@ -29,11 +34,8 @@ import java.util.concurrent.Executor;
 @RequiredArgsConstructor
 public class SteamCatalogMetricsRefreshService {
 
-    private static final long METRICS_TTL_DAYS = 1L;
-    private static final long PRICE_TTL_DAYS = 1L;
-    private static final int MAX_BATCH_SIZE = 100;
-
     private final GameCatalogMapper gameCatalogMapper;
+    private final SteamReviewClient steamReviewClient;
     private final SteamStoreClient steamStoreClient;
     private final GameSearchIndexProducer gameSearchIndexProducer;
     private final RedisUtils redisUtils;
@@ -49,7 +51,7 @@ public class SteamCatalogMetricsRefreshService {
         List<Long> ids = appIds.stream()
                 .filter(id -> id != null && id > 0)
                 .distinct()
-                .limit(MAX_BATCH_SIZE)
+                .limit(GameCatalogConstants.METRICS_REFRESH_BATCH_SIZE)
                 .toList();
         metricsRefreshExecutor.execute(() -> ids.forEach(this::refreshOne));
     }
@@ -61,18 +63,19 @@ public class SteamCatalogMetricsRefreshService {
 
     /** 在 XXL-JOB 持有全局任务锁时同步处理一批过期目录。 */
     public void refreshStaleBatch() {
-        LocalDateTime cutoff = LocalDateTime.now().minusDays(METRICS_TTL_DAYS);
+        LocalDateTime cutoff = LocalDateTime.now().minusDays(GameCatalogConstants.METRICS_TTL_DAYS);
         List<GameCatalog> catalogs = gameCatalogMapper.selectList(new LambdaQueryWrapper<GameCatalog>()
-                .eq(GameCatalog::getStatus, 1)
+                .eq(GameCatalog::getStatus, GameCatalogStatus.ENABLED.getCode())
                 .and(w -> w.isNull(GameCatalog::getMetricsSyncedAt)
                         .or().lt(GameCatalog::getMetricsSyncedAt, cutoff)
                         .or().isNull(GameCatalog::getPriceSyncedAt)
                         .or().lt(GameCatalog::getPriceSyncedAt, cutoff))
                 .orderByAsc(GameCatalog::getMetricsSyncedAt)
-                .last("LIMIT " + MAX_BATCH_SIZE));
+                .last("LIMIT " + GameCatalogConstants.METRICS_REFRESH_BATCH_SIZE));
         catalogs.stream().map(GameCatalog::getAppId).forEach(this::refreshOne);
     }
 
+    /** 在单游戏 Redis 锁内刷新已过期的评价指标和价格。 */
     private void refreshOne(Long appId) {
         String lockKey = SteamRedisConstants.CATALOG_METRICS_PRICE_LOCK_PREFIX + appId;
         String token = UUID.randomUUID().toString();
@@ -88,23 +91,25 @@ public class SteamCatalogMetricsRefreshService {
                 log.warn("游戏卡片懒更新跳过，本地目录不存在: appId={}", appId);
                 return;
             }
-            if (!Integer.valueOf(1).equals(catalog.getStatus())) {
+            if (!Integer.valueOf(GameCatalogStatus.ENABLED.getCode()).equals(catalog.getStatus())) {
                 log.warn("游戏卡片懒更新跳过，目录状态不是启用: appId={}, status={}",
                         appId, catalog.getStatus());
                 return;
             }
             LocalDateTime now = LocalDateTime.now();
-            boolean metricsStale = isBefore(catalog.getMetricsSyncedAt(), now.minusDays(METRICS_TTL_DAYS));
-            boolean priceStale = isBefore(catalog.getPriceSyncedAt(), now.minusDays(PRICE_TTL_DAYS));
+            boolean metricsStale = isBefore(catalog.getMetricsSyncedAt(),
+                    now.minusDays(GameCatalogConstants.METRICS_TTL_DAYS));
+            boolean priceStale = isBefore(catalog.getPriceSyncedAt(),
+                    now.minusDays(GameCatalogConstants.PRICE_TTL_DAYS));
             log.debug("游戏卡片懒更新开始: appId={}, metricsStale={}, priceStale={}",
                     appId, metricsStale, priceStale);
             boolean changed = false;
             if (metricsStale) {
-                SteamStoreClient.SteamReviewSummary summary =
-                        steamStoreClient.fetchReviewSummary(appId);
+                SteamReviewSummaryPayload summary =
+                        steamReviewClient.fetchReviewSummary(appId);
                 if (summary != null) {
-                    catalog.setSteamReviewScore(summary.positivePercent());
-                    catalog.setSteamReviewCount(summary.totalReviews());
+                    catalog.setSteamReviewScore(summary.getPositivePercent());
+                    catalog.setSteamReviewCount(summary.getTotalReviews());
                     catalog.setMetricsSyncedAt(now);
                     changed = true;
                 } else {
@@ -112,7 +117,7 @@ public class SteamCatalogMetricsRefreshService {
                 }
             }
             if (priceStale) {
-                GamePriceVO price = steamStoreClient.fetchPrice(appId);
+                SteamPricePayload price = steamStoreClient.fetchPrice(appId);
                 if (price != null) {
                     catalog.setSteamIsFree(price.getFree());
                     catalog.setPriceCurrency(price.getCurrency());
@@ -129,7 +134,7 @@ public class SteamCatalogMetricsRefreshService {
             }
             if (changed) {
                 catalog.setLastRefreshAttemptAt(now);
-                catalog.setRefreshStatus("READY");
+                catalog.setRefreshStatus(GameCatalogRefreshStatus.READY.getCode());
                 catalog.setUpdateTime(now);
                 gameCatalogMapper.updateById(catalog);
                 // 详情缓存也包含价格和 Steam 评价，目录成功替换后必须失效，
@@ -147,6 +152,7 @@ public class SteamCatalogMetricsRefreshService {
         }
     }
 
+    /** 判断同步时间为空或早于指定阈值。 */
     private boolean isBefore(LocalDateTime value, LocalDateTime cutoff) {
         return value == null || value.isBefore(cutoff);
     }

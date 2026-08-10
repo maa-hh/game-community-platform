@@ -66,28 +66,68 @@ public class GameSearchServiceImpl implements GameSearchService {
             long total = response.hits().total() == null ? items.size()
                     : response.hits().total().value();
             if (!items.isEmpty()) {
-                return PageResult.of(items, pageNo, pageSize, total);
+                return PageResult.of(mergeCanonicalCatalog(items), pageNo, pageSize, total);
             }
         } catch (Exception e) {
-            log.warn("游戏 ES 搜索失败，回源 Steam: keyword={}", query, e);
+            log.warn("游戏 ES 搜索失败，进入本地目录兜底: keyword={}", query, e);
         }
 
+        // ES 未命中时，先查 Steam 服务维护的本地目录，避免 ES 短暂延迟导致回源 Steam。
+        PageResult<GameListItemVO> catalogResult = searchCatalog(query, pageNo, pageSize);
+        if (catalogResult != null && catalogResult.getTotal() != null
+                && catalogResult.getTotal() > 0) {
+            if (catalogResult.getData() != null && !catalogResult.getData().isEmpty()) {
+                gameIndexAsyncService.indexCandidates(catalogResult.getData());
+            }
+            return catalogResult;
+        }
+
+        // 本地目录也未命中时，才回源 Steam；结果立即返回，同时异步补充公共目录和 ES。
         List<GameListItemVO> candidates = searchSteam(query, 0, SearchConstants.SEARCH_PAGE_MAX_SIZE);
         List<GameListItemVO> matched = candidates.stream()
                 .filter(game -> matchesGameKeyword(game, query))
                 .toList();
         if (!matched.isEmpty()) {
+            gameIndexAsyncService.enrichCatalog(matched);
             return pageFromMatches(matched, pageNo, pageSize);
         }
-
-        // Steam Store 无结果时，用 Steam 服务维护的本地目录做最后兜底，随后异步补入 ES。
-        PageResult<GameListItemVO> catalogResult = searchCatalog(query, pageNo, pageSize);
-        if (catalogResult != null && catalogResult.getData() != null
-                && !catalogResult.getData().isEmpty()) {
-            gameIndexAsyncService.indexCandidates(catalogResult.getData());
-            return catalogResult;
-        }
         return PageResult.of(List.of(), pageNo, pageSize, 0L);
+    }
+
+    /**
+     * ES 只负责召回和排序，展示字段以 Steam 本地目录为准。
+     * 这样评分、评价人数、本站评分和价格不会因为索引异步延迟而显示旧值。
+     */
+    private List<GameListItemVO> mergeCanonicalCatalog(List<GameListItemVO> items) {
+        List<Long> appIds = items.stream()
+                .map(GameListItemVO::getAppId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (appIds.isEmpty()) {
+            return items;
+        }
+        try {
+            Result<List<GameListItemVO>> response = steamFeignClient.listCatalogItems(appIds);
+            if (response == null || response.getData() == null || response.getData().isEmpty()) {
+                return items;
+            }
+            Map<Long, GameListItemVO> canonical = response.getData().stream()
+                    .filter(item -> item != null && item.getAppId() != null)
+                    .collect(java.util.stream.Collectors.toMap(
+                            GameListItemVO::getAppId, item -> item, (a, b) -> a));
+            return items.stream().map(item -> {
+                GameListItemVO source = canonical.get(item.getAppId());
+                if (source == null) {
+                    return item;
+                }
+                source.setAppId(item.getAppId());
+                return source;
+            }).toList();
+        } catch (Exception e) {
+            log.debug("读取 Steam 本地目录覆盖 ES 游戏字段失败", e);
+            return items;
+        }
     }
 
     private PageResult<GameListItemVO> pageFromMatches(List<GameListItemVO> matches,
@@ -230,7 +270,7 @@ public class GameSearchServiceImpl implements GameSearchService {
         return Query.of(q -> q.bool(b -> b
                 .should(s -> s.multiMatch(m -> m
                         .query(keyword)
-                        .fields("name^10")
+                        .fields("name^10", "nameZh^9", "nameEn^9", "aliases^5")
                         .type(TextQueryType.Phrase)))
                 .should(s -> s.match(m -> m
                         .field("name")
@@ -258,6 +298,9 @@ public class GameSearchServiceImpl implements GameSearchService {
         GameListItemVO item = new GameListItemVO();
         item.setAppId(document.getAppId());
         item.setName(document.getName());
+        item.setNameZh(document.getNameZh());
+        item.setNameEn(document.getNameEn());
+        item.setAliases(document.getAliases());
         item.setCoverUrl(document.getCoverUrl());
         item.setGenres(document.getGenres());
         item.setDeveloper(first(document.getDevelopers()));
