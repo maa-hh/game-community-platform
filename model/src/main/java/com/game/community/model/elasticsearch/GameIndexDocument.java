@@ -15,6 +15,10 @@ public class GameIndexDocument implements Serializable {
 
     private String name;
 
+    private String nameZh;
+
+    private String nameEn;
+
     private List<String> aliases;
 
     private String shortDescription;

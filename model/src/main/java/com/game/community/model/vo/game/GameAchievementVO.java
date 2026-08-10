@@ -14,4 +14,7 @@ public class GameAchievementVO implements Serializable {
     private String description;
 
     private String iconUrl;
+
+    /** Steam 全球获取率，0-100。 */
+    private Double globalPercent;
 }

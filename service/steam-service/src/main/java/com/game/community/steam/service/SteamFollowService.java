@@ -8,15 +8,21 @@ import java.util.Map;
 
 public interface SteamFollowService {
 
-    List<UserGameFollowVO> listFollows(Long userId);
+    /** 查询当前用户关注的游戏。 */
+    List<UserGameFollowVO> listFollows();
 
-    boolean isFollowed(Long userId, Long appId);
+    /** 查询当前用户是否关注指定游戏。 */
+    boolean isFollowed(Long appId);
 
-    Map<Long, Boolean> checkFollowBatch(Long userId, List<Long> appIds);
+    /** 批量查询当前用户的游戏关注状态。 */
+    Map<Long, Boolean> checkFollowBatch(List<Long> appIds);
 
-    void follow(Long userId, FollowGameDTO dto);
+    /** 保存当前用户对游戏的关注关系。 */
+    void follow(FollowGameDTO dto);
 
-    void unfollow(Long userId, Long appId);
+    /** 删除当前用户对指定游戏的关注关系。 */
+    void unfollow(Long appId);
 
-    int importFromSteam(Long userId);
+    /** 将当前用户 Steam 游戏库导入为关注关系。 */
+    int importFromSteam();
 }

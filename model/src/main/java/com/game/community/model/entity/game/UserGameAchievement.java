@@ -8,27 +8,21 @@ import lombok.Data;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
+/** 用户某款游戏的成就状态快照。只有 current=1 的版本对外展示。 */
 @Data
-@TableName("t_game_review")
-public class GameReview implements Serializable {
+@TableName("t_user_game_achievement")
+public class UserGameAchievement implements Serializable {
 
     @TableId(type = IdType.AUTO)
     private Long id;
-
-    /** 对外短评标识；内部自增主键不通过 API 返回。 */
-    private String reviewId;
-
-    private Long appId;
-
     private Long userId;
-
-    private Integer score;
-
-    private String content;
-
-    private Integer status;
-
+    private Long appId;
+    private String apiName;
+    private Integer unlocked;
+    private LocalDateTime unlockTime;
+    private String syncId;
+    private Integer isCurrent;
+    private LocalDateTime syncedAt;
     private LocalDateTime createTime;
-
     private LocalDateTime updateTime;
 }

@@ -13,6 +13,10 @@ public class SteamGameStatsVO implements Serializable {
 
     private String name;
 
+    private String nameZh;
+
+    private String nameEn;
+
     private Boolean owned;
 
     private Integer playtimeForever;
@@ -26,4 +30,11 @@ public class SteamGameStatsVO implements Serializable {
     private Integer achievementTotal;
 
     private List<SteamUserAchievementVO> achievements;
+
+    /** 成就定义/玩家状态的缓存状态：READY、LOADING、SYNCING、NOT_AVAILABLE。 */
+    private String achievementStatus;
+
+    private LocalDateTime achievementSyncedAt;
+
+    private LocalDateTime achievementNextRefreshAt;
 }

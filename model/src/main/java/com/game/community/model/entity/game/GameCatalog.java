@@ -24,6 +24,12 @@ public class GameCatalog implements Serializable {
 
     private String steamName;
 
+    /** Steam 简体中文名称。 */
+    private String nameZh;
+
+    /** Steam 英文名称。 */
+    private String nameEn;
+
     private String displayName;
 
     /** Steam 富详情载荷，仅在服务间传递，详情正文存 MongoDB。 */

@@ -26,6 +26,7 @@ public class SteamApiClient {
     private final SteamProperties steamProperties;
     private final ObjectMapper objectMapper;
 
+    /** 获取 Steam 用户公开资料。 */
     public PlayerSummary getPlayerSummary(String steamId) {
         requireApiKey();
         String url = UriComponentsBuilder.fromHttpUrl(SteamApiConstants.PLAYER_SUMMARIES_URL)
@@ -54,6 +55,7 @@ public class SteamApiClient {
         }
     }
 
+    /** 获取 Steam 等级，接口失败时返回 0。 */
     public int getSteamLevel(String steamId) {
         requireApiKey();
         String url = UriComponentsBuilder.fromHttpUrl(SteamApiConstants.STEAM_LEVEL_URL)
@@ -70,13 +72,29 @@ public class SteamApiClient {
         }
     }
 
+    /** 获取用户拥有的游戏卡片数据，并分别补齐中文名和英文名。 */
     public OwnedGamesResult getOwnedGames(String steamId) {
         requireApiKey();
+        OwnedGamesResult chineseResult = fetchOwnedGames(
+                steamId, SteamApiConstants.LIBRARY_NAME_ZH_LANGUAGE);
+        if (!chineseResult.isLibraryPublic()) {
+            return chineseResult;
+        }
+
+        OwnedGamesResult englishResult = fetchOwnedGames(
+                steamId, SteamApiConstants.LIBRARY_NAME_EN_LANGUAGE);
+        mergeLibraryNames(chineseResult, englishResult);
+        return chineseResult;
+    }
+
+    /** 按语言拉取 Steam 游戏库，只解析游戏卡片需要的基础字段。 */
+    private OwnedGamesResult fetchOwnedGames(String steamId, String language) {
         String url = UriComponentsBuilder.fromHttpUrl(SteamApiConstants.OWNED_GAMES_URL)
                 .queryParam("key", steamProperties.getWebApiKey())
                 .queryParam("steamid", steamId)
                 .queryParam("include_appinfo", 1)
                 .queryParam("include_played_free_games", 1)
+                .queryParam("l", language)
                 .toUriString();
         OwnedGamesResult result = new OwnedGamesResult();
         result.setGames(new ArrayList<>());
@@ -89,7 +107,7 @@ public class SteamApiClient {
             }
             JsonNode games = response.path("games");
             if (!games.isArray()) {
-                result.setLibraryPublic(result.getGameCount() > 0);
+                result.setLibraryPublic(response.has("game_count"));
                 return result;
             }
             for (JsonNode game : games) {
@@ -99,6 +117,8 @@ public class SteamApiClient {
                 ownedGame.setName(game.path("name").asText(null));
                 String iconHash = game.path("img_icon_url").asText(null);
                 ownedGame.setIconUrl(buildIconUrl(appId, iconHash));
+                ownedGame.setCoverUrl(
+                        SteamApiConstants.STEAM_HEADER_IMAGE_URL_PREFIX + appId + "/header.jpg");
                 ownedGame.setPlaytimeForever(game.path("playtime_forever").asInt(0));
                 ownedGame.setPlaytimeTwoWeeks(game.path("playtime_2weeks").asInt(0));
                 ownedGame.setLastPlayedEpoch(game.path("rtime_last_played").asLong(0));
@@ -116,6 +136,33 @@ public class SteamApiClient {
         }
     }
 
+    /** 将中文请求结果和英文请求结果按 App ID 合并。 */
+    private void mergeLibraryNames(
+            OwnedGamesResult chineseResult,
+            OwnedGamesResult englishResult) {
+        Map<Long, OwnedGame> englishGames = new HashMap<>();
+        if (englishResult != null && englishResult.getGames() != null) {
+            for (OwnedGame game : englishResult.getGames()) {
+                englishGames.put(game.getAppId(), game);
+            }
+        }
+        for (OwnedGame game : chineseResult.getGames()) {
+            game.setNameZh(game.getName());
+            OwnedGame englishGame = englishGames.get(game.getAppId());
+            game.setNameEn(englishGame == null ? null : englishGame.getName());
+            game.setName(resolveDisplayName(game.getNameZh(), game.getNameEn()));
+        }
+    }
+
+    /** 按中文、英文、原始名称顺序选择游戏卡片展示名称。 */
+    private String resolveDisplayName(String nameZh, String nameEn) {
+        if (StringUtils.hasText(nameZh)) {
+            return nameZh;
+        }
+        return StringUtils.hasText(nameEn) ? nameEn : null;
+    }
+
+    /** 获取指定游戏的成就汇总。 */
     public AchievementProgress getPlayerAchievements(String steamId, long appId) {
         List<PlayerAchievement> details = getPlayerAchievementDetails(steamId, appId);
         if (details.isEmpty()) {
@@ -133,6 +180,7 @@ public class SteamApiClient {
         return progress;
     }
 
+    /** 获取用户指定游戏的逐项成就解锁状态。 */
     public List<PlayerAchievement> getPlayerAchievementDetails(String steamId, long appId) {
         if (!StringUtils.hasText(steamProperties.getWebApiKey())) {
             return List.of();
@@ -173,6 +221,7 @@ public class SteamApiClient {
         }
     }
 
+    /** 获取指定游戏的全球成就解锁比例。 */
     public Map<String, Double> getGlobalAchievementPercentages(long appId) {
         if (!StringUtils.hasText(steamProperties.getWebApiKey())) {
             return Map.of();
@@ -202,6 +251,7 @@ public class SteamApiClient {
         }
     }
 
+    /** 获取指定游戏的官方成就定义。 */
     public List<AchievementDefinition> getAchievementSchema(long appId) {
         if (!StringUtils.hasText(steamProperties.getWebApiKey())) {
             return List.of();
@@ -234,7 +284,7 @@ public class SteamApiClient {
                 definition.setApiName(apiName);
                 definition.setName(displayName);
                 definition.setDescription(item.path("description").asText(null));
-                definition.setIconUrl(item.path("icon").asText(null));
+                definition.setIconUrl(buildAchievementIconUrl(appId, item.path("icon").asText(null)));
                 result.add(definition);
             }
             return result;
@@ -244,6 +294,7 @@ public class SteamApiClient {
         }
     }
 
+    /** 根据 Steam 图标 hash 生成图标地址。 */
     private String buildIconUrl(long appId, String iconHash) {
         if (!StringUtils.hasText(iconHash)) {
             return null;
@@ -251,6 +302,25 @@ public class SteamApiClient {
         return SteamApiConstants.STEAM_ICON_URL_PREFIX + appId + "/" + iconHash + ".jpg";
     }
 
+    /** 按早期游戏库图标链路，从 Steam 成就 URL 中提取 hash 重新生成地址。 */
+    private String buildAchievementIconUrl(long appId, String iconUrl) {
+        if (!StringUtils.hasText(iconUrl)) {
+            return null;
+        }
+        String value = iconUrl.trim();
+        int queryIndex = value.indexOf('?');
+        if (queryIndex >= 0) {
+            value = value.substring(0, queryIndex);
+        }
+        int slashIndex = value.lastIndexOf('/');
+        String fileName = slashIndex >= 0 ? value.substring(slashIndex + 1) : value;
+        if (fileName.endsWith(".jpg")) {
+            fileName = fileName.substring(0, fileName.length() - 4);
+        }
+        return StringUtils.hasText(fileName) ? buildIconUrl(appId, fileName) : null;
+    }
+
+    /** 校验调用 Steam Web API 所需的 API Key。 */
     private void requireApiKey() {
         if (!StringUtils.hasText(steamProperties.getWebApiKey())) {
             throw new BusinessException("Steam API Key 未配置");
@@ -276,7 +346,10 @@ public class SteamApiClient {
     public static class OwnedGame {
         private long appId;
         private String name;
+        private String nameZh;
+        private String nameEn;
         private String iconUrl;
+        private String coverUrl;
         private int playtimeForever;
         private int playtimeTwoWeeks;
         private long lastPlayedEpoch;

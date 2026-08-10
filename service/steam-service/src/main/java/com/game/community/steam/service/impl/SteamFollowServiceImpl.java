@@ -14,6 +14,7 @@ import com.game.community.steam.mapper.UserGameFollowMapper;
 import com.game.community.steam.mapper.UserSteamGameMapper;
 import com.game.community.steam.service.GameCatalogService;
 import com.game.community.steam.service.SteamFollowService;
+import com.game.community.utils.ThreadLocal.UserThreadLocal;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -41,8 +42,10 @@ public class SteamFollowServiceImpl implements SteamFollowService {
     private final GameCatalogService gameCatalogService;
     private final GameCatalogMapper gameCatalogMapper;
 
+    /** 查询当前用户关注的游戏，并合并 Steam 快照和游戏目录信息。 */
     @Override
-    public List<UserGameFollowVO> listFollows(Long userId) {
+    public List<UserGameFollowVO> listFollows() {
+        Long userId = currentUserId();
         List<UserGameFollow> follows = userGameFollowMapper.selectList(new LambdaQueryWrapper<UserGameFollow>()
                 .eq(UserGameFollow::getUserId, userId)
                 .orderByDesc(UserGameFollow::getCreateTime));
@@ -50,7 +53,8 @@ public class SteamFollowServiceImpl implements SteamFollowService {
             return List.of();
         }
         Map<Long, UserSteamGame> steamGameMap = userSteamGameMapper.selectList(new LambdaQueryWrapper<UserSteamGame>()
-                        .eq(UserSteamGame::getUserId, userId))
+                        .eq(UserSteamGame::getUserId, userId)
+                        .eq(UserSteamGame::getIsOwned, 1))
                 .stream()
                 .collect(Collectors.toMap(UserSteamGame::getAppId, Function.identity(), (a, b) -> a));
         List<Long> appIds = follows.stream().map(UserGameFollow::getAppId).filter(id -> id != null).distinct().toList();
@@ -69,6 +73,9 @@ public class SteamFollowServiceImpl implements SteamFollowService {
                 if (StringUtils.hasText(steamGame.getName())) {
                     vo.setName(steamGame.getName());
                 }
+                if (StringUtils.hasText(steamGame.getCoverUrl())) {
+                    vo.setCoverUrl(steamGame.getCoverUrl());
+                }
             }
             fillCatalogInfo(vo, catalogMap.get(follow.getAppId()));
             result.add(vo);
@@ -76,9 +83,11 @@ public class SteamFollowServiceImpl implements SteamFollowService {
         return result;
     }
 
+    /** 查询当前用户是否关注指定游戏。 */
     @Override
-    public boolean isFollowed(Long userId, Long appId) {
-        if (userId == null || appId == null) {
+    public boolean isFollowed(Long appId) {
+        Long userId = currentUserId();
+        if (appId == null) {
             return false;
         }
         return userGameFollowMapper.selectCount(new LambdaQueryWrapper<UserGameFollow>()
@@ -86,9 +95,11 @@ public class SteamFollowServiceImpl implements SteamFollowService {
                 .eq(UserGameFollow::getAppId, appId)) > 0;
     }
 
+    /** 批量查询当前用户的游戏关注状态。 */
     @Override
-    public Map<Long, Boolean> checkFollowBatch(Long userId, List<Long> appIds) {
-        if (userId == null || appIds == null || appIds.isEmpty()) {
+    public Map<Long, Boolean> checkFollowBatch(List<Long> appIds) {
+        Long userId = currentUserId();
+        if (appIds == null || appIds.isEmpty()) {
             return Map.of();
         }
         List<Long> distinctAppIds = appIds.stream().filter(Objects::nonNull).distinct().toList();
@@ -110,9 +121,11 @@ public class SteamFollowServiceImpl implements SteamFollowService {
         return result;
     }
 
+    /** 保存当前用户对游戏的关注关系，并确保游戏目录已经存在。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void follow(Long userId, FollowGameDTO dto) {
+    public void follow(FollowGameDTO dto) {
+        Long userId = currentUserId();
         if (dto == null || dto.getAppId() == null) {
             throw new BusinessException("游戏 ID 无效");
         }
@@ -133,19 +146,24 @@ public class SteamFollowServiceImpl implements SteamFollowService {
         userGameFollowMapper.insert(follow);
     }
 
+    /** 删除当前用户对指定游戏的关注关系。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void unfollow(Long userId, Long appId) {
+    public void unfollow(Long appId) {
+        Long userId = currentUserId();
         userGameFollowMapper.delete(new LambdaQueryWrapper<UserGameFollow>()
                 .eq(UserGameFollow::getUserId, userId)
                 .eq(UserGameFollow::getAppId, appId));
     }
 
+    /** 将当前用户 Steam 游戏库中尚未关注的游戏批量导入。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public int importFromSteam(Long userId) {
+    public int importFromSteam() {
+        Long userId = currentUserId();
         List<UserSteamGame> steamGames = userSteamGameMapper.selectList(new LambdaQueryWrapper<UserSteamGame>()
-                .eq(UserSteamGame::getUserId, userId));
+                .eq(UserSteamGame::getUserId, userId)
+                .eq(UserSteamGame::getIsOwned, 1));
         if (steamGames.isEmpty()) {
             return 0;
         }
@@ -187,6 +205,7 @@ public class SteamFollowServiceImpl implements SteamFollowService {
         return imported;
     }
 
+    /** 补充游戏目录展示字段，目录缺失时保留 Steam 快照信息。 */
     private void fillCatalogInfo(UserGameFollowVO vo, GameCatalog catalog) {
         if (catalog == null) {
             if (!StringUtils.hasText(vo.getName())) {
@@ -214,6 +233,7 @@ public class SteamFollowServiceImpl implements SteamFollowService {
         }
     }
 
+    /** 确保关注目标存在于游戏目录中。 */
     private void ensureCatalog(Long appId) {
         GameDetailVO detail = gameCatalogService.getDetail(appId);
         if (detail == null) {
@@ -221,6 +241,7 @@ public class SteamFollowServiceImpl implements SteamFollowService {
         }
     }
 
+    /** 将关注来源规范化为允许的来源值。 */
     private String resolveSource(String source) {
         if (!StringUtils.hasText(source)) {
             return GameCatalogConstants.FOLLOW_SOURCE_MANUAL;
@@ -232,4 +253,14 @@ public class SteamFollowServiceImpl implements SteamFollowService {
             default -> GameCatalogConstants.FOLLOW_SOURCE_MANUAL;
         };
     }
+
+    /** 从网关写入的用户上下文获取当前登录用户。 */
+    private Long currentUserId() {
+        Long userId = UserThreadLocal.getUserId();
+        if (userId == null) {
+            throw new BusinessException("请先登录");
+        }
+        return userId;
+    }
+
 }

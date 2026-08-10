@@ -1,43 +1,38 @@
 package com.game.community.steam.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.game.community.common.constant.steam.GameBoardConstants;
 import com.game.community.common.constant.steam.SteamApiConstants;
 import com.game.community.common.constant.steam.SteamRedisConstants;
 import com.game.community.common.exception.BusinessException;
+import com.game.community.model.dto.game.GameChartQuery;
+import com.game.community.model.entity.game.GameCatalog;
+import com.game.community.model.entity.game.GameChartSnapshot;
+import com.game.community.model.vo.game.GameChartItemVO;
+import com.game.community.model.vo.game.GameListItemVO;
 import com.game.community.steam.client.SteamStoreClient;
 import com.game.community.steam.mapper.GameCatalogMapper;
 import com.game.community.steam.mapper.GameChartSnapshotMapper;
 import com.game.community.steam.service.GameCatalogService;
 import com.game.community.steam.service.GameChartService;
 import com.game.community.utils.RedisUtils;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.game.community.model.entity.game.GameCatalog;
-import com.game.community.model.entity.game.GameChartSnapshot;
-import com.game.community.model.vo.game.GameChartItemVO;
-import com.game.community.model.vo.game.GameListItemVO;
-import jakarta.annotation.Resource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.time.temporal.WeekFields;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -46,23 +41,18 @@ import java.util.concurrent.TimeUnit;
 public class GameChartServiceImpl implements GameChartService {
 
     private static final ZoneId SHANGHAI = ZoneId.of("Asia/Shanghai");
-    private static final WeekFields ISO_WEEK = WeekFields.ISO;
-
     private final SteamStoreClient steamStoreClient;
     private final GameCatalogService gameCatalogService;
     private final GameCatalogMapper gameCatalogMapper;
     private final GameChartSnapshotMapper gameChartSnapshotMapper;
     private final RedisUtils redisUtils;
     private final ObjectMapper objectMapper;
+    private final TransactionTemplate transactionTemplate;
 
-    @Resource(name = "steamChartExpansionExecutor")
-    private Executor steamChartExpansionExecutor;
-
-    private final Set<String> chartExpansionInProgress = ConcurrentHashMap.newKeySet();
-    private final Set<String> chartExpansionExhausted = ConcurrentHashMap.newKeySet();
-
+    /** 查询当前榜单快照，优先使用 Redis 缓存。 */
     @Override
-    public List<GameChartItemVO> listChart(String board) {
+    public List<GameChartItemVO> listChart(GameChartQuery query) {
+        String board = query == null ? null : query.getBoard();
         String resolvedBoard = resolveBoard(board);
         String cacheKey = SteamRedisConstants.GAME_CHART_KEY_PREFIX + resolvedBoard;
         String cached = redisUtils.get(cacheKey);
@@ -73,14 +63,10 @@ public class GameChartServiceImpl implements GameChartService {
                 log.warn("解析游戏榜单缓存失败: board={}", resolvedBoard, e);
             }
         }
-        String periodKey = resolveLatestPeriodKey(resolvedBoard);
-        if (!StringUtils.hasText(periodKey)) {
-            return List.of();
-        }
         List<GameChartSnapshot> snapshots = gameChartSnapshotMapper.selectList(
                 new LambdaQueryWrapper<GameChartSnapshot>()
                         .eq(GameChartSnapshot::getBoardType, resolvedBoard)
-                        .eq(GameChartSnapshot::getPeriodKey, periodKey)
+                        .eq(GameChartSnapshot::getIsCurrent, 1)
                         .orderByAsc(GameChartSnapshot::getRankNo));
         if (snapshots.isEmpty()) {
             return List.of();
@@ -106,44 +92,33 @@ public class GameChartServiceImpl implements GameChartService {
         return result;
     }
 
+    /** 从 Steam 拉取榜单并保存本地快照。 */
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public void syncChart(String board) {
         String resolvedBoard = resolveBoard(board);
-        List<Long> appIds = steamStoreClient.fetchChartAppIds(resolvedBoard, SteamApiConstants.CHART_LIMIT);
-        if (appIds.isEmpty()) {
+        List<GameListItemVO> games = fetchChartGamesInBatches(resolvedBoard);
+        if (games.isEmpty()) {
             log.warn("Steam 榜单为空: board={}", resolvedBoard);
             return;
         }
-        for (Long appId : appIds) {
-            try {
-                gameCatalogService.getDetail(appId);
-            } catch (Exception e) {
-                log.warn("同步游戏目录失败 appId={}", appId, e);
-            }
+
+        // 只保存榜单返回的轻量数据，不在榜单同步中请求完整 appdetails。
+        for (GameListItemVO game : games) {
+            gameCatalogService.upsertBasicCatalog(game);
         }
+        List<Long> appIds = games.stream().map(GameListItemVO::getAppId).toList();
         String periodKey = currentDailyPeriodKey();
         LocalDateTime now = LocalDateTime.now(SHANGHAI);
         String snapshotId = UUID.randomUUID().toString().replace("-", "");
-        gameChartSnapshotMapper.delete(new LambdaQueryWrapper<GameChartSnapshot>()
-                .eq(GameChartSnapshot::getBoardType, resolvedBoard)
-                .eq(GameChartSnapshot::getPeriodKey, periodKey));
-        int rank = 1;
-        for (Long appId : appIds) {
-            GameChartSnapshot row = new GameChartSnapshot();
-            row.setBoardType(resolvedBoard);
-            row.setPeriodKey(periodKey);
-            row.setAppId(appId);
-            row.setRankNo(rank++);
-            row.setSnapshotTime(now);
-            row.setSnapshotId(snapshotId);
-            row.setIsCurrent(1);
-            gameChartSnapshotMapper.insert(row);
-        }
+        transactionTemplate.executeWithoutResult(status -> replaceCurrentSnapshot(
+                resolvedBoard, periodKey, snapshotId, now, appIds));
         redisUtils.del(SteamRedisConstants.GAME_CHART_KEY_PREFIX + resolvedBoard);
+        // 榜单已可用后，再异步补充英文名等基础字段；成功后由目录服务发送 ES 事件。
+        gameCatalogService.warmupBasicInfoAsync(appIds);
         log.info("游戏榜单同步完成 board={} period={} count={}", resolvedBoard, periodKey, appIds.size());
     }
 
+    /** 按配置同步全部榜单，单个榜单失败不影响其他榜单。 */
     @Override
     public void syncAllCharts() {
         for (String board : GameBoardConstants.CHART_BOARDS) {
@@ -155,112 +130,67 @@ public class GameChartServiceImpl implements GameChartService {
         }
     }
 
-    @Override
-    public void ensureChartPage(String board, long requiredCount) {
-        String resolvedBoard = resolveBoard(board);
-        long targetCount = Math.max(1L, requiredCount);
-        String periodKey = resolveLatestPeriodKey(resolvedBoard);
-        if (!StringUtils.hasText(periodKey)) {
-            periodKey = currentDailyPeriodKey();
-        }
-
-        List<GameChartSnapshot> snapshots = currentSnapshots(resolvedBoard, periodKey);
-        if (snapshots.size() >= targetCount) {
-            return;
-        }
-
-        final String expansionPeriodKey = periodKey;
-        final String expansionKey = resolvedBoard + ":" + expansionPeriodKey;
-        if (chartExpansionExhausted.contains(expansionKey)) {
-            return;
-        }
-        if (!chartExpansionInProgress.add(expansionKey)) {
-            return;
-        }
-        try {
-            CompletableFuture.runAsync(
-                    () -> expandChartPage(resolvedBoard, expansionPeriodKey, targetCount),
-                    steamChartExpansionExecutor)
-                    .whenComplete((ignored, error) -> {
-                        chartExpansionInProgress.remove(expansionKey);
-                        if (error != null) {
-                            log.warn("Steam 榜单后台扩展失败: board={}, period={}",
-                                    resolvedBoard, expansionPeriodKey, error);
-                        }
-                    });
-        } catch (RuntimeException e) {
-            chartExpansionInProgress.remove(expansionKey);
-            log.warn("提交 Steam 榜单后台扩展失败: board={}, period={}", resolvedBoard, periodKey, e);
-        }
-    }
-
-    @Override
-    public boolean isExpansionInProgress(String board) {
-        String resolvedBoard = resolveBoard(board);
-        String prefix = resolvedBoard + ":";
-        return chartExpansionInProgress.stream().anyMatch(key -> key.startsWith(prefix));
-    }
-
-    private void expandChartPage(String resolvedBoard, String periodKey, long targetCount) {
-        List<GameChartSnapshot> snapshots = currentSnapshots(resolvedBoard, periodKey);
-        if (snapshots.size() >= targetCount) {
-            return;
-        }
-
-        int start = snapshots.size();
-        int limit = (int) Math.min(
-                SteamApiConstants.CHART_LIMIT,
-                Math.max(1L, targetCount - start));
-        List<Long> appIds = steamStoreClient.fetchChartAppIds(resolvedBoard, start, limit);
-        if (appIds.isEmpty()) {
-            chartExpansionExhausted.add(resolvedBoard + ":" + periodKey);
-            return;
-        }
-
-        Set<Long> existingIds = new HashSet<>(
-                snapshots.stream().map(GameChartSnapshot::getAppId).toList());
-        int nextRank = snapshots.stream()
-                .map(GameChartSnapshot::getRankNo)
-                .filter(java.util.Objects::nonNull)
-                .max(Integer::compareTo)
-                .orElse(0) + 1;
-        String snapshotId = snapshots.stream()
-                .map(GameChartSnapshot::getSnapshotId)
-                .filter(StringUtils::hasText)
-                .findFirst()
-                .orElseGet(() -> UUID.randomUUID().toString().replace("-", ""));
-        LocalDateTime now = LocalDateTime.now(SHANGHAI);
-
-        int insertedCount = 0;
-        for (Long appId : appIds) {
-            if (appId == null || appId <= 0 || !existingIds.add(appId)) {
-                continue;
+    /** 分批拉取榜单轻量数据，限制总量并去重，所有 Steam 调用只发生在定时任务中。 */
+    private List<GameListItemVO> fetchChartGamesInBatches(String board) {
+        Map<Long, GameListItemVO> games = new LinkedHashMap<>();
+        for (int start = 0; start < SteamApiConstants.CHART_LIMIT;
+             start += SteamApiConstants.CHART_BATCH_SIZE) {
+            List<GameListItemVO> batch = steamStoreClient.fetchChartGames(
+                    board, start, SteamApiConstants.CHART_BATCH_SIZE);
+            if (batch.isEmpty()) {
+                break;
             }
-            GameChartSnapshot row = new GameChartSnapshot();
-            row.setBoardType(resolvedBoard);
-            row.setPeriodKey(periodKey);
-            row.setAppId(appId);
-            row.setRankNo(nextRank++);
-            row.setSnapshotTime(now);
-            row.setSnapshotId(snapshotId);
-            row.setIsCurrent(1);
-            gameChartSnapshotMapper.insert(row);
-            insertedCount++;
-            // 目录详情只在后台预热，不能阻塞榜单分页请求。
-            gameCatalogService.warmup(appId);
+            int previousSize = games.size();
+            batch.stream()
+                    .filter(game -> game != null && game.getAppId() != null && game.getAppId() > 0)
+                    .forEach(game -> games.putIfAbsent(game.getAppId(), game));
+            if (games.size() == previousSize) {
+                // Steam 某些榜单在末页可能重复返回上一页；此时视为分页结束，
+                // 不应让本次榜单同步被误判为失败。
+                break;
+            }
+            if (batch.size() < SteamApiConstants.CHART_BATCH_SIZE) {
+                break;
+            }
         }
-        if (insertedCount == 0) {
-            chartExpansionExhausted.add(resolvedBoard + ":" + periodKey);
-        }
-        redisUtils.del(SteamRedisConstants.GAME_CHART_KEY_PREFIX + resolvedBoard);
+        return new ArrayList<>(games.values());
     }
 
-    @Override
-    public boolean isAnyChartEmpty() {
-        Long count = gameChartSnapshotMapper.selectCount(null);
-        return count == null || count == 0;
+    /** 在事务内写入新快照并原子切换当前版本，避免用户读到半成品榜单。 */
+    private void replaceCurrentSnapshot(
+            String board,
+            String periodKey,
+            String snapshotId,
+            LocalDateTime snapshotTime,
+            List<Long> appIds) {
+        gameChartSnapshotMapper.update(
+                null,
+                new LambdaUpdateWrapper<GameChartSnapshot>()
+                        .eq(GameChartSnapshot::getBoardType, board)
+                        .eq(GameChartSnapshot::getIsCurrent, 1)
+                        .set(GameChartSnapshot::getIsCurrent, 0));
+        gameChartSnapshotMapper.delete(new LambdaQueryWrapper<GameChartSnapshot>()
+                .eq(GameChartSnapshot::getBoardType, board)
+                .eq(GameChartSnapshot::getPeriodKey, periodKey));
+
+        int rank = 1;
+        for (int start = 0; start < appIds.size(); start += SteamApiConstants.CHART_BATCH_SIZE) {
+            int end = Math.min(start + SteamApiConstants.CHART_BATCH_SIZE, appIds.size());
+            for (Long appId : appIds.subList(start, end)) {
+                GameChartSnapshot row = new GameChartSnapshot();
+                row.setBoardType(board);
+                row.setPeriodKey(periodKey);
+                row.setAppId(appId);
+                row.setRankNo(rank++);
+                row.setSnapshotTime(snapshotTime);
+                row.setSnapshotId(snapshotId);
+                row.setIsCurrent(1);
+                gameChartSnapshotMapper.insert(row);
+            }
+        }
     }
 
+    /** 校验并规范化榜单类型，避免使用未配置的榜单查询或写入数据。 */
     private String resolveBoard(String board) {
         if (!StringUtils.hasText(board)) {
             throw new BusinessException("榜单类型无效");
@@ -272,27 +202,7 @@ public class GameChartServiceImpl implements GameChartService {
         return normalized;
     }
 
-    private String resolveLatestPeriodKey(String board) {
-        GameChartSnapshot latest = gameChartSnapshotMapper.selectOne(
-                new LambdaQueryWrapper<GameChartSnapshot>()
-                        .eq(GameChartSnapshot::getBoardType, board)
-                        .orderByDesc(GameChartSnapshot::getSnapshotTime)
-                        .orderByDesc(GameChartSnapshot::getId)
-                        .last("LIMIT 1"));
-        if (latest != null && StringUtils.hasText(latest.getPeriodKey())) {
-            return latest.getPeriodKey();
-        }
-        return currentWeeklyPeriodKey();
-    }
-
-    private List<GameChartSnapshot> currentSnapshots(String board, String periodKey) {
-        return gameChartSnapshotMapper.selectList(
-                new LambdaQueryWrapper<GameChartSnapshot>()
-                        .eq(GameChartSnapshot::getBoardType, board)
-                        .eq(GameChartSnapshot::getPeriodKey, periodKey)
-                        .orderByAsc(GameChartSnapshot::getRankNo));
-    }
-
+    /** 按榜单快照中的 App ID 批量读取本地游戏目录。 */
     private Map<Long, GameCatalog> loadCatalogMap(List<Long> appIds) {
         if (appIds.isEmpty()) {
             return Map.of();
@@ -305,6 +215,7 @@ public class GameChartServiceImpl implements GameChartService {
         return map;
     }
 
+    /** 将本地游戏目录转换为榜单展示对象。 */
     private GameChartItemVO toChartItemVO(GameCatalog catalog) {
         GameListItemVO base = gameCatalogService.toListItem(catalog);
         GameChartItemVO vo = new GameChartItemVO();
@@ -316,6 +227,7 @@ public class GameChartServiceImpl implements GameChartService {
         vo.setDiscussCount(base.getDiscussCount());
         vo.setGenres(base.getGenres());
         vo.setSteamReviewScore(base.getSteamReviewScore());
+        vo.setSteamReviewCount(base.getSteamReviewCount());
         vo.setDeveloper(base.getDeveloper());
         vo.setPublisher(base.getPublisher());
         vo.setReleaseDate(base.getReleaseDate());
@@ -323,13 +235,7 @@ public class GameChartServiceImpl implements GameChartService {
         return vo;
     }
 
-    static String currentWeeklyPeriodKey() {
-        LocalDate today = LocalDate.now(SHANGHAI);
-        int week = today.get(ISO_WEEK.weekOfWeekBasedYear());
-        int year = today.get(ISO_WEEK.weekBasedYear());
-        return String.format("%d-W%02d", year, week);
-    }
-
+    /** 生成上海时区下的每日快照版本号。 */
     private String currentDailyPeriodKey() {
         return LocalDate.now(SHANGHAI).toString();
     }

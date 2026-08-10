@@ -3,7 +3,11 @@ package com.game.community.steam.controller;
 import com.game.community.common.annotation.LoginCheck;
 import com.game.community.model.base.PageResult;
 import com.game.community.model.base.Result;
+import com.game.community.model.dto.game.GameChartQuery;
 import com.game.community.model.dto.game.GameDiscoverQuery;
+import com.game.community.model.dto.game.GamePageQuery;
+import com.game.community.model.dto.game.GameReviewPageQuery;
+import com.game.community.model.dto.game.GameSearchQuery;
 import com.game.community.model.dto.game.SaveGameReviewDTO;
 import com.game.community.model.vo.game.GameChartItemVO;
 import com.game.community.model.vo.game.GameDetailVO;
@@ -13,16 +17,15 @@ import com.game.community.steam.service.GameCatalogService;
 import com.game.community.steam.service.GameChartService;
 import com.game.community.steam.service.GameDiscoverService;
 import com.game.community.steam.service.GameReviewService;
-import com.game.community.utils.ThreadLocal.UserThreadLocal;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -37,94 +40,70 @@ public class GameController {
     private final GameChartService gameChartService;
     private final GameDiscoverService gameDiscoverService;
 
+    /** 分页查询游戏发现数据，支持榜单、排序和价格筛选。 */
     @GetMapping("/discover")
     public PageResult<GameChartItemVO> discover(
-            @RequestParam(value = "board", defaultValue = "all") String board,
-            @RequestParam(value = "sort", required = false) String sort,
-            @RequestParam(value = "order", defaultValue = "desc") String order,
-            @RequestParam(value = "page", defaultValue = "1") Long page,
-            @RequestParam(value = "size", defaultValue = "20") Long size,
-            @RequestParam(value = "minSteamScore", required = false) Integer minSteamScore,
-            @RequestParam(value = "maxSteamScore", required = false) Integer maxSteamScore,
-            @RequestParam(value = "minSteamReviews", required = false) Integer minSteamReviews,
-            @RequestParam(value = "maxSteamReviews", required = false) Integer maxSteamReviews,
-            @RequestParam(value = "minPrice", required = false) Integer minPrice,
-            @RequestParam(value = "maxPrice", required = false) Integer maxPrice,
-            @RequestParam(value = "minFinalPrice", required = false) Integer minFinalPrice,
-            @RequestParam(value = "maxFinalPrice", required = false) Integer maxFinalPrice,
-            @RequestParam(value = "minDiscount", required = false) Integer minDiscount,
-            @RequestParam(value = "discountOnly", required = false) Boolean discountOnly,
-            @RequestParam(value = "freeOnly", required = false) Boolean freeOnly) {
-        GameDiscoverQuery query = new GameDiscoverQuery();
-        query.setBoard(board);
-        query.setSort(sort);
-        query.setOrder(order);
-        query.setPage(page);
-        query.setSize(size);
-        query.setMinSteamScore(minSteamScore);
-        query.setMaxSteamScore(maxSteamScore);
-        query.setMinSteamReviews(minSteamReviews);
-        query.setMaxSteamReviews(maxSteamReviews);
-        query.setMinPrice(minPrice);
-        query.setMaxPrice(maxPrice);
-        query.setMinFinalPrice(minFinalPrice);
-        query.setMaxFinalPrice(maxFinalPrice);
-        query.setMinDiscount(minDiscount);
-        query.setDiscountOnly(discountOnly);
-        query.setFreeOnly(freeOnly);
+            @Valid @ModelAttribute GameDiscoverQuery query) {
         return gameDiscoverService.pageDiscover(query);
     }
 
+    /** 查询当前榜单快照。 */
     @GetMapping("/chart")
     public Result<List<GameChartItemVO>> chart(
-            @RequestParam(value = "board", defaultValue = "hot") String board) {
-        return Result.success(gameChartService.listChart(board));
+            @Valid @ModelAttribute GameChartQuery query) {
+        return Result.success(gameChartService.listChart(query));
     }
 
+    /** 分页查询本地游戏目录。 */
     @GetMapping("/page")
-    public PageResult<GameListItemVO> page(@RequestParam(value = "sort", defaultValue = "hot") String sort,
-                                          @RequestParam(value = "page", defaultValue = "1") Long page,
-                                          @RequestParam(value = "size", defaultValue = "20") Long size) {
-        return gameCatalogService.pageGames(sort, page, size);
+    public PageResult<GameListItemVO> page(
+            @Valid @ModelAttribute GamePageQuery query) {
+        return gameCatalogService.pageGames(query);
     }
 
+    /** 按名称搜索本地游戏目录。 */
     @GetMapping("/search")
-    public PageResult<GameListItemVO> search(@RequestParam("q") String keyword,
-                                             @RequestParam(value = "page", defaultValue = "1") Long page,
-                                             @RequestParam(value = "size", defaultValue = "20") Long size) {
-        return gameCatalogService.searchGames(keyword, page, size);
+    public PageResult<GameListItemVO> search(
+            @Valid @ModelAttribute GameSearchQuery query) {
+        return gameCatalogService.searchGames(query);
     }
 
+    /** 查询游戏详情。 */
     @GetMapping("/{appId}")
     public Result<GameDetailVO> detail(@PathVariable("appId") Long appId) {
         return Result.success(gameCatalogService.getDetail(appId));
     }
 
+    /** 分页查询游戏公开短评。 */
     @GetMapping("/{appId}/reviews")
     public PageResult<GameReviewVO> reviews(@PathVariable("appId") Long appId,
-                                            @RequestParam(value = "page", defaultValue = "1") Long page,
-                                            @RequestParam(value = "size", defaultValue = "10") Long size) {
-        return gameReviewService.listReviews(appId, page, size);
+                                            @Valid @ModelAttribute
+                                            GameReviewPageQuery query) {
+        query.setAppId(appId);
+        return gameReviewService.listReviews(query);
     }
 
+    /** 查询当前登录用户对指定游戏的短评。 */
     @LoginCheck
     @GetMapping("/{appId}/reviews/mine")
     public Result<GameReviewVO> myReview(@PathVariable("appId") Long appId) {
-        return Result.success(gameReviewService.getMine(appId, UserThreadLocal.getUserId()));
+        return Result.success(gameReviewService.getMine(appId));
     }
 
+    /** 保存当前登录用户对指定游戏的评分和短评。 */
     @LoginCheck
     @PutMapping("/{appId}/reviews/mine")
     public Result<Void> saveMyReview(@PathVariable("appId") Long appId,
                                      @Valid @RequestBody SaveGameReviewDTO dto) {
-        gameReviewService.saveReview(appId, UserThreadLocal.getUserId(), dto);
+        gameReviewService.saveReview(appId, dto);
         return Result.success(null);
     }
 
+    /** 软删除当前登录用户对指定游戏的短评。 */
     @LoginCheck
     @DeleteMapping("/{appId}/reviews/mine")
     public Result<Void> deleteMyReview(@PathVariable("appId") Long appId) {
-        gameReviewService.deleteMine(appId, UserThreadLocal.getUserId());
+        gameReviewService.deleteMine(appId);
         return Result.success(null);
     }
 }

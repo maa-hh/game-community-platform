@@ -49,8 +49,30 @@ public final class SteamApiConstants {
 
     public static final int ACHIEVEMENT_ENRICH_LIMIT = 30;
 
-    /** 与前端游戏榜单每页 18 条对齐，首批快照完整覆盖 3 页。 */
-    public static final int CHART_LIMIT = 18 * 3;
+    /** 榜单后台抓取和落库的批次大小，与前端榜单页大小对齐。 */
+    public static final int CHART_BATCH_SIZE = 20;
+
+    /** 每个榜单最多抓取的批次数量。 */
+    public static final int CHART_MAX_BATCHES = 5;
+
+    /** 榜单快照单次最多维护的游戏数量。 */
+    public static final int CHART_LIMIT = CHART_BATCH_SIZE * CHART_MAX_BATCHES;
+
+    /** Steam 游戏库同步每页处理的游戏数量。 */
+    public static final int LIBRARY_SYNC_BATCH_SIZE = 20;
+
+    /** 单次前端同步请求最多连续提交的游戏库批次数量。 */
+    public static final int LIBRARY_SYNC_MAX_BATCHES_PER_REQUEST = 5;
+
+    /** Steam 游戏库中文名称请求语言。 */
+    public static final String LIBRARY_NAME_ZH_LANGUAGE = "schinese";
+
+    /** Steam 游戏库英文名称请求语言。 */
+    public static final String LIBRARY_NAME_EN_LANGUAGE = "english";
+
+    /** Steam 游戏卡片头图地址前缀，不需要请求游戏详情接口。 */
+    public static final String STEAM_HEADER_IMAGE_URL_PREFIX =
+            "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/";
 
     public static final int REVIEW_BACKFILL_BATCH_SIZE = 20;
 

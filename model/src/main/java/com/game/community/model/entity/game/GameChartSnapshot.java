@@ -18,7 +18,7 @@ public class GameChartSnapshot implements Serializable {
     /** hot / new / free / discount */
     private String boardType;
 
-    /** yyyy-Www */
+    /** yyyy-MM-dd */
     private String periodKey;
 
     private Long appId;

@@ -81,7 +81,16 @@ steam:
   api-lang: ${STEAM_API_LANG:schinese}
   api-cc: ${STEAM_API_CC:cn}
   frontend-redirect: ${STEAM_FRONTEND_REDIRECT:http://localhost:3000/profile}
+  chart-sync-cron: ${STEAM_CHART_SYNC_CRON:0 0 5 * * ?}
 
+xxl:
+  job:
+    admin-addresses: ${XXL_JOB_ADMIN_ADDRESS:http://localhost:8088/xxl-job-admin}
+    access-token: ${XXL_JOB_ACCESS_TOKEN:default_token}
+    appname: steam-service
+    port: ${XXL_JOB_STEAM_PORT:9997}
+    log-path: logs/xxl-job/steam-service
+    log-retention-days: 30
 # MinIO 配置：共享 utils 会在服务启动时初始化客户端
 minio:
   endpoint: ${MINIO_ENDPOINT:http://localhost:9000}

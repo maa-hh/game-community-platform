@@ -26,6 +26,7 @@ public class SteamOpenIdService {
     private final RestTemplate restTemplate;
     private final SteamProperties steamProperties;
 
+    /** 根据一次性 state 组装 Steam OpenID 授权地址。 */
     public String buildAuthUrl(String state) {
         String returnTo = UriComponentsBuilder.fromHttpUrl(steamProperties.getOpenidReturnTo())
                 .queryParam("state", state)
@@ -44,6 +45,7 @@ public class SteamOpenIdService {
                 .toUriString();
     }
 
+    /** 将 Steam 回调参数提交回 OpenID 服务端，验证授权并提取 Steam ID。 */
     public String verifyCallback(Map<String, String> params) {
         if (params == null || params.isEmpty()) {
             throw new BusinessException("Steam 回调参数无效");
@@ -75,6 +77,7 @@ public class SteamOpenIdService {
         return extractSteamId(claimedId);
     }
 
+    /** 从 Steam OpenID claimed_id 中提取数字 Steam ID。 */
     private String extractSteamId(String claimedId) {
         String prefix = SteamApiConstants.OPENID_CLAIMED_ID_PREFIX;
         if (!claimedId.startsWith(prefix)) {
