@@ -8,6 +8,9 @@ import java.time.LocalDateTime;
 @Data
 public class GameReviewVO implements Serializable {
 
+    /** 对外短评标识，不使用数据库自增主键。 */
+    private String reviewId;
+
     private Long appId;
 
     /** 对外展示账号 ID */
@@ -20,6 +23,12 @@ public class GameReviewVO implements Serializable {
     private Integer score;
 
     private String content;
+
+    private Long likeCount;
+
+    private Long replyCount;
+
+    private Boolean liked;
 
     private LocalDateTime createTime;
 

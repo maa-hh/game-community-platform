@@ -36,6 +36,9 @@ public class GameDetailVO implements Serializable {
     /** Steam 好评率 0–100 */
     private Integer steamReviewScore;
 
+    /** Steam 评价总数。 */
+    private Integer steamReviewCount;
+
     private List<GameScreenshotVO> screenshots;
 
     private List<GameMovieVO> movies;

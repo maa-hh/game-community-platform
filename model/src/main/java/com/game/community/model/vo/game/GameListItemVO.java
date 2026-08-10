@@ -13,6 +13,13 @@ public class GameListItemVO implements Serializable {
 
     private String name;
 
+    private String nameZh;
+
+    private String nameEn;
+
+    /** 用于搜索的中英文别名。 */
+    private List<String> aliases;
+
     private String coverUrl;
 
     private BigDecimal avgScore;

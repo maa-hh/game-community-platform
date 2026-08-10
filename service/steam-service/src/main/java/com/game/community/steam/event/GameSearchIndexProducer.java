@@ -42,6 +42,12 @@ public class GameSearchIndexProducer {
         item.setAppId(catalog.getAppId());
         item.setName(org.springframework.util.StringUtils.hasText(catalog.getDisplayName())
                 ? catalog.getDisplayName() : catalog.getSteamName());
+        item.setNameZh(catalog.getNameZh());
+        item.setNameEn(catalog.getNameEn());
+        item.setAliases(java.util.stream.Stream.of(catalog.getNameZh(), catalog.getNameEn())
+                .filter(org.springframework.util.StringUtils::hasText)
+                .distinct()
+                .toList());
         item.setCoverUrl(org.springframework.util.StringUtils.hasText(catalog.getCoverOverride())
                 ? catalog.getCoverOverride() : catalog.getHeaderImage());
         item.setGenres(catalog.getGenres());

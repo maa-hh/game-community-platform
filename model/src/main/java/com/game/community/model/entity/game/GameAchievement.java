@@ -8,27 +8,20 @@ import lombok.Data;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
+/** Steam 公共成就定义及全球获取率缓存。 */
 @Data
-@TableName("t_game_review")
-public class GameReview implements Serializable {
+@TableName("t_game_achievement")
+public class GameAchievement implements Serializable {
 
     @TableId(type = IdType.AUTO)
     private Long id;
-
-    /** 对外短评标识；内部自增主键不通过 API 返回。 */
-    private String reviewId;
-
     private Long appId;
-
-    private Long userId;
-
-    private Integer score;
-
-    private String content;
-
-    private Integer status;
-
+    private String apiName;
+    private String name;
+    private String description;
+    private String iconUrl;
+    private Double globalPercent;
+    private LocalDateTime syncedAt;
     private LocalDateTime createTime;
-
     private LocalDateTime updateTime;
 }

@@ -7,7 +7,6 @@ import com.game.community.common.exception.BusinessException;
 import com.game.community.steam.mapper.GameCatalogMapper;
 import com.game.community.steam.mapper.GameChartSnapshotMapper;
 import com.game.community.steam.service.GameCatalogService;
-import com.game.community.steam.service.GameChartService;
 import com.game.community.steam.service.GameDiscoverService;
 import com.game.community.model.base.PageResult;
 import com.game.community.model.dto.game.GameDiscoverQuery;
@@ -24,8 +23,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @RequiredArgsConstructor
@@ -33,10 +30,9 @@ public class GameDiscoverServiceImpl implements GameDiscoverService {
 
     private final GameCatalogMapper gameCatalogMapper;
     private final GameCatalogService gameCatalogService;
-    private final GameChartService gameChartService;
     private final GameChartSnapshotMapper gameChartSnapshotMapper;
-    private final Set<Long> catalogWarmupScheduled = ConcurrentHashMap.newKeySet();
 
+    /** 规范化发现查询后，根据 all 或具体榜单选择分页策略。 */
     @Override
     public PageResult<GameChartItemVO> pageDiscover(GameDiscoverQuery query) {
         GameDiscoverQuery resolved = normalizeQuery(query);
@@ -46,6 +42,7 @@ public class GameDiscoverServiceImpl implements GameDiscoverService {
         return pageChartBoard(resolved);
     }
 
+    /** 从本地游戏目录分页查询全部游戏。 */
     private PageResult<GameChartItemVO> pageAllCatalog(GameDiscoverQuery query) {
         LambdaQueryWrapper<GameCatalog> wrapper = baseWrapper();
         applyFilters(wrapper, query);
@@ -55,27 +52,20 @@ public class GameDiscoverServiceImpl implements GameDiscoverService {
         List<GameChartItemVO> records = page.getRecords().stream()
                 .map(this::toChartItem)
                 .toList();
+        gameCatalogService.refreshMetricsPriceAsync(
+                records.stream().map(GameChartItemVO::getAppId).toList());
         return PageResult.of(records, page.getCurrent(), page.getSize(), page.getTotal());
     }
 
+    /** 从定时任务生成的当前榜单快照分页查询，不触发 Steam API。 */
     private PageResult<GameChartItemVO> pageChartBoard(GameDiscoverQuery query) {
-        // 首次只保留启动同步的快照；用户翻页时提前补一页，保证分页控件还能继续向后请求。
-        gameChartService.ensureChartPage(
-                query.getBoard(), (query.getPage() + 1) * query.getSize());
-        long requiredCount = (query.getPage() + 1) * query.getSize();
-        String periodKey = resolveLatestPeriodKey(query.getBoard());
-        if (!StringUtils.hasText(periodKey)) {
-            return chartPageResult(List.of(), query, 0L, false);
-        }
         List<GameChartSnapshot> snapshots = gameChartSnapshotMapper.selectList(
                 new LambdaQueryWrapper<GameChartSnapshot>()
                         .eq(GameChartSnapshot::getBoardType, query.getBoard())
-                        .eq(GameChartSnapshot::getPeriodKey, periodKey)
+                        .eq(GameChartSnapshot::getIsCurrent, 1)
                         .orderByAsc(GameChartSnapshot::getRankNo));
         if (snapshots.isEmpty()) {
-            return chartPageResult(
-                    List.of(), query, 0L,
-                    gameChartService.isExpansionInProgress(query.getBoard()));
+            return chartPageResult(List.of(), query, 0L);
         }
 
         Map<Long, Integer> rankMap = new HashMap<>();
@@ -88,18 +78,12 @@ public class GameDiscoverServiceImpl implements GameDiscoverService {
         LambdaQueryWrapper<GameCatalog> wrapper = baseWrapper().in(GameCatalog::getAppId, appIds);
         applyFilters(wrapper, query);
         List<GameCatalog> catalogs = gameCatalogMapper.selectList(wrapper);
-        warmupMissingCatalogs(appIds, catalogs);
         List<GameCatalog> sorted = sortCatalogs(catalogs, query, rankMap);
 
-        long expectedCatalogCount = Math.min(snapshots.size(), requiredCount);
-        boolean catalogWarmupPending = !hasFilters(query) && catalogs.size() < expectedCatalogCount;
-        boolean expanding = gameChartService.isExpansionInProgress(query.getBoard())
-                || catalogWarmupPending;
-
-        long total = expanding ? Math.max(sorted.size(), expectedCatalogCount) : sorted.size();
+        long total = sorted.size();
         long from = (query.getPage() - 1) * query.getSize();
         if (from >= total) {
-            return chartPageResult(List.of(), query, total, expanding);
+            return chartPageResult(List.of(), query, total);
         }
         int to = (int) Math.min(from + query.getSize(), sorted.size());
         List<GameChartItemVO> records = sorted.subList((int) from, to).stream()
@@ -109,45 +93,21 @@ public class GameDiscoverServiceImpl implements GameDiscoverService {
                     return vo;
                 })
                 .toList();
-        return chartPageResult(records, query, total, expanding);
+        gameCatalogService.refreshMetricsPriceAsync(
+                records.stream().map(GameChartItemVO::getAppId).toList());
+        return chartPageResult(records, query, total);
     }
 
     private PageResult<GameChartItemVO> chartPageResult(
             List<GameChartItemVO> records,
             GameDiscoverQuery query,
-            long total,
-            boolean expanding) {
+            long total) {
         PageResult<GameChartItemVO> result = PageResult.of(
                 records, query.getPage(), query.getSize(), total);
-        result.setExpanding(expanding);
         return result;
     }
 
-    private boolean hasFilters(GameDiscoverQuery query) {
-        return query.getMinSteamScore() != null
-                || query.getMaxSteamScore() != null
-                || query.getMinSteamReviews() != null
-                || query.getMaxSteamReviews() != null
-                || query.getMinPrice() != null
-                || query.getMaxPrice() != null
-                || query.getMinFinalPrice() != null
-                || query.getMaxFinalPrice() != null
-                || query.getMinDiscount() != null
-                || Boolean.TRUE.equals(query.getDiscountOnly())
-                || Boolean.TRUE.equals(query.getFreeOnly());
-    }
-
-    private void warmupMissingCatalogs(List<Long> appIds, List<GameCatalog> catalogs) {
-        Set<Long> loadedIds = catalogs.stream()
-                .map(GameCatalog::getAppId)
-                .collect(java.util.stream.Collectors.toSet());
-        for (Long appId : appIds) {
-            if (appId != null && !loadedIds.contains(appId) && catalogWarmupScheduled.add(appId)) {
-                gameCatalogService.warmup(appId);
-            }
-        }
-    }
-
+    /** 统一发现参数默认值、合法榜单和排序字段。 */
     private GameDiscoverQuery normalizeQuery(GameDiscoverQuery query) {
         GameDiscoverQuery normalized = query == null ? new GameDiscoverQuery() : query;
         String board = normalized.getBoard() == null
@@ -280,16 +240,6 @@ public class GameDiscoverServiceImpl implements GameDiscoverService {
         Comparator<Integer> valueOrder =
                 asc ? Comparator.nullsLast(Integer::compareTo) : Comparator.nullsLast(Comparator.reverseOrder());
         return Comparator.comparing(getter, valueOrder);
-    }
-
-    private String resolveLatestPeriodKey(String board) {
-        GameChartSnapshot latest = gameChartSnapshotMapper.selectOne(
-                new LambdaQueryWrapper<GameChartSnapshot>()
-                        .eq(GameChartSnapshot::getBoardType, board)
-                        .orderByDesc(GameChartSnapshot::getSnapshotTime)
-                        .orderByDesc(GameChartSnapshot::getId)
-                        .last("LIMIT 1"));
-        return latest == null ? null : latest.getPeriodKey();
     }
 
     private GameChartItemVO toChartItem(GameCatalog catalog) {

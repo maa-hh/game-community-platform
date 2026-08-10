@@ -23,6 +23,9 @@ public interface SteamFeignClient {
     @PostMapping("/games/tags")
     Result<List<GameTagVO>> listGameTags(@RequestBody List<Long> appIds);
 
+    @PostMapping("/games/catalog-items")
+    Result<List<GameListItemVO>> listCatalogItems(@RequestBody List<Long> appIds);
+
     @PostMapping("/games/discuss-count/sync")
     Result<Void> syncDiscussCount(@RequestBody List<Long> appIds);
 
@@ -31,6 +34,10 @@ public interface SteamFeignClient {
     Result<List<GameListItemVO>> searchGames(@RequestParam("q") String keyword,
                                              @RequestParam("start") Integer start,
                                              @RequestParam("size") Integer size);
+
+    /** 异步补充 Steam 搜索候选的公共目录和 ES 索引。 */
+    @PostMapping("/games/basic-info/enrich")
+    Result<Void> enrichBasicInfo(@RequestBody List<Long> appIds);
 
     /** 搜索 Steam 服务本地游戏库，避免 ES 未建索引时直接退化为模糊 Store 搜索。 */
     @GetMapping("/games/catalog-search")

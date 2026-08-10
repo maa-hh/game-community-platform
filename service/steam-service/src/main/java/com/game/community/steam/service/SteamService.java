@@ -1,33 +1,49 @@
 package com.game.community.steam.service;
 
+import com.game.community.model.dto.steam.SteamCallbackDTO;
+import com.game.community.model.dto.steam.SteamLibrarySyncQuery;
 import com.game.community.model.vo.game.SteamBindVO;
 import com.game.community.model.vo.game.SteamGameStatsVO;
 import com.game.community.model.vo.game.SteamGameVO;
+import com.game.community.model.vo.game.SteamLibrarySyncVO;
 
 import java.util.List;
-import java.util.Map;
 
 public interface SteamService {
 
-    String authUrl(Long userId);
+    /** 生成当前登录用户的 Steam OpenID 授权地址。 */
+    String authUrl();
 
-    void callback(Map<String, String> params, String state);
+    /** 处理 Steam OpenID 回调并完成账号绑定。 */
+    void callback(SteamCallbackDTO request);
 
-    SteamBindVO profile(Long userId);
+    /** 查询当前登录用户绑定的 Steam 资料。 */
+    SteamBindVO profile();
 
-    SteamBindVO profileForViewer(Long viewerId, Long targetUserId);
+    /** 查询目标用户的 Steam 资料并校验查看权限。 */
+    SteamBindVO profileForViewer(Long targetUserId);
 
-    SteamBindVO profileForViewerByAccount(Long viewerId, Long targetAccountId);
+    /** 按对外 accountId 查询目标用户的 Steam 资料。 */
+    SteamBindVO profileForViewerByAccount(Long targetAccountId);
 
-    List<SteamGameVO> library(Long userId);
+    /** 查询当前登录用户的 Steam 游戏库。 */
+    List<SteamGameVO> library();
 
-    List<SteamGameVO> libraryForViewer(Long viewerId, Long targetUserId);
+    /** 查询目标用户公开的 Steam 游戏库。 */
+    List<SteamGameVO> libraryForViewer(Long targetUserId);
 
-    List<SteamGameVO> libraryForViewerByAccount(Long viewerId, Long targetAccountId);
+    /** 按对外 accountId 查询目标用户公开的 Steam 游戏库。 */
+    List<SteamGameVO> libraryForViewerByAccount(Long targetAccountId);
 
-    void syncLibrary(Long userId);
+    /** 分页增量同步当前登录用户的 Steam 游戏库。 */
+    SteamLibrarySyncVO syncLibrary(SteamLibrarySyncQuery query);
 
-    SteamGameStatsVO gameStats(Long userId, long appId);
+    /** 查询当前登录用户指定游戏的游玩和成就信息。 */
+    SteamGameStatsVO gameStats(Long appId);
 
-    void unbind(Long userId);
+    /** 强制投递一次玩家成就同步任务，并返回当前缓存。 */
+    SteamGameStatsVO syncAchievements(Long appId);
+
+    /** 解绑当前登录用户的 Steam 账号。 */
+    void unbind();
 }

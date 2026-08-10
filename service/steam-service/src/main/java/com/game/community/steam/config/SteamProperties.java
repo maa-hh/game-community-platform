@@ -20,4 +20,7 @@ public class SteamProperties {
     private String apiCc = "cn";
 
     private String frontendRedirect = "http://localhost:3000/profile";
+
+    /** 榜单定时同步 cron 表达式。 */
+    private String chartSyncCron = "0 0 5 * * ?";
 }
