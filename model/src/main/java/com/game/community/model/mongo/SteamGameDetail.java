@@ -1,8 +1,5 @@
 package com.game.community.model.mongo;
 
-import com.game.community.model.vo.game.GameAchievementVO;
-import com.game.community.model.vo.game.GameMovieVO;
-import com.game.community.model.vo.game.GameScreenshotVO;
 import lombok.Data;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.Indexed;
@@ -27,9 +24,9 @@ public class SteamGameDetail implements Serializable {
 
     private String steamAboutHtml;
 
-    private List<GameScreenshotVO> screenshots;
+    private List<SteamGameScreenshot> screenshots;
 
-    private List<GameMovieVO> movies;
+    private List<SteamGameMovie> movies;
 
     private List<String> categories;
 
@@ -39,7 +36,7 @@ public class SteamGameDetail implements Serializable {
 
     private Integer achievementTotal;
 
-    private List<GameAchievementVO> achievementHighlights;
+    private List<SteamGameAchievement> achievementHighlights;
 
     private String pcRequirementsMin;
 

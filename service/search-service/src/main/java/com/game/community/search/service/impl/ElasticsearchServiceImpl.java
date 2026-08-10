@@ -81,6 +81,9 @@ public class ElasticsearchServiceImpl implements ElasticsearchService {
         GameIndexDocument document = new GameIndexDocument();
         document.setAppId(game.getAppId());
         document.setName(game.getName());
+        document.setNameZh(game.getNameZh());
+        document.setNameEn(game.getNameEn());
+        document.setAliases(game.getAliases() == null ? List.of() : game.getAliases());
         document.setDevelopers(game.getDeveloper() == null ? List.of() : List.of(game.getDeveloper()));
         document.setPublishers(game.getPublisher() == null ? List.of() : List.of(game.getPublisher()));
         document.setGenres(game.getGenres() == null ? List.of() : game.getGenres());

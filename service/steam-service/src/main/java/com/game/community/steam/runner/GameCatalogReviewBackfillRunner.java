@@ -2,9 +2,11 @@ package com.game.community.steam.runner;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.game.community.common.constant.steam.SteamApiConstants;
-import com.game.community.steam.client.SteamStoreClient;
+import com.game.community.steam.client.SteamReviewClient;
 import com.game.community.steam.mapper.GameCatalogMapper;
 import com.game.community.model.entity.game.GameCatalog;
+import com.game.community.model.enums.game.GameCatalogStatus;
+import com.game.community.model.payload.steam.SteamReviewSummaryPayload;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
@@ -25,7 +27,7 @@ import java.util.List;
 public class GameCatalogReviewBackfillRunner implements ApplicationRunner {
 
     private final GameCatalogMapper gameCatalogMapper;
-    private final SteamStoreClient steamStoreClient;
+    private final SteamReviewClient steamReviewClient;
 
     @Override
     public void run(ApplicationArguments args) {
@@ -38,7 +40,7 @@ public class GameCatalogReviewBackfillRunner implements ApplicationRunner {
         while (true) {
             List<GameCatalog> batch = gameCatalogMapper.selectList(
                     new LambdaQueryWrapper<GameCatalog>()
-                            .eq(GameCatalog::getStatus, 1)
+                            .eq(GameCatalog::getStatus, GameCatalogStatus.ENABLED.getCode())
                             .isNull(GameCatalog::getSteamReviewCount)
                             .orderByAsc(GameCatalog::getAppId)
                             .last("LIMIT " + SteamApiConstants.REVIEW_BACKFILL_BATCH_SIZE));
@@ -49,14 +51,14 @@ public class GameCatalogReviewBackfillRunner implements ApplicationRunner {
             log.info("补全 Steam 评价数据: batch={}", batch.size());
             for (GameCatalog catalog : batch) {
                 try {
-                    SteamStoreClient.SteamReviewSummary summary =
-                            steamStoreClient.fetchReviewSummary(catalog.getAppId());
+                    SteamReviewSummaryPayload summary =
+                            steamReviewClient.fetchReviewSummary(catalog.getAppId());
                     if (summary != null) {
-                        if (summary.positivePercent() != null) {
-                            catalog.setSteamReviewScore(summary.positivePercent());
+                    if (summary.getPositivePercent() != null) {
+                        catalog.setSteamReviewScore(summary.getPositivePercent());
                         }
-                        if (summary.totalReviews() != null) {
-                            catalog.setSteamReviewCount(summary.totalReviews());
+                    if (summary.getTotalReviews() != null) {
+                        catalog.setSteamReviewCount(summary.getTotalReviews());
                         }
                     } else {
                         catalog.setSteamReviewCount(0);

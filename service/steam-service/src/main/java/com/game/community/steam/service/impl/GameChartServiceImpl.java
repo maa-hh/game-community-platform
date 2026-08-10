@@ -11,9 +11,12 @@ import com.game.community.common.exception.BusinessException;
 import com.game.community.model.dto.game.GameChartQuery;
 import com.game.community.model.entity.game.GameCatalog;
 import com.game.community.model.entity.game.GameChartSnapshot;
+import com.game.community.model.payload.steam.SteamChartGamePayload;
+import com.game.community.model.payload.steam.SteamPricePayload;
 import com.game.community.model.vo.game.GameChartItemVO;
+import com.game.community.model.vo.game.GamePriceVO;
 import com.game.community.model.vo.game.GameListItemVO;
-import com.game.community.steam.client.SteamStoreClient;
+import com.game.community.steam.client.SteamChartClient;
 import com.game.community.steam.mapper.GameCatalogMapper;
 import com.game.community.steam.mapper.GameChartSnapshotMapper;
 import com.game.community.steam.service.GameCatalogService;
@@ -41,7 +44,7 @@ import java.util.concurrent.TimeUnit;
 public class GameChartServiceImpl implements GameChartService {
 
     private static final ZoneId SHANGHAI = ZoneId.of("Asia/Shanghai");
-    private final SteamStoreClient steamStoreClient;
+    private final SteamChartClient steamChartClient;
     private final GameCatalogService gameCatalogService;
     private final GameCatalogMapper gameCatalogMapper;
     private final GameChartSnapshotMapper gameChartSnapshotMapper;
@@ -131,11 +134,12 @@ public class GameChartServiceImpl implements GameChartService {
     }
 
     /** 分批拉取榜单轻量数据，限制总量并去重，所有 Steam 调用只发生在定时任务中。 */
+    /** 分批抓取榜单轻量数据，避免在榜单同步中请求完整详情。 */
     private List<GameListItemVO> fetchChartGamesInBatches(String board) {
         Map<Long, GameListItemVO> games = new LinkedHashMap<>();
         for (int start = 0; start < SteamApiConstants.CHART_LIMIT;
              start += SteamApiConstants.CHART_BATCH_SIZE) {
-            List<GameListItemVO> batch = steamStoreClient.fetchChartGames(
+            List<SteamChartGamePayload> batch = steamChartClient.fetchChartGames(
                     board, start, SteamApiConstants.CHART_BATCH_SIZE);
             if (batch.isEmpty()) {
                 break;
@@ -143,6 +147,7 @@ public class GameChartServiceImpl implements GameChartService {
             int previousSize = games.size();
             batch.stream()
                     .filter(game -> game != null && game.getAppId() != null && game.getAppId() > 0)
+                    .map(this::toListItemVO)
                     .forEach(game -> games.putIfAbsent(game.getAppId(), game));
             if (games.size() == previousSize) {
                 // Steam 某些榜单在末页可能重复返回上一页；此时视为分页结束，
@@ -154,6 +159,32 @@ public class GameChartServiceImpl implements GameChartService {
             }
         }
         return new ArrayList<>(games.values());
+    }
+
+    /** 将 Steam 榜单 payload 转成统一游戏列表项。 */
+    private GameListItemVO toListItemVO(SteamChartGamePayload payload) {
+        GameListItemVO target = new GameListItemVO();
+        target.setAppId(payload.getAppId());
+        target.setName(payload.getName());
+        target.setCoverUrl(payload.getCoverUrl());
+        target.setPrice(toPriceVO(payload.getPrice()));
+        return target;
+    }
+
+    /** 将 Steam 价格 payload 转成对外价格 VO。 */
+    private GamePriceVO toPriceVO(SteamPricePayload payload) {
+        if (payload == null) {
+            return null;
+        }
+        GamePriceVO target = new GamePriceVO();
+        target.setFree(payload.getFree());
+        target.setCurrency(payload.getCurrency());
+        target.setInitial(payload.getInitial());
+        target.setFinalPrice(payload.getFinalPrice());
+        target.setDiscountPercent(payload.getDiscountPercent());
+        target.setDiscountEndAt(payload.getDiscountEndAt());
+        target.setFormatted(payload.getFormatted());
+        return target;
     }
 
     /** 在事务内写入新快照并原子切换当前版本，避免用户读到半成品榜单。 */

@@ -11,7 +11,6 @@ import com.game.community.model.vo.game.SteamLibrarySyncVO;
 import com.game.community.steam.config.SteamProperties;
 import com.game.community.steam.service.SteamService;
 import jakarta.validation.Valid;
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -24,7 +23,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.view.RedirectView;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -47,21 +45,11 @@ public class SteamBindController {
 
     /** 接收 Steam OpenID 回调并将结果重定向回前端。 */
     @GetMapping("/callback")
-    public RedirectView callback(HttpServletRequest request,
-                                 @RequestParam(value = "state", required = false) String state) {
+    public RedirectView callback(@RequestParam Map<String, String> params) {
         String redirectBase = steamProperties.getFrontendRedirect();
         String separator = redirectBase.contains("?") ? "&" : "?";
         try {
-            SteamCallbackDTO callback = new SteamCallbackDTO();
-            callback.setState(state);
-            Map<String, String> params = new HashMap<>();
-            request.getParameterMap().forEach((key, values) -> {
-                if (values != null && values.length > 0) {
-                    params.put(key, values[0]);
-                }
-            });
-            callback.setOpenIdParams(params);
-            steamService.callback(callback);
+            steamService.callback(new SteamCallbackDTO(params.get("state"), params));
             return new RedirectView(redirectBase + separator + "steam=success");
         } catch (Exception e) {
             log.warn("Steam 绑定回调处理失败", e);

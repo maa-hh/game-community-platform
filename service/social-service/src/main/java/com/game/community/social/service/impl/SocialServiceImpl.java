@@ -98,7 +98,7 @@ public class SocialServiceImpl implements SocialService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long addComment(Long userId, AddCommentDTO dto) {
-        ArticleListVO article = requireArticle(dto.getInternalArticleId());
+        ArticleListVO article = requirePublishedArticle(dto.getInternalArticleId());
         assertArticleInteractionAllowed(userId, article);
         if (!dfaAuditUtils.pass(dto.getContent())) {
             throw new BusinessException("评论包含敏感内容");
@@ -190,7 +190,7 @@ public class SocialServiceImpl implements SocialService {
     @Transactional(rollbackFor = Exception.class)
     public Long addReply(Long userId, AddReplyDTO dto) {
         SocialComment comment = requireComment(dto.getCommentId());
-            ArticleListVO article = requireArticle(comment.getArticleId());
+        ArticleListVO article = requirePublishedArticle(comment.getArticleId());
         assertArticleInteractionAllowed(userId, article);
         assertUserInteractionAllowed(userId, comment.getUserId());
         if (!dfaAuditUtils.pass(dto.getContent())) {
@@ -340,7 +340,7 @@ public class SocialServiceImpl implements SocialService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void likeArticle(Long userId, Long articleId) {
-        ArticleListVO article = requireArticle(articleId);
+        ArticleListVO article = requirePublishedArticle(articleId);
         assertArticleInteractionAllowed(userId, article);
         SocialArticleLike like = new SocialArticleLike();
         like.setArticleId(articleId);
@@ -370,7 +370,7 @@ public class SocialServiceImpl implements SocialService {
     @Transactional(rollbackFor = Exception.class)
     public void likeComment(Long userId, Long commentId) {
         SocialComment comment = requireComment(commentId);
-        ArticleListVO article = requireArticle(comment.getArticleId());
+        ArticleListVO article = requirePublishedArticle(comment.getArticleId());
         assertArticleInteractionAllowed(userId, article);
         assertUserInteractionAllowed(userId, comment.getUserId());
         SocialCommentLike like = new SocialCommentLike();
@@ -409,7 +409,7 @@ public class SocialServiceImpl implements SocialService {
     @Transactional(rollbackFor = Exception.class)
     public void likeReply(Long userId, Long replyId) {
         SocialReply reply = requireReply(replyId);
-        ArticleListVO article = requireArticle(reply.getArticleId());
+        ArticleListVO article = requirePublishedArticle(reply.getArticleId());
         assertArticleInteractionAllowed(userId, article);
         assertUserInteractionAllowed(userId, reply.getUserId());
         if (reply.getReplyToUserId() != null) {
@@ -471,7 +471,7 @@ public class SocialServiceImpl implements SocialService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ArticleListVO viewArticle(Long userId, Long articleId) {
-        ArticleListVO article = requireArticle(articleId);
+        ArticleListVO article = requirePublishedArticle(articleId);
         ensureArticleStats(articleId);
         SocialBrowseHistory history = new SocialBrowseHistory();
         history.setUserId(userId);
@@ -567,7 +567,6 @@ public class SocialServiceImpl implements SocialService {
                 })
                 .filter(article -> article != null
                         && Objects.equals(article.getStatus(), ContentConstants.ArticleStatus.PUBLISHED))
-                .filter(Objects::nonNull)
                 .toList();
         return PageResult.of(records, current, pageSize, result.getTotal());
     }
@@ -736,7 +735,7 @@ public class SocialServiceImpl implements SocialService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void favoriteArticle(Long userId, Long articleId) {
-        ArticleListVO article = requireArticle(articleId);
+        ArticleListVO article = requirePublishedArticle(articleId);
         assertArticleInteractionAllowed(userId, article);
         SocialFavorite favorite = new SocialFavorite();
         favorite.setArticleId(articleId);
@@ -788,7 +787,6 @@ public class SocialServiceImpl implements SocialService {
                 })
                 .filter(article -> article != null
                         && Objects.equals(article.getStatus(), ContentConstants.ArticleStatus.PUBLISHED))
-                .filter(Objects::nonNull)
                 .toList();
         return PageResult.of(records, current, pageSize, result.getTotal());
     }
@@ -796,7 +794,7 @@ public class SocialServiceImpl implements SocialService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void shareArticle(Long userId, Long articleId, ShareArticleDTO dto) {
-        ArticleListVO article = requireArticle(articleId);
+        ArticleListVO article = requirePublishedArticle(articleId);
         assertArticleInteractionAllowed(userId, article);
         if (dto != null && StringUtils.hasText(dto.getChannel())
                 && !SHARE_CHANNELS.contains(dto.getChannel().trim())) {
@@ -1287,10 +1285,6 @@ public class SocialServiceImpl implements SocialService {
             return false;
         }
         return blackRelationChecker.hasRelation(leftUserId, rightUserId);
-    }
-
-    private ArticleListVO requireArticle(Long articleId) {
-        return requirePublishedArticle(articleId);
     }
 
     private ArticleListVO requirePublishedArticle(Long articleId) {

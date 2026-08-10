@@ -378,7 +378,7 @@ public interface SocialCommentContentRepository extends MongoRepository<SocialCo
 @Transactional(rollbackFor = Exception.class)
 public Long addComment(Long userId, AddCommentDTO dto) {
     // 1. 验证文章存在性
-    Article article = requireArticle(dto.getArticleId());
+    Article article = requirePublishedArticle(dto.getArticleId());
     // 2. 黑名单检查（用户与文章作者之间是否存在黑名单关系）
     assertArticleInteractionAllowed(userId, article);
     // 3. DFA 敏感词审核
@@ -528,7 +528,7 @@ public Long addReply(Long userId, AddReplyDTO dto) {
     // 1. 验证评论存在
     SocialComment comment = requireComment(dto.getCommentId());
     // 2. 验证文章存在
-    Article article = requireArticle(comment.getArticleId());
+    Article article = requirePublishedArticle(comment.getArticleId());
     // 3. 黑名单检查：与文章作者 + 评论作者
     assertArticleInteractionAllowed(userId, article);
     assertUserInteractionAllowed(userId, comment.getUserId());
@@ -607,7 +607,7 @@ public Long addReply(Long userId, AddReplyDTO dto) {
 @Override
 @Transactional(rollbackFor = Exception.class)
 public void likeArticle(Long userId, Long articleId) {
-    Article article = requireArticle(articleId);
+    Article article = requirePublishedArticle(articleId);
     assertArticleInteractionAllowed(userId, article);  // 黑名单检查
     SocialArticleLike like = new SocialArticleLike();
     like.setArticleId(articleId);
@@ -726,7 +726,7 @@ private interface InsertAction {
 @Override
 @Transactional(rollbackFor = Exception.class)
 public Article viewArticle(Long userId, Long articleId) {
-    Article article = requireArticle(articleId);
+    Article article = requirePublishedArticle(articleId);
     ensureArticleStats(articleId);
     SocialBrowseHistory history = new SocialBrowseHistory();
     history.setUserId(userId);
@@ -1429,7 +1429,7 @@ sequenceDiagram
 
     C->>SC: POST /social/comment
     SC->>S: addComment(userId, dto)
-    S->>S: requireArticle() - Feign 调用 content-service
+    S->>S: requirePublishedArticle() - Feign 调用 content-service
     S->>S: assertArticleInteractionAllowed() - 黑名单检查
     S->>S: dfaAuditUtils.pass() - 敏感词审核
     S->>S: currentUser() - Feign 调用 user-service

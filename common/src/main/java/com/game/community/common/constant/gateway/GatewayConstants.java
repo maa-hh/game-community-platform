@@ -55,6 +55,7 @@ public class GatewayConstants {
             "/category/",
             "/social/comment/",
             "/social/reply/",
+            "/social/game-reviews/",
             "/social/article/count",
             "/social/article/counts",
             "/social/like/article/check/",

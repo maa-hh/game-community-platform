@@ -8,6 +8,7 @@ import com.game.community.common.constant.steam.SteamRedisConstants;
 import com.game.community.common.exception.BusinessException;
 import com.game.community.feign.ContentFeignClient;
 import com.game.community.model.base.Result;
+import com.game.community.steam.client.SteamChartClient;
 import com.game.community.steam.client.SteamStoreClient;
 import com.game.community.steam.event.GameSearchIndexProducer;
 import com.game.community.steam.mapper.GameCatalogMapper;
@@ -17,12 +18,21 @@ import com.game.community.model.dto.game.GamePageQuery;
 import com.game.community.model.dto.game.GameSearchQuery;
 import com.game.community.model.dto.steam.SteamAppSearchQuery;
 import com.game.community.model.entity.game.GameCatalog;
+import com.game.community.model.enums.game.GameCatalogRefreshStatus;
+import com.game.community.model.enums.game.GameCatalogStatus;
+import com.game.community.model.mongo.SteamGameDetail;
+import com.game.community.model.payload.steam.SteamChartGamePayload;
+import com.game.community.model.payload.steam.SteamGameBasicPayload;
+import com.game.community.model.payload.steam.SteamGameDetailsPayload;
+import com.game.community.model.payload.steam.SteamPricePayload;
 import com.game.community.model.vo.game.GameDetailVO;
 import com.game.community.model.vo.game.GameAchievementVO;
 import com.game.community.model.vo.game.GameListItemVO;
+import com.game.community.model.vo.game.GameMovieVO;
 import com.game.community.model.vo.game.GameMetacriticVO;
 import com.game.community.model.vo.game.GamePriceVO;
 import com.game.community.model.vo.game.GameRatingStatsVO;
+import com.game.community.model.vo.game.GameScreenshotVO;
 import com.game.community.model.vo.game.GameTagVO;
 import com.game.community.steam.service.GameCatalogService;
 import com.game.community.steam.service.SteamGameDetailService;
@@ -54,6 +64,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
 
     private final GameCatalogMapper gameCatalogMapper;
     private final SteamStoreClient steamStoreClient;
+    private final SteamChartClient steamChartClient;
     private final ContentFeignClient contentFeignClient;
     private final GameReviewMapper gameReviewMapper;
     private final RedisUtils redisUtils;
@@ -74,6 +85,15 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         if (StringUtils.hasText(cached)) {
             try {
                 GameDetailVO cachedDetail = objectMapper.readValue(cached, GameDetailVO.class);
+                if (Boolean.FALSE.equals(cachedDetail.getDetailReady())) {
+                    // 待补全快照不能缓存五分钟，否则后台完成后轮询仍会反复读到旧状态。
+                    redisUtils.del(cacheKey);
+                    cachedDetail.setAchievementHighlights(
+                            normalizeAchievementIcons(cachedDetail.getAchievementHighlights()));
+                    steamCatalogMetricsRefreshService.refreshIfStaleAsync(List.of(appId));
+                    steamGameDetailRefreshService.refresh(appId);
+                    return cachedDetail;
+                }
                 // 旧版本缓存只包含价格和目录字段，不能继续把它当成完整详情返回。
                 // 删除后走数据库/Mongo 合并逻辑，避免用户一直看到空的介绍和统计。
                 if (!isIncompleteDetail(cachedDetail)) {
@@ -102,7 +122,9 @@ public class GameCatalogServiceImpl implements GameCatalogService {
             log.warn("读取 Steam Mongo 富详情失败，继续使用结构化索引: appId={}", appId, e);
         }
         detail.setAchievementHighlights(normalizeAchievementIcons(detail.getAchievementHighlights()));
-        cacheGameDetail(appId, detail);
+        if (!Boolean.FALSE.equals(detail.getDetailReady())) {
+            cacheGameDetail(appId, detail);
+        }
         return detail;
     }
 
@@ -153,7 +175,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
             if (hasBasicInfo(existing)) {
                 return;
             }
-            GameCatalog basic = readBasicInfoCache(appId);
+            SteamGameBasicPayload basic = readBasicInfoCache(appId);
             if (basic == null) {
                 basic = steamStoreClient.fetchBasicAppInfo(appId);
                 cacheBasicInfo(appId, basic);
@@ -179,6 +201,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         }
     }
 
+    /** 触发一批游戏的价格和 Steam 评价指标懒更新。 */
     @Override
     public void refreshMetricsPriceAsync(List<Long> appIds) {
         steamCatalogMetricsRefreshService.refreshIfStaleAsync(appIds);
@@ -195,7 +218,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         return ids.stream()
                 .map(catalogMap::get)
                 .filter(Objects::nonNull)
-                .filter(catalog -> Integer.valueOf(1).equals(catalog.getStatus()))
+                .filter(catalog -> Integer.valueOf(GameCatalogStatus.ENABLED.getCode()).equals(catalog.getStatus()))
                 .map(this::toListItemVO)
                 .toList();
     }
@@ -214,16 +237,18 @@ public class GameCatalogServiceImpl implements GameCatalogService {
             catalog.setAppId(game.getAppId());
             catalog.setCreateTime(now);
             catalog.setDetailReady(false);
-            catalog.setStatus(1);
-            catalog.setRefreshStatus("BASIC_READY");
+            catalog.setStatus(GameCatalogStatus.ENABLED.getCode());
+            catalog.setRefreshStatus(GameCatalogRefreshStatus.BASIC_READY.getCode());
             // 数据库要求两个时间字段非空，但基础卡片还没有真正拉取指标/价格。
             // 写入过期时间，让后续卡片懒更新或启动批处理立即接管。
-            LocalDateTime pendingRefreshAt = now.minusDays(1).minusMinutes(1);
+            LocalDateTime pendingRefreshAt = now.minusDays(GameCatalogConstants.METRICS_TTL_DAYS)
+                    .minusMinutes(GameCatalogConstants.REFRESH_GRACE_MINUTES);
             catalog.setMetricsSyncedAt(pendingRefreshAt);
             catalog.setPriceSyncedAt(pendingRefreshAt);
             // 基础卡片没有富详情，设置为过期状态，进入详情时由七天懒更新流程接管。
-            catalog.setRichSyncedAt(now.minusDays(7).minusMinutes(1));
-            catalog.setNextRefreshAt(now.minusMinutes(1));
+            catalog.setRichSyncedAt(now.minusDays(GameCatalogConstants.STALE_DAYS)
+                    .minusMinutes(GameCatalogConstants.REFRESH_GRACE_MINUTES));
+            catalog.setNextRefreshAt(now.minusMinutes(GameCatalogConstants.REFRESH_GRACE_MINUTES));
         }
         if (StringUtils.hasText(game.getName())) {
             catalog.setSteamName(game.getName());
@@ -243,7 +268,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         catalog.setLastRefreshAttemptAt(now);
         catalog.setUpdateTime(now);
         if (catalog.getStatus() == null) {
-            catalog.setStatus(1);
+            catalog.setStatus(GameCatalogStatus.ENABLED.getCode());
         }
         if (newCatalog) {
             gameCatalogMapper.insert(catalog);
@@ -296,6 +321,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         String lower = url.toLowerCase();
         return lower.contains("capsule_sm_120")
                 || lower.contains("capsule_231x87")
+                || lower.contains("capsule_184x69")
                 || lower.contains("small_capsule")
                 || lower.contains("/logo")
                 || lower.contains("/icon");
@@ -305,17 +331,18 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         return catalog != null
                 && StringUtils.hasText(catalog.getSteamName())
                 && StringUtils.hasText(catalog.getHeaderImage())
+                && !isLowResolutionCover(catalog.getHeaderImage())
                 && StringUtils.hasText(catalog.getNameZh())
                 && StringUtils.hasText(catalog.getNameEn());
     }
 
-    private GameCatalog readBasicInfoCache(Long appId) {
+    private SteamGameBasicPayload readBasicInfoCache(Long appId) {
         String cached = redisUtils.get(SteamRedisConstants.GAME_BASIC_INFO_KEY_PREFIX + appId);
         if (!StringUtils.hasText(cached)) {
             return null;
         }
         try {
-            return objectMapper.readValue(cached, GameCatalog.class);
+            return objectMapper.readValue(cached, SteamGameBasicPayload.class);
         } catch (JsonProcessingException e) {
             log.warn("解析游戏基础信息缓存失败: appId={}", appId);
             redisUtils.del(SteamRedisConstants.GAME_BASIC_INFO_KEY_PREFIX + appId);
@@ -323,7 +350,8 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         }
     }
 
-    private void cacheBasicInfo(Long appId, GameCatalog basic) {
+    /** 将 Steam 基础信息 payload 写入 Redis，供并发请求复用。 */
+    private void cacheBasicInfo(Long appId, SteamGameBasicPayload basic) {
         try {
             redisUtils.set(
                     SteamRedisConstants.GAME_BASIC_INFO_KEY_PREFIX + appId,
@@ -335,50 +363,66 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         }
     }
 
-    private GameCatalog saveBasicInfo(GameCatalog existing, GameCatalog basic) {
+    /** 保存或合并 Steam 基础信息，并保留后续懒更新的时间状态。 */
+    private GameCatalog saveBasicInfo(GameCatalog existing, SteamGameBasicPayload basic) {
         LocalDateTime now = LocalDateTime.now();
         if (existing == null) {
-            basic.setCreateTime(now);
-            basic.setUpdateTime(now);
-            LocalDateTime pendingRefreshAt = now.minusDays(1).minusMinutes(1);
-            if (basic.getMetricsSyncedAt() == null) {
-                basic.setMetricsSyncedAt(pendingRefreshAt);
-            }
-            if (basic.getPriceSyncedAt() == null) {
-                basic.setPriceSyncedAt(pendingRefreshAt);
-            }
-            if (basic.getRichSyncedAt() == null) {
-                basic.setRichSyncedAt(now.minusDays(7).minusMinutes(1));
-            }
-            if (basic.getNextRefreshAt() == null) {
-                basic.setNextRefreshAt(now.minusMinutes(1));
-            }
-            gameCatalogMapper.insert(basic);
-            return basic;
+            GameCatalog created = toCatalog(basic);
+            created.setCreateTime(now);
+            created.setUpdateTime(now);
+            LocalDateTime pendingRefreshAt = now.minusDays(GameCatalogConstants.METRICS_TTL_DAYS)
+                    .minusMinutes(GameCatalogConstants.REFRESH_GRACE_MINUTES);
+            created.setMetricsSyncedAt(pendingRefreshAt);
+            created.setPriceSyncedAt(pendingRefreshAt);
+            created.setRichSyncedAt(now.minusDays(GameCatalogConstants.STALE_DAYS)
+                    .minusMinutes(GameCatalogConstants.REFRESH_GRACE_MINUTES));
+            created.setNextRefreshAt(now.minusMinutes(GameCatalogConstants.REFRESH_GRACE_MINUTES));
+            gameCatalogMapper.insert(created);
+            return created;
         }
-        existing.setSteamName(basic.getSteamName());
-        existing.setNameZh(basic.getNameZh());
-        existing.setNameEn(basic.getNameEn());
+        mergeBasicFields(existing, basic);
         if (!StringUtils.hasText(existing.getDisplayName())) {
             existing.setDisplayName(basic.getDisplayName());
         }
-        existing.setHeaderImage(basic.getHeaderImage());
-        existing.setDevelopers(basic.getDevelopers());
-        existing.setPublishers(basic.getPublishers());
-        existing.setGenres(basic.getGenres());
-        existing.setReleaseDate(basic.getReleaseDate());
-        existing.setSteamUrl(basic.getSteamUrl());
-        existing.setSteamIsFree(basic.getSteamIsFree());
         existing.setStatus(existing.getStatus() == null ? 1 : existing.getStatus());
-        existing.setSteamSyncedAt(basic.getSteamSyncedAt());
-        existing.setStaticSyncedAt(basic.getStaticSyncedAt());
-        existing.setLastRefreshAttemptAt(basic.getLastRefreshAttemptAt());
+        existing.setSteamSyncedAt(now);
+        existing.setStaticSyncedAt(now);
+        existing.setLastRefreshAttemptAt(now);
         if (existing.getDetailReady() == null) {
             existing.setDetailReady(false);
         }
         existing.setUpdateTime(now);
         gameCatalogMapper.updateById(existing);
         return existing;
+    }
+
+    /** 将 Steam 基础信息 payload 转换为游戏目录实体。 */
+    private GameCatalog toCatalog(SteamGameBasicPayload source) {
+        GameCatalog target = new GameCatalog();
+        mergeBasicFields(target, source);
+        target.setStatus(GameCatalogStatus.ENABLED.getCode());
+        target.setDetailReady(false);
+        target.setRefreshStatus(GameCatalogRefreshStatus.BASIC_READY.getCode());
+        target.setSteamSyncedAt(LocalDateTime.now());
+        target.setStaticSyncedAt(LocalDateTime.now());
+        target.setLastRefreshAttemptAt(LocalDateTime.now());
+        return target;
+    }
+
+    /** 将 Steam 基础字段合并到游戏目录，不处理价格、评价等动态指标。 */
+    private void mergeBasicFields(GameCatalog target, SteamGameBasicPayload source) {
+        target.setAppId(source.getAppId());
+        target.setSteamName(source.getSteamName());
+        target.setNameZh(source.getNameZh());
+        target.setNameEn(source.getNameEn());
+        target.setDisplayName(source.getDisplayName());
+        target.setHeaderImage(source.getHeaderImage());
+        target.setDevelopers(source.getDevelopers());
+        target.setPublishers(source.getPublishers());
+        target.setGenres(source.getGenres());
+        target.setReleaseDate(source.getReleaseDate());
+        target.setSteamUrl(source.getSteamUrl());
+        target.setSteamIsFree(source.getSteamIsFree());
     }
 
     private void cacheGameDetail(Long appId, GameDetailVO detail) {
@@ -396,38 +440,15 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         }
     }
 
-    private void evictGameDetailCache(Long appId) {
-        if (appId != null) {
-            redisUtils.del(SteamRedisConstants.GAME_DETAIL_KEY_PREFIX + appId);
-        }
-    }
-
     private GameDetailVO loadDetailFromStore(Long appId) {
         GameCatalog catalog = gameCatalogMapper.selectById(appId);
         if (catalog != null && Boolean.TRUE.equals(catalog.getDetailReady()) && !isStale(catalog)) {
             var richDetail = steamGameDetailService.find(appId);
             if (steamGameDetailService.needsRefresh(richDetail)) {
-                // 旧版本曾把富详情写成空 Mongo 文档；首次再次进入详情时同步修复，
-                // 避免页面先返回一个空介绍、只能等用户第二次打开才能看到内容。
-                try {
-                    GameCatalog fetched = steamStoreClient.fetchAppDetails(appId);
-                    mergeSteamData(catalog, fetched);
-                    catalog.setUpdateTime(LocalDateTime.now());
-                    gameCatalogMapper.updateById(catalog);
-                    steamGameDetailService.saveFromCatalog(catalog);
-                    gameSearchIndexProducer.upsertCatalog(catalog);
-                    return toDetailVO(catalog);
-                } catch (Exception e) {
-                    log.warn("修复游戏富详情失败，返回旧快照并异步重试: appId={}", appId, e);
-                    steamGameDetailRefreshService.refresh(appId);
-                }
+                // 外部 Steam 接口不再阻塞详情请求；先返回本地快照，后台完成后清缓存。
+                steamGameDetailRefreshService.refresh(appId);
             }
-            if (needsReviewSync(catalog)) {
-                syncReviewSummary(catalog);
-                catalog.setUpdateTime(LocalDateTime.now());
-                gameCatalogMapper.updateById(catalog);
-                gameSearchIndexProducer.upsertCatalog(catalog);
-            }
+            steamCatalogMetricsRefreshService.refreshIfStaleAsync(List.of(appId));
             return toDetailVO(catalog);
         }
         if (catalog != null && isStale(catalog)
@@ -436,21 +457,18 @@ public class GameCatalogServiceImpl implements GameCatalogService {
             steamGameDetailRefreshService.refresh(appId);
             return toDetailVO(catalog);
         }
-        if (catalog == null || !Boolean.TRUE.equals(catalog.getDetailReady())) {
-            GameCatalog fetched = steamStoreClient.fetchAppDetails(appId);
-            if (catalog == null) {
-                fetched.setCreateTime(LocalDateTime.now());
-                fetched.setUpdateTime(LocalDateTime.now());
-                gameCatalogMapper.insert(fetched);
-                catalog = fetched;
-            } else {
-                mergeSteamData(catalog, fetched);
-                catalog.setSteamSyncedAt(LocalDateTime.now());
-                catalog.setUpdateTime(LocalDateTime.now());
-                gameCatalogMapper.updateById(catalog);
-            }
+        if (catalog != null && !Boolean.TRUE.equals(catalog.getDetailReady())) {
+            // 榜单/搜索已经入库的游戏先返回基础字段，避免首次进入同步等待 Steam 超时。
+            steamGameDetailRefreshService.refresh(appId);
+            steamCatalogMetricsRefreshService.refreshIfStaleAsync(List.of(appId));
+            return toDetailVO(catalog);
+        }
+        if (catalog == null) {
+            SteamGameDetailsPayload fetched = steamStoreClient.fetchAppDetails(appId);
+            catalog = toCatalog(fetched);
+            gameCatalogMapper.insert(catalog);
             try {
-                steamGameDetailService.saveFromCatalog(catalog);
+                steamGameDetailService.save(fetched);
             } catch (Exception e) {
                 log.warn("保存 Steam Mongo 富详情失败: appId={}", appId, e);
             }
@@ -468,7 +486,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         long pageSize = resolved.getSize() == null || resolved.getSize() < 1
                 ? 20 : Math.min(resolved.getSize(), 50);
         LambdaQueryWrapper<GameCatalog> wrapper = new LambdaQueryWrapper<GameCatalog>()
-                .eq(GameCatalog::getStatus, 1);
+                .eq(GameCatalog::getStatus, GameCatalogStatus.ENABLED.getCode());
         applySort(wrapper, resolved.getSort());
         Page<GameCatalog> result = gameCatalogMapper.selectPage(new Page<>(pageNo, pageSize), wrapper);
         List<GameListItemVO> records = result.getRecords().stream().map(this::toListItemVO).toList();
@@ -489,7 +507,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         long pageSize = resolved.getSize() == null || resolved.getSize() < 1
                 ? 20 : Math.min(resolved.getSize(), 50);
         LambdaQueryWrapper<GameCatalog> wrapper = new LambdaQueryWrapper<GameCatalog>()
-                .eq(GameCatalog::getStatus, 1)
+                .eq(GameCatalog::getStatus, GameCatalogStatus.ENABLED.getCode())
                 .and(w -> w.like(GameCatalog::getDisplayName, q)
                         .or()
                         .like(GameCatalog::getNameZh, q)
@@ -514,7 +532,9 @@ public class GameCatalogServiceImpl implements GameCatalogService {
                 ? 0 : query.getStart();
         int size = query.getSize() == null || query.getSize() < 1
                 ? 20 : Math.min(query.getSize(), 50);
-        return steamStoreClient.searchApps(query.getKeyword(), start, size);
+        return steamChartClient.searchApps(query.getKeyword(), start, size).stream()
+                .map(this::toListItemVO)
+                .toList();
     }
 
     /** 为搜索服务提供固定 hot 排序的游戏目录分页数据。 */
@@ -573,6 +593,32 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         return vo;
     }
 
+    /** 将 Steam 搜索或榜单 payload 转成游戏卡片 VO。 */
+    private GameListItemVO toListItemVO(SteamChartGamePayload payload) {
+        GameListItemVO vo = new GameListItemVO();
+        vo.setAppId(payload.getAppId());
+        vo.setName(payload.getName());
+        vo.setCoverUrl(payload.getCoverUrl());
+        vo.setPrice(toPriceVO(payload.getPrice()));
+        return vo;
+    }
+
+    /** 将 Steam 价格 payload 转成卡片价格 VO。 */
+    private GamePriceVO toPriceVO(SteamPricePayload payload) {
+        if (payload == null) {
+            return null;
+        }
+        GamePriceVO vo = new GamePriceVO();
+        vo.setFree(payload.getFree());
+        vo.setCurrency(payload.getCurrency());
+        vo.setInitial(payload.getInitial());
+        vo.setFinalPrice(payload.getFinalPrice());
+        vo.setDiscountPercent(payload.getDiscountPercent());
+        vo.setDiscountEndAt(payload.getDiscountEndAt());
+        vo.setFormatted(payload.getFormatted());
+        return vo;
+    }
+
     private String firstOf(List<String> values) {
         if (values == null || values.isEmpty()) {
             return null;
@@ -606,7 +652,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
             catalog.setDiscussCount(count == null ? 0 : count);
             catalog.setUpdateTime(now);
             gameCatalogMapper.updateById(catalog);
-            evictGameDetailCache(appId);
+            redisUtils.del(SteamRedisConstants.GAME_DETAIL_KEY_PREFIX + appId);
             gameSearchIndexProducer.upsert(toListItemVO(catalog));
         }
     }
@@ -663,27 +709,6 @@ public class GameCatalogServiceImpl implements GameCatalogService {
                 ? catalog.getDisplayName() : catalog.getSteamName();
     }
 
-    private boolean needsReviewSync(GameCatalog catalog) {
-        return catalog.getSteamReviewCount() == null;
-    }
-
-    private void syncReviewSummary(GameCatalog catalog) {
-        SteamStoreClient.SteamReviewSummary summary =
-                steamStoreClient.fetchReviewSummary(catalog.getAppId());
-        if (summary == null) {
-            return;
-        }
-        if (summary.positivePercent() != null) {
-            catalog.setSteamReviewScore(summary.positivePercent());
-        }
-        if (summary.totalReviews() != null) {
-            catalog.setSteamReviewCount(summary.totalReviews());
-        }
-        catalog.setMetricsSyncedAt(LocalDateTime.now());
-        catalog.setLastRefreshAttemptAt(LocalDateTime.now());
-        catalog.setRefreshStatus("READY");
-    }
-
     private boolean isStale(GameCatalog catalog) {
         if (catalog.getSteamSyncedAt() == null) {
             return true;
@@ -691,7 +716,8 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         return catalog.getSteamSyncedAt().isBefore(LocalDateTime.now().minusDays(GameCatalogConstants.STALE_DAYS));
     }
 
-    private void mergeRichDetail(GameDetailVO target, com.game.community.model.mongo.SteamGameDetail rich) {
+    /** 将 Mongo 富详情子文档合并到对外详情 VO。 */
+    private void mergeRichDetail(GameDetailVO target, SteamGameDetail rich) {
         if (target == null || rich == null) {
             return;
         }
@@ -702,10 +728,22 @@ public class GameCatalogServiceImpl implements GameCatalogService {
             target.setAboutHtml(rich.getSteamAboutHtml());
         }
         if (rich.getScreenshots() != null && !rich.getScreenshots().isEmpty()) {
-            target.setScreenshots(rich.getScreenshots());
+            target.setScreenshots(rich.getScreenshots().stream().map(item -> {
+                GameScreenshotVO screenshot = new GameScreenshotVO();
+                screenshot.setFullUrl(item.getFullUrl());
+                screenshot.setThumbnailUrl(item.getThumbnailUrl());
+                return screenshot;
+            }).toList());
         }
         if (rich.getMovies() != null && !rich.getMovies().isEmpty()) {
-            target.setMovies(rich.getMovies());
+            target.setMovies(rich.getMovies().stream().map(item -> {
+                GameMovieVO movie = new GameMovieVO();
+                movie.setName(item.getName());
+                movie.setThumbnailUrl(item.getThumbnailUrl());
+                movie.setMp4Url(item.getMp4Url());
+                movie.setWebmUrl(item.getWebmUrl());
+                return movie;
+            }).toList());
         }
         if (rich.getCategories() != null && !rich.getCategories().isEmpty()) {
             target.setCategories(rich.getCategories());
@@ -720,7 +758,16 @@ public class GameCatalogServiceImpl implements GameCatalogService {
             target.setAchievementTotal(rich.getAchievementTotal());
         }
         if (rich.getAchievementHighlights() != null && !rich.getAchievementHighlights().isEmpty()) {
-            target.setAchievementHighlights(normalizeAchievementIcons(rich.getAchievementHighlights()));
+            target.setAchievementHighlights(normalizeAchievementIcons(rich.getAchievementHighlights().stream()
+                    .map(item -> {
+                        GameAchievementVO achievement = new GameAchievementVO();
+                        achievement.setApiName(item.getApiName());
+                        achievement.setName(item.getName());
+                        achievement.setDescription(item.getDescription());
+                        achievement.setIconUrl(item.getIconUrl());
+                        achievement.setGlobalPercent(item.getGlobalPercent());
+                        return achievement;
+                    }).toList()));
         }
         if (StringUtils.hasText(rich.getPcRequirementsMin())) {
             target.setPcRequirementsMin(rich.getPcRequirementsMin());
@@ -746,6 +793,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         }).toList();
     }
 
+    /** 判断详情缓存是否缺少介绍、截图、视频或成就等关键富字段。 */
     private boolean isIncompleteDetail(GameDetailVO detail) {
         if (detail == null) {
             return true;
@@ -759,30 +807,14 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         return !hasDescription || !hasSupplement;
     }
 
-    private void mergeSteamData(GameCatalog existing, GameCatalog fetched) {
-        existing.setSteamName(fetched.getSteamName());
-        if (StringUtils.hasText(fetched.getNameZh())) {
-            existing.setNameZh(fetched.getNameZh());
-        }
-        if (StringUtils.hasText(fetched.getNameEn())) {
-            existing.setNameEn(fetched.getNameEn());
-        }
-        if (!StringUtils.hasText(existing.getDisplayName())) {
-            existing.setDisplayName(fetched.getDisplayName());
-        }
-        existing.setSteamShortDesc(fetched.getSteamShortDesc());
-        existing.setSteamAboutHtml(fetched.getSteamAboutHtml());
-        existing.setHeaderImage(fetched.getHeaderImage());
-        existing.setDevelopers(fetched.getDevelopers());
-        existing.setPublishers(fetched.getPublishers());
-        existing.setGenres(fetched.getGenres());
-        existing.setReleaseDate(fetched.getReleaseDate());
-        existing.setSteamUrl(fetched.getSteamUrl());
+    /** 将 Steam 详情中的目录字段、价格和评价指标合并到已有实体。 */
+    private void mergeSteamData(GameCatalog existing, SteamGameDetailsPayload fetched) {
+        mergeBasicFields(existing, fetched);
         if (!StringUtils.hasText(existing.getDescSource())) {
             existing.setDescSource(GameCatalogConstants.DESC_SOURCE_COMMUNITY_FIRST);
         }
         if (existing.getStatus() == null) {
-            existing.setStatus(1);
+            existing.setStatus(GameCatalogStatus.ENABLED.getCode());
         }
         if (fetched.getSteamReviewScore() != null) {
             existing.setSteamReviewScore(fetched.getSteamReviewScore());
@@ -790,9 +822,6 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         if (fetched.getSteamReviewCount() != null) {
             existing.setSteamReviewCount(fetched.getSteamReviewCount());
         }
-        existing.setSteamScreenshots(fetched.getSteamScreenshots());
-        existing.setSteamMovies(fetched.getSteamMovies());
-        existing.setSteamCategories(fetched.getSteamCategories());
         existing.setSteamIsFree(fetched.getSteamIsFree());
         existing.setPriceCurrency(fetched.getPriceCurrency());
         existing.setPriceInitial(fetched.getPriceInitial());
@@ -800,28 +829,52 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         existing.setPriceDiscount(fetched.getPriceDiscount());
         existing.setPriceDiscountEndAt(fetched.getPriceDiscountEndAt());
         existing.setPriceFormatted(fetched.getPriceFormatted());
-        existing.setMetacriticScore(fetched.getMetacriticScore());
-        existing.setMetacriticUrl(fetched.getMetacriticUrl());
-        existing.setAchievementTotal(fetched.getAchievementTotal());
-        existing.setAchievementHighlights(fetched.getAchievementHighlights());
-        existing.setPcRequirementsMin(fetched.getPcRequirementsMin());
-        existing.setPcRequirementsRec(fetched.getPcRequirementsRec());
-        existing.setStaticSyncedAt(fetched.getStaticSyncedAt());
-        existing.setMetricsSyncedAt(fetched.getMetricsSyncedAt());
-        existing.setPriceSyncedAt(fetched.getPriceSyncedAt());
-        existing.setRichSyncedAt(fetched.getRichSyncedAt());
-        existing.setLastRefreshAttemptAt(fetched.getLastRefreshAttemptAt());
-        existing.setNextRefreshAt(fetched.getNextRefreshAt());
-        existing.setRefreshStatus(fetched.getRefreshStatus());
-        existing.setDetailReady(fetched.getDetailReady());
+        LocalDateTime now = LocalDateTime.now();
+        existing.setSteamSyncedAt(now);
+        existing.setStaticSyncedAt(now);
+        existing.setMetricsSyncedAt(now);
+        existing.setPriceSyncedAt(now);
+        existing.setRichSyncedAt(now);
+        existing.setLastRefreshAttemptAt(now);
+        existing.setNextRefreshAt(now.plusDays(7));
+        existing.setRefreshStatus(GameCatalogRefreshStatus.READY.getCode());
+        existing.setDetailReady(true);
     }
 
+    /** 将 Steam 详情 payload 转成只包含关系库字段的目录实体。 */
+    private GameCatalog toCatalog(SteamGameDetailsPayload source) {
+        GameCatalog target = toCatalog((SteamGameBasicPayload) source);
+        target.setDescSource(GameCatalogConstants.DESC_SOURCE_COMMUNITY_FIRST);
+        target.setSteamReviewScore(source.getSteamReviewScore());
+        target.setSteamReviewCount(source.getSteamReviewCount());
+        target.setPriceCurrency(source.getPriceCurrency());
+        target.setPriceInitial(source.getPriceInitial());
+        target.setPriceFinal(source.getPriceFinal());
+        target.setPriceDiscount(source.getPriceDiscount());
+        target.setPriceDiscountEndAt(source.getPriceDiscountEndAt());
+        target.setPriceFormatted(source.getPriceFormatted());
+        target.setRefreshStatus(GameCatalogRefreshStatus.READY.getCode());
+        target.setDetailReady(true);
+        LocalDateTime now = LocalDateTime.now();
+        target.setSteamSyncedAt(now);
+        target.setStaticSyncedAt(now);
+        target.setMetricsSyncedAt(now);
+        target.setPriceSyncedAt(now);
+        target.setRichSyncedAt(now);
+        target.setLastRefreshAttemptAt(now);
+        target.setNextRefreshAt(now.plusDays(7));
+        return target;
+    }
+
+    /** 将关系库游戏目录转换为详情页基础 VO。 */
     private GameDetailVO toDetailVO(GameCatalog catalog) {
         GameDetailVO vo = new GameDetailVO();
         vo.setAppId(catalog.getAppId());
         vo.setName(StringUtils.hasText(catalog.getDisplayName()) ? catalog.getDisplayName() : catalog.getSteamName());
-        vo.setShortDescription(resolveShortDescription(catalog));
-        vo.setAboutHtml(resolveAboutHtml(catalog));
+        vo.setShortDescription(GameCatalogConstants.DESC_SOURCE_COMMUNITY_FIRST.equalsIgnoreCase(catalog.getDescSource())
+                ? catalog.getCommunityShort() : null);
+        vo.setAboutHtml(GameCatalogConstants.DESC_SOURCE_COMMUNITY_FIRST.equalsIgnoreCase(catalog.getDescSource())
+                ? catalog.getCommunityAbout() : null);
         vo.setHeaderImage(StringUtils.hasText(catalog.getCoverOverride())
                 ? catalog.getCoverOverride() : catalog.getHeaderImage());
         vo.setDevelopers(catalog.getDevelopers());
@@ -833,16 +886,9 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         vo.setRating(buildRatingStats(catalog));
         vo.setSteamReviewScore(catalog.getSteamReviewScore());
         vo.setSteamReviewCount(catalog.getSteamReviewCount());
-        vo.setScreenshots(catalog.getSteamScreenshots());
-        vo.setMovies(catalog.getSteamMovies());
-        vo.setCategories(catalog.getSteamCategories());
         vo.setPrice(buildPriceVO(catalog));
-        vo.setMetacritic(buildMetacriticVO(catalog));
-        vo.setAchievementTotal(catalog.getAchievementTotal());
-        vo.setAchievementHighlights(normalizeAchievementIcons(catalog.getAchievementHighlights()));
-        vo.setPcRequirementsMin(catalog.getPcRequirementsMin());
-        vo.setPcRequirementsRec(catalog.getPcRequirementsRec());
         vo.setSteamSyncedAt(catalog.getSteamSyncedAt());
+        vo.setDetailReady(catalog.getDetailReady());
         return vo;
     }
 
@@ -863,16 +909,6 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         return vo;
     }
 
-    private GameMetacriticVO buildMetacriticVO(GameCatalog catalog) {
-        if (catalog.getMetacriticScore() == null && !StringUtils.hasText(catalog.getMetacriticUrl())) {
-            return null;
-        }
-        GameMetacriticVO vo = new GameMetacriticVO();
-        vo.setScore(catalog.getMetacriticScore());
-        vo.setUrl(catalog.getMetacriticUrl());
-        return vo;
-    }
-
     private GameRatingStatsVO buildRatingStats(GameCatalog catalog) {
         GameRatingStatsVO vo = new GameRatingStatsVO();
         if (catalog.getReviewCount() != null) {
@@ -889,19 +925,4 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         return vo;
     }
 
-    private String resolveShortDescription(GameCatalog catalog) {
-        if (GameCatalogConstants.DESC_SOURCE_COMMUNITY_FIRST.equalsIgnoreCase(catalog.getDescSource())
-                && StringUtils.hasText(catalog.getCommunityShort())) {
-            return catalog.getCommunityShort();
-        }
-        return catalog.getSteamShortDesc();
-    }
-
-    private String resolveAboutHtml(GameCatalog catalog) {
-        if (GameCatalogConstants.DESC_SOURCE_COMMUNITY_FIRST.equalsIgnoreCase(catalog.getDescSource())
-                && StringUtils.hasText(catalog.getCommunityAbout())) {
-            return catalog.getCommunityAbout();
-        }
-        return catalog.getSteamAboutHtml();
-    }
 }

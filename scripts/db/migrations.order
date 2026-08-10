@@ -30,8 +30,14 @@ moderation-task-hardening.sql
 search.sql
 ai-agent.sql
 xxl_job_tables.sql
+xxl-steam-jobs.sql
 game-community.sql
 game-follow.sql
 game-chart-snapshot.sql
 steam-game-data-strategy.sql
+steam-catalog-metrics-backfill.sql
 steam-game-data-normalize.sql
+steam-library-incremental.sql
+steam-achievement-lazy-refresh.sql
+steam-game-review-public-id.sql
+social-game-review.sql

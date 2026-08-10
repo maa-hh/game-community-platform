@@ -4,12 +4,15 @@ import com.game.community.model.base.Result;
 import com.game.community.model.vo.social.ArticleStatsVO;
 import com.game.community.model.vo.social.CommentVO;
 import com.game.community.model.vo.social.ReplyVO;
+import com.game.community.model.vo.social.GameReviewSocialStatsVO;
+import com.game.community.model.base.PageResult;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.DeleteMapping;
 
 import java.util.List;
 
@@ -47,4 +50,25 @@ public interface SocialFeignClient {
     @GetMapping("/block/has-relation")
     Result<Boolean> hasBlackRelation(@RequestParam("viewerId") Long viewerId,
                                      @RequestParam("targetUserId") Long targetUserId);
+
+    @PostMapping("/game-reviews/ensure")
+    Result<Void> ensureGameReview(@RequestParam("reviewId") String reviewId,
+                                  @RequestParam("appId") Long appId,
+                                  @RequestParam("userId") Long userId,
+                                  @RequestParam(value = "content", required = false) String content,
+                                  @RequestParam(value = "createTime", required = false) String createTime);
+
+    @PostMapping("/game-reviews/{reviewId}/remove")
+    Result<Void> removeGameReview(@PathVariable("reviewId") String reviewId);
+
+    @GetMapping("/game-reviews/stats")
+    Result<List<GameReviewSocialStatsVO>> getGameReviewStats(
+            @RequestParam("reviewIds") List<String> reviewIds,
+            @RequestParam(value = "userId", required = false) Long userId);
+
+    @GetMapping("/game-reviews/rank")
+    PageResult<GameReviewSocialStatsVO> rankGameReviews(@RequestParam("appId") Long appId,
+                                                        @RequestParam("page") Long page,
+                                                        @RequestParam("size") Long size,
+                                                        @RequestParam(value = "userId", required = false) Long userId);
 }

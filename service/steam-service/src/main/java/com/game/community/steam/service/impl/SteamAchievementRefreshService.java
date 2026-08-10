@@ -2,10 +2,14 @@ package com.game.community.steam.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.game.community.common.constant.steam.SteamRedisConstants;
+import com.game.community.common.constant.steam.SteamAchievementConstants;
 import com.game.community.model.entity.game.GameAchievement;
 import com.game.community.model.entity.game.UserGameAchievement;
 import com.game.community.model.entity.game.UserSteamGame;
 import com.game.community.model.entity.game.UserSteamBind;
+import com.game.community.model.enums.game.SteamAchievementRefreshStatus;
+import com.game.community.model.payload.steam.SteamAchievementDefinitionPayload;
+import com.game.community.model.payload.steam.SteamPlayerAchievementPayload;
 import com.game.community.steam.client.SteamApiClient;
 import com.game.community.steam.mapper.GameAchievementMapper;
 import com.game.community.steam.mapper.UserGameAchievementMapper;
@@ -36,9 +40,6 @@ import java.util.concurrent.TimeUnit;
 @RequiredArgsConstructor
 public class SteamAchievementRefreshService {
 
-    private static final long PUBLIC_TTL_HOURS = 24;
-    private static final long USER_TTL_HOURS = 8;
-
     private final SteamApiClient steamApiClient;
     private final RedisUtils redisUtils;
     private final GameAchievementMapper gameAchievementMapper;
@@ -46,12 +47,14 @@ public class SteamAchievementRefreshService {
     private final UserSteamGameMapper userSteamGameMapper;
     private final TransactionTemplate transactionTemplate;
 
+    /** 查询游戏公共成就定义，供成就列表页展示。 */
     public List<GameAchievement> listDefinitions(Long appId) {
         return gameAchievementMapper.selectList(new LambdaQueryWrapper<GameAchievement>()
                 .eq(GameAchievement::getAppId, appId)
                 .orderByAsc(GameAchievement::getId));
     }
 
+    /** 查询用户当前生效的成就快照，不读取历史版本。 */
     public List<UserGameAchievement> listCurrent(Long userId, Long appId) {
         return userGameAchievementMapper.selectList(new LambdaQueryWrapper<UserGameAchievement>()
                 .eq(UserGameAchievement::getUserId, userId)
@@ -60,17 +63,21 @@ public class SteamAchievementRefreshService {
                 .orderByAsc(UserGameAchievement::getId));
     }
 
+    /** 按公共成就定义的同步时间判断是否超过二十四小时阈值。 */
     public boolean publicStale(Long appId) {
         return listDefinitions(appId).stream().findFirst()
                 .map(item -> item.getSyncedAt() == null
-                        || item.getSyncedAt().isBefore(LocalDateTime.now().minusHours(PUBLIC_TTL_HOURS)))
+                        || item.getSyncedAt().isBefore(LocalDateTime.now()
+                        .minusHours(SteamAchievementConstants.PUBLIC_TTL_HOURS)))
                 .orElse(true);
     }
 
+    /** 按用户成就快照的同步时间判断是否超过八小时阈值。 */
     public boolean userStale(UserSteamGame game) {
         return game == null
                 || game.getAchievementSyncedAt() == null
-                || game.getAchievementSyncedAt().isBefore(LocalDateTime.now().minusHours(USER_TTL_HOURS));
+                || game.getAchievementSyncedAt().isBefore(LocalDateTime.now()
+                .minusHours(SteamAchievementConstants.USER_TTL_HOURS));
     }
 
     /** 取得分布式锁后再投递，避免同一游戏被高并发请求重复拉取。 */
@@ -88,39 +95,40 @@ public class SteamAchievementRefreshService {
                 lockKey, token, SteamRedisConstants.USER_ACHIEVEMENT_REFRESH_LOCK_SECONDS))) {
             return false;
         }
-        markAttempt(game, "LOADING");
+        markAttempt(game, SteamAchievementRefreshStatus.LOADING);
         try {
             refreshUserAsync(userId, bind.getSteamId(), game.getAppId(), lockKey, token);
             return true;
         } catch (RejectedExecutionException e) {
             redisUtils.unlock(lockKey, token);
-            markFailure(game, "FAILED");
+            markFailure(game, SteamAchievementRefreshStatus.FAILED);
             log.warn("Steam 用户成就刷新线程池已满: userId={}, appId={}", userId, game.getAppId());
             return false;
         }
     }
 
+    /** 异步完整拉取用户成就，并在成功后一次性切换用户快照。 */
     @Async("steamAchievementRefreshExecutor")
     public void refreshUserAsync(Long userId, String steamId, Long appId, String lockKey, String token) {
         try {
-            List<SteamApiClient.PlayerAchievement> player =
+            List<SteamPlayerAchievementPayload> player =
                     steamApiClient.getPlayerAchievementDetails(steamId, appId);
-            List<SteamApiClient.AchievementDefinition> definitions = steamApiClient.getAchievementSchema(appId);
+            List<SteamAchievementDefinitionPayload> definitions = steamApiClient.getAchievementSchema(appId);
             if (definitions.isEmpty() && player.isEmpty()) {
-                updateUserState(userId, appId, "NOT_AVAILABLE", false);
+                updateUserState(userId, appId, SteamAchievementRefreshStatus.NOT_AVAILABLE, false);
                 return;
             }
             if (definitions.isEmpty()) {
                 definitions = player.stream().map(item -> {
-                    SteamApiClient.AchievementDefinition definition =
-                            new SteamApiClient.AchievementDefinition();
+                    SteamAchievementDefinitionPayload definition =
+                            new SteamAchievementDefinitionPayload();
                     definition.setApiName(item.getApiName());
                     definition.setName(item.getApiName());
                     return definition;
                 }).toList();
             }
-            Map<String, SteamApiClient.PlayerAchievement> playerMap = new HashMap<>();
-            for (SteamApiClient.PlayerAchievement item : player) {
+            Map<String, SteamPlayerAchievementPayload> playerMap = new HashMap<>();
+            for (SteamPlayerAchievementPayload item : player) {
                 playerMap.put(item.getApiName(), item);
             }
             Map<String, Double> global = steamApiClient.getGlobalAchievementPercentages(appId);
@@ -128,21 +136,22 @@ public class SteamAchievementRefreshService {
             persistUserSnapshot(userId, appId, definitions, playerMap);
         } catch (Exception e) {
             log.warn("Steam 用户成就刷新失败: userId={}, appId={}", userId, appId, e);
-            updateUserState(userId, appId, "FAILED", false);
+            updateUserState(userId, appId, SteamAchievementRefreshStatus.FAILED, false);
         } finally {
             redisUtils.unlock(lockKey, token);
         }
     }
 
+    /** 在事务中更新游戏公共成就定义和全球获取率。 */
     private void persistPublicDefinitions(Long appId,
-                                          List<SteamApiClient.AchievementDefinition> definitions,
+                                          List<SteamAchievementDefinitionPayload> definitions,
                                           Map<String, Double> global) {
         if (definitions == null || definitions.isEmpty()) {
             return;
         }
         LocalDateTime now = LocalDateTime.now();
         transactionTemplate.executeWithoutResult(status -> {
-            for (SteamApiClient.AchievementDefinition definition : definitions) {
+            for (SteamAchievementDefinitionPayload definition : definitions) {
                 GameAchievement entity = gameAchievementMapper.selectOne(new LambdaQueryWrapper<GameAchievement>()
                         .eq(GameAchievement::getAppId, appId)
                         .eq(GameAchievement::getApiName, definition.getApiName()));
@@ -164,15 +173,16 @@ public class SteamAchievementRefreshService {
         });
     }
 
+    /** 在事务中写入完整用户成就版本，并切换当前版本指针。 */
     private void persistUserSnapshot(Long userId, Long appId,
-                                     List<SteamApiClient.AchievementDefinition> definitions,
-                                     Map<String, SteamApiClient.PlayerAchievement> playerMap) {
+                                     List<SteamAchievementDefinitionPayload> definitions,
+                                     Map<String, SteamPlayerAchievementPayload> playerMap) {
         String syncId = UUID.randomUUID().toString().replace("-", "");
         LocalDateTime now = LocalDateTime.now();
         transactionTemplate.executeWithoutResult(status -> {
             userGameAchievementMapper.clearCurrent(userId, appId);
-            for (SteamApiClient.AchievementDefinition definition : definitions) {
-                SteamApiClient.PlayerAchievement player = playerMap.get(definition.getApiName());
+            for (SteamAchievementDefinitionPayload definition : definitions) {
+                SteamPlayerAchievementPayload player = playerMap.get(definition.getApiName());
                 UserGameAchievement entity = new UserGameAchievement();
                 entity.setUserId(userId);
                 entity.setAppId(appId);
@@ -191,11 +201,11 @@ public class SteamAchievementRefreshService {
                     .eq(UserSteamGame::getAppId, appId));
             if (game != null) {
                 game.setAchievementUnlocked((int) playerMap.values().stream()
-                        .filter(SteamApiClient.PlayerAchievement::isUnlocked).count());
+                        .filter(SteamPlayerAchievementPayload::isUnlocked).count());
                 game.setAchievementTotal(definitions.size());
                 game.setAchievementSyncedAt(now);
-                game.setAchievementNextRefreshAt(now.plusHours(USER_TTL_HOURS));
-                game.setAchievementRefreshStatus("READY");
+                game.setAchievementNextRefreshAt(now.plusHours(SteamAchievementConstants.USER_TTL_HOURS));
+                game.setAchievementRefreshStatus(SteamAchievementRefreshStatus.READY.getCode());
                 game.setAchievementSyncId(syncId);
                 game.setAchievementFailCount(0);
                 userSteamGameMapper.updateById(game);
@@ -203,21 +213,26 @@ public class SteamAchievementRefreshService {
         });
     }
 
-    private void markAttempt(UserSteamGame game, String state) {
+    /** 标记用户成就刷新已提交，供前端展示加载状态。 */
+    private void markAttempt(UserSteamGame game, SteamAchievementRefreshStatus state) {
         game.setAchievementLastAttemptAt(LocalDateTime.now());
-        game.setAchievementRefreshStatus(state);
-        game.setAchievementNextRefreshAt(LocalDateTime.now().plusHours(USER_TTL_HOURS));
+        game.setAchievementRefreshStatus(state.getCode());
+        game.setAchievementNextRefreshAt(
+                LocalDateTime.now().plusHours(SteamAchievementConstants.USER_TTL_HOURS));
         userSteamGameMapper.updateById(game);
     }
 
-    private void markFailure(UserSteamGame game, String state) {
+    /** 标记队列提交失败并累计失败次数。 */
+    private void markFailure(UserSteamGame game, SteamAchievementRefreshStatus state) {
         game.setAchievementLastAttemptAt(LocalDateTime.now());
-        game.setAchievementRefreshStatus(state);
+        game.setAchievementRefreshStatus(state.getCode());
         game.setAchievementFailCount((game.getAchievementFailCount() == null ? 0 : game.getAchievementFailCount()) + 1);
         userSteamGameMapper.updateById(game);
     }
 
-    private void updateUserState(Long userId, Long appId, String state, boolean success) {
+    /** 更新用户成就刷新状态，失败时保留旧快照。 */
+    private void updateUserState(Long userId, Long appId,
+                                 SteamAchievementRefreshStatus state, boolean success) {
         UserSteamGame game = userSteamGameMapper.selectOne(new LambdaQueryWrapper<UserSteamGame>()
                 .eq(UserSteamGame::getUserId, userId).eq(UserSteamGame::getAppId, appId));
         if (game == null) {
@@ -225,15 +240,17 @@ public class SteamAchievementRefreshService {
         }
         if (success) {
             game.setAchievementSyncedAt(LocalDateTime.now());
-            game.setAchievementNextRefreshAt(LocalDateTime.now().plusHours(USER_TTL_HOURS));
+            game.setAchievementNextRefreshAt(
+                    LocalDateTime.now().plusHours(SteamAchievementConstants.USER_TTL_HOURS));
         } else {
             game.setAchievementFailCount((game.getAchievementFailCount() == null ? 0 : game.getAchievementFailCount()) + 1);
         }
-        game.setAchievementRefreshStatus(state);
+        game.setAchievementRefreshStatus(state.getCode());
         game.setAchievementLastAttemptAt(LocalDateTime.now());
         userSteamGameMapper.updateById(game);
     }
 
+    /** 将 Steam Unix 时间转换为系统本地时间，零值按未设置处理。 */
     private LocalDateTime toTime(long epochSeconds) {
         return epochSeconds <= 0 ? null : LocalDateTime.ofInstant(
                 java.time.Instant.ofEpochSecond(epochSeconds), java.time.ZoneId.systemDefault());
