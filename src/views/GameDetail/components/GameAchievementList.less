@@ -1,0 +1,66 @@
+@import (reference) '@/assets/css/common.less';
+
+.game-achievement-list {
+  &__title {
+    margin: 0 0 10px !important;
+  }
+
+  &__grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+
+    &.is-collapsed {
+      max-height: none;
+    }
+  }
+
+  &__icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+
+  &__icon--placeholder {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-bg);
+    color: var(--color-text-secondary);
+  }
+
+  &__item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: var(--color-bg-secondary);
+    font-size: 13px;
+    line-height: 1.45;
+    min-width: 0;
+
+    > span:last-child {
+      .text-ellipsis();
+    }
+  }
+
+  &__toggle {
+    margin-top: 8px;
+    padding-inline: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .game-achievement-list__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .game-achievement-list__grid {
+    grid-template-columns: 1fr;
+  }
+}
