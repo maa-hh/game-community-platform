@@ -439,7 +439,6 @@ public class HotRankServiceImpl implements HotRankService {
     }
 
     private void refreshLiveBoardFromEvents(HotRankBoardType boardType, String periodKey, String scope) {
-        String key = liveRedisKey(boardType, periodKey, scope);
         List<ArticleRankScoreAgg> aggs = hotRankBehaviorEventService.aggregate(
                 boardType, periodKey, scopeCategoryId(scope));
         writeAggScores(boardType, periodKey, scope, aggs);
@@ -450,10 +449,13 @@ public class HotRankServiceImpl implements HotRankService {
             return;
         }
         String cacheKey = RecommendConstants.passiveCacheKey(boardType, periodKey, scope);
-        redisUtils.del(cacheKey);
+        Map<String, Double> scores = new LinkedHashMap<>();
         for (ArticleRankScoreAgg agg : aggs) {
-            redisUtils.zAdd(cacheKey, agg.getArticleId().toString(), agg.getTotalScore() == null ? 0D : agg.getTotalScore());
+            if (agg.getTotalScore() != null && agg.getTotalScore() > 0D) {
+                scores.put(agg.getArticleId().toString(), agg.getTotalScore());
+            }
         }
+        redisUtils.zReplace(cacheKey, scores, RecommendConstants.HOT_RANK_SIZE);
         redisUtils.expire(cacheKey, RecommendConstants.PASSIVE_CACHE_TTL_SECONDS);
     }
 
