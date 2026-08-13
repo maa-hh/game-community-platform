@@ -4,26 +4,38 @@ import type { IPageResult } from '@/service/types';
 export type RepurchasePolicy =
   'ONCE_FOREVER' | 'UNLIMITED' | 'COOLDOWN' | 'LIMIT_PER_WINDOW';
 
+export const SHOP_ORDER_STATUS = {
+  FAILED: -1,
+  CANCELLED: 0,
+  CREATING: 1,
+  PENDING_PAY: 2,
+  PAID: 3,
+  COMPLETED: 4,
+} as const;
+
+export type ShopOrderStatus =
+  (typeof SHOP_ORDER_STATUS)[keyof typeof SHOP_ORDER_STATUS];
+
 export interface IShopItem {
   id: number;
   name: string;
-  description?: string;
+  description: string;
   cosmeticCode: string;
   pricePoints: number;
-  grantQuantity?: number;
-  stock?: number;
-  icon?: string;
-  status?: number;
-  repurchasePolicy?: RepurchasePolicy;
-  limitCount?: number;
-  limitWindowSeconds?: number;
-  beginTime?: string;
-  endTime?: string;
-  owned?: boolean;
-  equipped?: boolean;
-  canBuy?: boolean;
-  cannotBuyReason?: string;
-  nextBuyAt?: string;
+  grantQuantity: number;
+  stock: number;
+  icon: string;
+  status: ShopOrderStatus;
+  repurchasePolicy: RepurchasePolicy;
+  limitCount: number;
+  limitWindowSeconds: number;
+  beginTime: string;
+  endTime: string;
+  owned: boolean;
+  equipped: boolean;
+  canBuy: boolean;
+  cannotBuyReason: string;
+  nextBuyAt: string;
 }
 
 export interface IShopCurrency {
@@ -33,30 +45,10 @@ export interface IShopCurrency {
 export interface IExchangeResult {
   orderNo: string;
   cosmeticCode: string;
-  grantQuantity?: number;
-  pointsBalance?: number;
-  status?: number;
-  statusText?: string;
-}
-
-export interface IShopOrder {
-  orderNo: string;
-  requestId?: string;
-  itemId: number;
-  itemName?: string;
-  itemIcon?: string;
-  cosmeticCode: string;
-  quantity: number;
-  pricePoints: number;
-  totalPoints: number;
-  grantQuantity?: number;
+  grantQuantity: number;
+  pointsBalance: number;
   status: number;
-  statusText?: string;
-  failReason?: string;
-  createTime?: string;
-  payTime?: string;
-  completeTime?: string;
-  expireTime?: string;
+  statusText: string;
 }
 
 export function fetchShopItemsApi(params: {
@@ -88,22 +80,5 @@ export function exchangeShopItemApi(payload: {
   }>({
     url: '/shop/exchange',
     data: payload,
-  });
-}
-
-export function fetchShopOrderApi(orderNo: string) {
-  return hyRequest.get<{
-    code: number;
-    data: IShopOrder;
-    message: string;
-  }>({
-    url: `/shop/order/${encodeURIComponent(orderNo)}`,
-  });
-}
-
-export function payShopOrderApi(orderNo: string) {
-  return hyRequest.post<{ code: number; data: null; message: string }>({
-    url: '/shop/order/pay',
-    data: { orderNo },
   });
 }

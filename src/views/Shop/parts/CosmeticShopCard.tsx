@@ -18,6 +18,7 @@ import {
   resolveProfileBgAsset,
 } from '@/constants/profileBgCatalog';
 import type { CosmeticItemState, CosmeticSlot } from '@/types/cosmetic';
+import type { RepurchasePolicy } from '@/service/shop';
 
 import './CosmeticShopCard.less';
 
@@ -26,6 +27,10 @@ export interface CosmeticShopCardProps {
   name: string;
   description?: string;
   pricePoints?: number;
+  stock?: number;
+  repurchasePolicy?: RepurchasePolicy;
+  limitCount?: number;
+  limitWindowSeconds?: number;
   icon?: string;
   slot?: CosmeticSlot;
   owned?: boolean;
@@ -60,6 +65,10 @@ const CosmeticShopCard: FC<CosmeticShopCardProps> = ({
   name,
   description,
   pricePoints,
+  stock,
+  repurchasePolicy,
+  limitCount,
+  limitWindowSeconds,
   icon,
   slot,
   owned,
@@ -168,6 +177,22 @@ const CosmeticShopCard: FC<CosmeticShopCardProps> = ({
         {slotLabel ? <Tag color="purple">{slotLabel}</Tag> : null}
         {pricePoints != null ? (
           <Tag color="volcano">{pricePoints} 积分</Tag>
+        ) : null}
+        {stock != null && stock >= 0 ? (
+          <Tag color={stock === 0 ? 'red' : 'gold'}>
+            {stock === 0 ? '已售罄' : `剩余 ${stock}`}
+          </Tag>
+        ) : null}
+        {repurchasePolicy === 'ONCE_FOREVER' ? (
+          <Tag>每人限购 1 件</Tag>
+        ) : repurchasePolicy === 'LIMIT_PER_WINDOW' && limitCount != null ? (
+          <Tag>
+            {limitWindowSeconds
+              ? `${limitWindowSeconds >= 86400 ? '每日' : '窗口内'}限购 ${limitCount} 件`
+              : `限购 ${limitCount} 件`}
+          </Tag>
+        ) : repurchasePolicy === 'COOLDOWN' && limitWindowSeconds ? (
+          <Tag>冷却 {limitWindowSeconds} 秒</Tag>
         ) : null}
         {owned ? <Tag color="green">已拥有</Tag> : null}
         {equipped ? <Tag color="blue">已装备</Tag> : null}

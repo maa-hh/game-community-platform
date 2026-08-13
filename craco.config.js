@@ -12,7 +12,6 @@ const API_PROXY_CONTEXT = [
   '/share/',
   '/notification/',
   '/shop/',
-  '/api/shop/',
   '/api/',
   '/hot-article/',
   '/search/',
@@ -27,6 +26,10 @@ const API_PROXY_CONTEXT = [
 // 页面路由与 API 共用 /game、/search、/shop 等前缀。
 // 只有非 HTML 请求才转发到网关，避免刷新页面时把 React 路由转成后端 API 请求。
 const isApiProxyRequest = (pathname, req) => {
+  // 商城 v3 只接受 /shop/**，禁止把旧 /api/shop/** 重新代理到网关。
+  if (pathname === '/api/shop' || pathname.startsWith('/api/shop/')) {
+    return false;
+  }
   const accept = req.headers.accept || '';
   if (accept.includes('text/html')) {
     return false;

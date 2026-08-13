@@ -1,10 +1,4 @@
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Button,
   Empty,
@@ -28,10 +22,9 @@ import {
 } from '@/service/cosmetic';
 import {
   exchangeShopItemApi,
-  fetchShopOrderApi,
   fetchShopCurrencyApi,
   fetchShopItemsApi,
-  payShopOrderApi,
+  SHOP_ORDER_STATUS,
   type IShopItem,
 } from '@/service/shop';
 import { isAvatarFrameCosmeticCode } from '@/constants/avatarFrameCatalog';
@@ -103,7 +96,6 @@ function ShopPage() {
   const [loadingBackpack, setLoadingBackpack] = useState(true);
   const [exchangingId, setExchangingId] = useState<number | null>(null);
   const [actingCode, setActingCode] = useState<string | null>(null);
-  const exchangeRequestIds = useRef(new Map<number, string>());
 
   const changeTab = useCallback((next: string) => {
     setTab(next === 'backpack' ? 'backpack' : 'store');
@@ -260,54 +252,35 @@ function ShopPage() {
     setExchangingId(item.id);
     try {
       const requestId =
-        exchangeRequestIds.current.get(item.id) ||
-        (typeof crypto.randomUUID === 'function'
+        typeof crypto.randomUUID === 'function'
           ? crypto.randomUUID()
-          : `ex-${item.id}-${Date.now()}`);
-      exchangeRequestIds.current.set(item.id, requestId);
+          : `exchange-${item.id}-${Date.now()}`;
       const res = await exchangeShopItemApi({
         itemId: item.id,
         quantity: 1,
         requestId,
       });
       if (res.code !== 200) throw new Error(res.message || '兑换失败');
-      let orderStatus = res.data?.status;
-      if (orderStatus === 1 && res.data?.orderNo) {
-        for (let attempt = 0; attempt < 20; attempt += 1) {
-          await new Promise((resolve) => setTimeout(resolve, 200));
-          const orderRes = await fetchShopOrderApi(res.data.orderNo);
-          if (orderRes.code !== 200 || !orderRes.data) {
-            throw new Error(orderRes.message || '订单状态查询失败');
-          }
-          orderStatus = orderRes.data.status;
-          if (orderStatus === 2) {
-            const payRes = await payShopOrderApi(res.data.orderNo);
-            if (payRes.code !== 200) {
-              throw new Error(payRes.message || '积分扣除失败');
-            }
-            orderStatus = 3;
-            break;
-          }
-          if (orderStatus === -1 || orderStatus === 0) {
-            throw new Error(
-              orderRes.data.failReason ||
-                orderRes.data.statusText ||
-                '兑换失败',
-            );
-          }
-        }
-        if (orderStatus === 1) {
-          throw new Error('订单创建超时，请到订单中心重试');
-        }
+      const orderStatus = res.data.status;
+      if (
+        orderStatus === SHOP_ORDER_STATUS.FAILED ||
+        orderStatus === SHOP_ORDER_STATUS.CANCELLED
+      ) {
+        throw new Error(res.data.statusText || '兑换失败');
       }
-      exchangeRequestIds.current.delete(item.id);
+      if (
+        orderStatus !== SHOP_ORDER_STATUS.PAID &&
+        orderStatus !== SHOP_ORDER_STATUS.COMPLETED
+      ) {
+        throw new Error('兑换订单未完成，请稍后查询订单状态');
+      }
       message.success(
-        orderStatus === 3
+        orderStatus === SHOP_ORDER_STATUS.PAID
           ? '兑换成功，权益正在发放'
           : '兑换成功，请到背包装备后生效',
       );
       changeTab('backpack');
-      setPoints(Number(res.data?.pointsBalance ?? points));
+      setPoints(Number(res.data.pointsBalance));
       void loadStore();
       void loadBackpack();
     } catch (error) {
@@ -358,6 +331,10 @@ function ShopPage() {
       name={item.name}
       description={item.description || item.cosmeticCode}
       pricePoints={item.pricePoints}
+      stock={item.stock}
+      repurchasePolicy={item.repurchasePolicy}
+      limitCount={item.limitCount}
+      limitWindowSeconds={item.limitWindowSeconds}
       icon={item.icon}
       owned={item.owned}
       equipped={item.equipped}
