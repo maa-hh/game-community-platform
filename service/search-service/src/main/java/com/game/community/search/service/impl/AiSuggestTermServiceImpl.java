@@ -14,7 +14,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
@@ -32,11 +31,11 @@ public class AiSuggestTermServiceImpl implements AiSuggestTermService {
     private static final Pattern JSON_ARRAY_PATTERN = Pattern.compile("\\[[\\s\\S]*?]");
 
     private static final String SYSTEM_PROMPT = """
-            你是游戏社区搜索运营助手。根据帖子标题、摘要和分类，生成适合用户搜索的中文关键词。
+            你是游戏社区搜索运营助手。根据帖子标题、摘要和正文，生成适合用户搜索的简洁关键词。
             要求：
             1. 只输出 JSON 字符串数组，不要 markdown，不要解释
             2. 每词 2-8 个汉字或常见英文缩写
-            3. 最多 5 个，与游戏/内容强相关
+            3. 最多 5 个，与文章主题强相关，优先保留游戏名、玩法、角色、攻略对象等可检索概念
             """;
 
     private final DashScopeClient dashScopeClient;
@@ -50,11 +49,12 @@ public class AiSuggestTermServiceImpl implements AiSuggestTermService {
         if (articleId == null || document == null) {
             return;
         }
-        if (!searchAiProperties.isAiSuggestEnabled() || !dashScopeClient.isConfigured()) {
+        suggestTermService.expireArticleSourceTypes(articleId, List.of(SearchConstants.SUGGEST_SOURCE_AI));
+        if (!searchAiProperties.isEnabled() || !searchAiProperties.isAiSuggestEnabled()
+                || !dashScopeClient.isConfigured()) {
             return;
         }
         try {
-            suggestTermService.expireArticleSourceTypes(articleId, List.of(SearchConstants.SUGGEST_SOURCE_AI));
             String response = dashScopeClient.chat(SYSTEM_PROMPT, buildUserPrompt(document));
             List<String> terms = parseTerms(response);
             if (terms.isEmpty()) {
@@ -87,12 +87,14 @@ public class AiSuggestTermServiceImpl implements AiSuggestTermService {
         StringBuilder builder = new StringBuilder();
         builder.append("标题：").append(nullToEmpty(document.getTitle())).append('\n');
         builder.append("摘要：").append(nullToEmpty(document.getSummary())).append('\n');
-        if (!CollectionUtils.isEmpty(document.getCategoryNames())) {
-            builder.append("分类：").append(String.join("、", document.getCategoryNames()));
-        } else {
-            builder.append("分类：").append(nullToEmpty(document.getCategoryName()));
-        }
+        builder.append("正文：").append(limit(document.getContent(), SearchConstants.EMBED_TEXT_MAX_LEN));
         return builder.toString();
+    }
+
+    /** 限制发送给模型的正文长度，避免单篇长文拖慢异步扩词队列。 */
+    private String limit(String value, int maxLength) {
+        String text = nullToEmpty(value);
+        return text.length() <= maxLength ? text : text.substring(0, maxLength);
     }
 
     private List<String> parseTerms(String response) {

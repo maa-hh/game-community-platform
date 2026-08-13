@@ -2,6 +2,7 @@ package com.game.community.social.feign;
 
 import com.game.community.model.base.PageResult;
 import com.game.community.model.base.Result;
+import com.game.community.model.dto.social.PublishArticleFeedDTO;
 import com.fasterxml.jackson.annotation.JsonView;
 import com.game.community.model.json.ApiJsonViews;
 import com.game.community.model.vo.social.ArticleStatsVO;
@@ -17,13 +18,10 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.beans.factory.annotation.Value;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -40,9 +38,6 @@ public class SocialFeignController {
 
     private final FollowService followService;
 
-    @Value("${social.internal-token:}")
-    private String internalToken;
-
     @GetMapping("/article/stats")
     @JsonView(ApiJsonViews.Internal.class)
     public Result<List<ArticleStatsVO>> getStats(@RequestParam("articleIds") List<Long> articleIds,
@@ -51,24 +46,9 @@ public class SocialFeignController {
     }
 
     @PostMapping("/feed/publish")
-    public Result<Void> publishArticleToFollowers(@RequestParam("authorId") Long authorId,
-                                                  @RequestParam("articleId") Long articleId,
-                                                  @RequestParam("publishedTime") String publishedTime,
-                                                  @RequestHeader("X-Internal-Token") String requestToken) {
-        if (!validInternalToken(requestToken)) {
-            throw new IllegalArgumentException("内部调用未授权");
-        }
-        socialService.publishArticleToFollowers(authorId, articleId, LocalDateTime.parse(publishedTime));
+    public Result<Void> publishArticleToFollowers(@RequestBody PublishArticleFeedDTO request) {
+        socialService.publishArticleToFollowers(request.getAuthorId(), request.getArticleId(), request.getPublishedTime());
         return Result.success(null);
-    }
-
-    private boolean validInternalToken(String requestToken) {
-        if (internalToken == null || internalToken.isBlank()
-                || requestToken == null || requestToken.isBlank()) {
-            return false;
-        }
-        return MessageDigest.isEqual(internalToken.getBytes(StandardCharsets.UTF_8),
-                requestToken.getBytes(StandardCharsets.UTF_8));
     }
 
     @GetMapping("/comments/{commentId}")

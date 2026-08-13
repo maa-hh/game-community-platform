@@ -21,6 +21,8 @@ public interface ElasticsearchService {
 
     void batchAddSuggestions(List<SuggestDocument> documents);
 
+    void clearSuggestions();
+
     void indexSuggestion(SuggestDocument document);
 
     void deleteSuggestion(Long id);

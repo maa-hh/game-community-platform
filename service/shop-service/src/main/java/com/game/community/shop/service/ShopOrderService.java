@@ -31,4 +31,7 @@ public interface ShopOrderService {
     void cancelOrder(Long userId, String orderNo);
 
     void cancelExpiredOrders();
+
+    /** 对账并重建 Redis 库存、限购缓存；MySQL 是唯一事实源。 */
+    void reconcileRedisState();
 }

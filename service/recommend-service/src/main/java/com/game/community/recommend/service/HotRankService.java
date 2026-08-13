@@ -1,6 +1,7 @@
 package com.game.community.recommend.service;
 
 import com.game.community.model.message.ArticleBehaviorMessage;
+import com.game.community.model.dto.recommend.HotRankQueryDTO;
 import com.game.community.model.vo.article.HotArticleVO;
 
 import java.time.LocalDate;
@@ -19,11 +20,8 @@ public interface HotRankService {
 
     void finalizeDailyBoard(LocalDate date);
 
-    List<HotArticleVO> listRank(String board,
-                                Long categoryId,
-                                String periodKey,
-                                Long userId,
-                                boolean refresh);
+    /** 按榜单、分类和周期查询热榜，内部主键只在服务边界内使用。 */
+    List<HotArticleVO> listRank(HotRankQueryDTO query, Long userId);
 
     void refreshDailyBoard(Long categoryId);
 }

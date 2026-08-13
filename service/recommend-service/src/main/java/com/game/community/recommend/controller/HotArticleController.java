@@ -3,6 +3,7 @@ package com.game.community.recommend.controller;
 import com.game.community.common.annotation.LoginCheck;
 import com.game.community.model.base.PageResult;
 import com.game.community.model.base.Result;
+import com.game.community.model.dto.recommend.HotRankQueryDTO;
 import com.game.community.model.vo.article.HotArticleVO;
 import com.game.community.recommend.service.HotRankService;
 import com.game.community.utils.ThreadLocal.UserThreadLocal;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import jakarta.validation.Valid;
 
 import java.util.List;
 
@@ -23,11 +25,8 @@ public class HotArticleController {
     private final HotRankService hotRankService;
 
     @GetMapping("/rank")
-    public Result<List<HotArticleVO>> rank(@RequestParam(value = "board", defaultValue = "total") String board,
-                                           @RequestParam(value = "categoryId", required = false) Long categoryId,
-                                           @RequestParam(value = "periodKey", required = false) String periodKey,
-                                           @RequestParam(value = "refresh", defaultValue = "false") boolean refresh) {
-        return Result.success(hotRankService.listRank(board, categoryId, periodKey, UserThreadLocal.getUserId(), refresh));
+    public Result<List<HotArticleVO>> rank(@Valid HotRankQueryDTO query) {
+        return Result.success(hotRankService.listRank(query, UserThreadLocal.getUserId()));
     }
 
     /** 兼容旧客户端，数据源统一走新版热榜。 */
@@ -35,7 +34,8 @@ public class HotArticleController {
     @GetMapping("/list")
     public PageResult<HotArticleVO> list(@RequestParam(value = "page", defaultValue = "1") Long page,
                                          @RequestParam(value = "size", defaultValue = "12") Long size) {
-        return page(hotRankService.listRank("total", null, null, UserThreadLocal.getUserId(), false), page, size);
+        HotRankQueryDTO query = new HotRankQueryDTO();
+        return page(hotRankService.listRank(query, UserThreadLocal.getUserId()), page, size);
     }
 
     /** 兼容旧客户端，数据源统一走新版热榜。 */
@@ -44,7 +44,9 @@ public class HotArticleController {
     public PageResult<HotArticleVO> listByCategory(@PathVariable("categoryId") Long categoryId,
                                                    @RequestParam(value = "page", defaultValue = "1") Long page,
                                                    @RequestParam(value = "size", defaultValue = "12") Long size) {
-        return page(hotRankService.listRank("total", categoryId, null, UserThreadLocal.getUserId(), false), page, size);
+        HotRankQueryDTO query = new HotRankQueryDTO();
+        query.setCategoryId(categoryId);
+        return page(hotRankService.listRank(query, UserThreadLocal.getUserId()), page, size);
     }
 
     private PageResult<HotArticleVO> page(List<HotArticleVO> records, Long pageValue, Long sizeValue) {

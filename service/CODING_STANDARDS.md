@@ -4,6 +4,18 @@
 
 与全局模块设计冲突时：本文 → 各服务 `docs/v2/*.md` → 服务附录。
 
+## 0. 规则生效与编写前置检查（强制）
+
+本文件是 `service/` 后端代码的默认约束，也是 AI 助手、Code Review 和日常开发的共同依据。任何新增、修改或重构后端代码，必须按以下顺序执行：
+
+1. 先阅读本文件及目标服务附录；涉及 DTO/VO、接口协议、数据库或 Feign 时，同时阅读对应设计文档。
+2. 先确认代码所属边界，再修改；不得为了“方便调用”把业务逻辑、内部主键或中间件对象跨层传递。
+3. 完成修改后用 `rg` 搜索旧类名、旧方法名、旧配置键和旧协议字段，清理死代码与残留调用。
+4. 运行对应服务测试；涉及公共模块、Feign、路由、配置或服务间协议时，至少运行全仓编译。
+5. 若现有代码与本规范冲突，新增代码按本规范执行；兼容旧协议时必须保留清晰的边界适配，并在代码或文档中说明迁移原因。
+
+后续规则更新也必须遵循同一流程：规则变更应与代码变更同时提交，不能只改实现而不补充规范。
+
 ---
 
 ## 1. 仓库模块边界
@@ -102,6 +114,13 @@ public class CommentController {
 - 鉴权：`@LoginCheck` / `@AdminCheck`；取当前用户 ID 在 **Service** 内（`UserThreadLocal` 或本域 Helper），不在 Controller 堆逻辑
 - 一个 Controller 方法对应 **一个** Service 方法
 
+#### 3.3.1 复杂入参与出参
+
+- 一个接口同时包含路径参数、分页参数、筛选条件、游标或多个业务字段时，必须定义 `model.dto.<domain>` 下的请求 DTO；不要在 Controller 中堆叠多个 `@RequestParam`。
+- 分页、筛选、批量查询、服务间命令等请求使用有业务含义的 DTO 名称，例如 `FeedQueryDTO`、`ReportPageQueryDTO`、`PublishArticleFeedDTO`，禁止使用无语义的 `Map`、`Object[]` 或参数列表代替。
+- Controller 只负责绑定、鉴权注解和一次性转发；publicId 到内部主键的解析、游标解析、批量映射、默认值归一化和异常转换放在 Service 边界。
+- 出参复杂时按场景拆分 VO；不要为了复用建立包含内部字段、管理字段和公开字段的“大一统 VO”。
+
 ### 3.4 Feign 提供方
 
 ```java
@@ -115,6 +134,8 @@ public class SocialFeignController {
 
 - 路径 **`/feign/<domain>/...`**，与对外 API **不要合并**
 - 返回类型同样使用 `Result<T>`
+- 服务间命令参数超过两个或包含时间、状态等复合字段时，使用 `model.dto` 命令对象作为 `@RequestBody`；不要把内部主键、时间解析和内部凭证校验散落在 Controller 参数中。
+- 内部凭证、签名和请求头校验放在 `filter` / `interceptor` 等基础设施边界；Controller 不接收或校验中间件凭证。
 
 ### 3.5 网关
 
@@ -200,6 +221,12 @@ user-service 及其他 service 模块遵循“先保证业务流程直观，再�
 
 判断标准：会改变部署行为的值放配置；需要跨类/跨服务统一的值放常量；表达业务分类的值用枚举；只服务一个类的固定值也放对应领域的专门常量类。业务类中禁止声明新的 `static final` 业务常量。常量类不能变成“杂物箱”，也不能把状态字符串、错误文案和配置值全部堆在一个 `*Constants` 中。
 
+补充约束：
+
+- 跨服务协议字段、Feign 路径、Redis key 前缀、事件类型、限流动作和共享阈值统一放 `common/src/main/java/com/game/community/common/constant/<domain>/`。
+- 只属于 Redis/Lua、Kafka、Sentinel、Resilience4j 等中间件实现的脚本或适配对象，留在对应基础设施类中；业务 Controller、DTO 和 Service 接口不得暴露这些类型。
+- 环境开关、失败策略、线程池大小和部署相关限额仍放 `application.yml`，由 `@ConfigurationProperties` 或配置注入读取，不硬编码到业务类。
+
 #### 4.1.5 函数注释规范
 
 - **每个函数开头必须有简洁介绍**：说明函数做什么、业务入口/边界是什么；公开函数补充关键参数、返回值和异常语义，私有函数至少说明其业务作用。
@@ -216,6 +243,14 @@ user-service 及其他 service 模块遵循“先保证业务流程直观，再�
 - 内部主键 `user.id` 只用于本服务和表关联；对外接口、社交接口和跨服务参数使用 `accountId`。涉及多个账号时先批量完成 `accountId -> userId` 映射，再批量查询业务数据，禁止 N+1 查询。
 - 用户背包、后台定义和用户搜索等可能增长的数据默认分页；筛选条件由 DTO/Mapper 条件组成，Service 负责归一化和边界限制，Controller 不拼查询逻辑。
 
+#### 4.1.7 主键与中间件隔离
+
+- 数据库内部主键（如 `user.id`、`article.id`、`comment.id`、`report.id`）只允许在 Entity、Mapper、Service 内部和明确的内部 Feign 命令中使用；公开请求、公开响应、公开分页游标和前端路由不得新增内部主键字段。
+- 对外使用 `publicId`、`accountId` 或专门的 opaque cursor；不能把数据库主键改名后继续作为“公开 ID”。旧接口若必须兼容数字 ID，应保留边界适配并标注迁移计划。
+- 对外 VO 中的内部定位字段必须使用 `ApiJsonViews.Internal` 或独立 Internal VO；公开 Controller 必须显式使用 `ApiJsonViews.Public`，禁止依赖 Jackson 默认视图行为。
+- Controller 和领域 Service 不得直接依赖 `StringRedisTemplate`、Sentinel `Entry`/`BlockException`、KafkaTemplate、Resilience4j 注解或内部 token 校验逻辑。限流、熔断、缓存、消息和凭证分别通过 Aspect、Filter、Client、Producer 等适配层提供。
+- Sentinel 用于服务容量保护、并发、熔断和接口级流控；跨实例的用户行为配额由独立的业务限额组件实现，不能因为引入 Sentinel 就把业务配额硬塞到 Controller。
+
 ---
 
 ## 5. 数据模型
@@ -231,6 +266,8 @@ user-service 及其他 service 模块遵循“先保证业务流程直观，再�
 
 - **禁止**用 Entity 接 HTTP 参数或直接返回 Entity
 - **禁止**维护「大一统 VO」兼容旧字段；按场景拆分 VO
+- 请求 DTO 只包含外部协议字段；Service 解析出的内部主键、缓存 key、Redis 计数、Sentinel 资源名等不得回写到请求 DTO。
+- Internal VO 与 Public VO 必须明确区分；需要服务间传递内部定位字段时，优先新增 `*InternalVO`，不要把内部字段默认暴露到公开 VO。
 
 ### 5.2 枚举与常量
 
@@ -309,6 +346,7 @@ mvn -pl service/content-service -am test
 - 交付前：**本服务模块测试通过**再提 PR；涉及启动、配置、Bean、线程池、数据库初始化或路由的改动，必须再运行对应启动脚本，看到 `Started *Application` 后才算完成
 - user-service 启动检查：`GATEWAY_INTERNAL_SECRET=test SKIP_BUILD=1 ./scripts/services/start-user-service.sh foreground`
 - 发现启动失败时，必须继续定位并修复，不能以“编译通过”作为交付结论
+- 接口协议或 DTO/VO 发生变化时，至少补一条序列化/绑定测试或服务层边界测试，确认内部主键和中间件字段不会出现在公开响应。
 
 ---
 
@@ -322,6 +360,10 @@ mvn -pl service/content-service -am test
 - ❌ 改 API 不同步 gateway / 前端
 - ❌ SQL 脚本不可重入（重复索引、重复列）
 - ❌ 含中文的 SQL 不经 `utf8mb4` 客户端执行（`sync-mysql.sh` 已统一；手工补数须带 `--default-character-set=utf8mb4`）
+- ❌ Controller 直接解析 publicId、拼 SQL 条件、处理分页游标或校验内部 token
+- ❌ 公开 DTO/VO 新增数据库内部主键、Redis key、Sentinel 资源名、Kafka topic 或内部凭证字段
+- ❌ 把 `StringRedisTemplate`、Sentinel、KafkaTemplate、Feign 失败异常等中间件类型泄漏到 Controller/公开 Service 接口
+- ❌ 用多个基础类型参数替代已有复杂业务 DTO
 
 ---
 
@@ -333,6 +375,10 @@ mvn -pl service/content-service -am test
 - [ ] 写操作有事务；异步有明确线程池或消息
 - [ ] 需登录加 `@LoginCheck`；游客可读则登记 gateway 白名单
 - [ ] 新 Feign 提供方在 `feign/` 包，路径 `/feign/<domain>/...`
+- [ ] 复杂查询/命令已使用语义化 DTO，Controller 没有解析 publicId、游标或内部 token
+- [ ] 公开 DTO/VO 没有内部主键和中间件字段；Internal/Public 视图明确
+- [ ] 跨服务常量、Redis 前缀、事件类型和限流动作已放入 `common.constant.<domain>`
+- [ ] 已用 `rg` 清理旧协议、旧类名、旧配置键和无调用方辅助方法
 - [ ] 动表：更新 `sql/` + 测试 schema + `migrations.order`（新脚本）
 - [ ] `mvn -pl service/<name> -am test` 通过
 

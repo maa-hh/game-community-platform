@@ -3,6 +3,7 @@ package com.game.community.search.service.impl;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch.core.BulkRequest;
 import co.elastic.clients.elasticsearch.core.BulkResponse;
+import co.elastic.clients.elasticsearch.core.DeleteByQueryRequest;
 import co.elastic.clients.elasticsearch.core.DeleteRequest;
 import co.elastic.clients.elasticsearch.core.IndexRequest;
 import com.game.community.model.elasticsearch.ArticleDocument;
@@ -87,6 +88,7 @@ public class ElasticsearchServiceImpl implements ElasticsearchService {
         document.setDevelopers(game.getDeveloper() == null ? List.of() : List.of(game.getDeveloper()));
         document.setPublishers(game.getPublisher() == null ? List.of() : List.of(game.getPublisher()));
         document.setGenres(game.getGenres() == null ? List.of() : game.getGenres());
+        document.setGenreText(game.getGenres() == null ? "" : String.join(" ", game.getGenres()));
         document.setCoverUrl(game.getCoverUrl());
         document.setReleaseDate(game.getReleaseDate());
         document.setSteamReviewScore(game.getSteamReviewScore());
@@ -153,6 +155,17 @@ public class ElasticsearchServiceImpl implements ElasticsearchService {
             }
         } catch (IOException e) {
             throw new IllegalStateException("建议词索引写入失败", e);
+        }
+    }
+
+    @Override
+    public void clearSuggestions() {
+        try {
+            elasticsearchClient.deleteByQuery(DeleteByQueryRequest.of(d -> d
+                    .index(SearchConstants.SUGGEST_INDEX)
+                    .query(q -> q.matchAll(m -> m))));
+        } catch (IOException e) {
+            throw new IllegalStateException("建议词索引全量清理失败", e);
         }
     }
 

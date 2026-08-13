@@ -1,6 +1,6 @@
 package com.game.community.search.service;
 
-import com.game.community.model.entity.search.SearchHistory;
+import com.game.community.model.vo.search.SearchHistoryVO;
 
 import java.util.List;
 
@@ -8,7 +8,7 @@ public interface SearchRecordService {
 
     void addRecord(Long userId, String keyword);
 
-    List<SearchHistory> getRecords(Long userId);
+    List<SearchHistoryVO> getRecords(Long userId);
 
     boolean deleteRecord(Long userId, Long id);
 

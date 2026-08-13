@@ -29,6 +29,9 @@ public class GameIndexDocument implements Serializable {
 
     private List<String> genres;
 
+    /** 供全文搜索使用的游戏类型文本字段，保留 genres 作为展示和精确过滤字段。 */
+    private String genreText;
+
     private String coverUrl;
 
     private String releaseDate;

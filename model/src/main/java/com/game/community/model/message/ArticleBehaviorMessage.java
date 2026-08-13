@@ -12,7 +12,7 @@ import java.io.Serializable;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ArticleBehaviorMessage implements Serializable {
 
-    private static final int CURRENT_SCHEMA_VERSION = 1;
+    private static final int CURRENT_SCHEMA_VERSION = 2;
 
     /** Outbox 生成的全局幂等事件 ID。 */
     private String eventId;
@@ -29,6 +29,10 @@ public class ArticleBehaviorMessage implements Serializable {
     /** 兼容旧版 Kafka 消息字段 commentCount */
     @JsonAlias("commentCount")
     private Long commentDelta;
+
+    /** 弹幕增量；一条弹幕与一条评论等权。 */
+    @JsonAlias("danmakuCount")
+    private Long danmakuDelta;
 
     /** 兼容旧版 Kafka 消息字段 viewCount */
     @JsonAlias("viewCount")

@@ -1,6 +1,7 @@
 package com.game.community.social.controller;
 
 import com.game.community.common.annotation.LoginCheck;
+import com.game.community.common.constant.social.SocialRateLimitConstants;
 import com.game.community.model.base.PageResult;
 import com.game.community.model.base.Result;
 import com.game.community.model.vo.social.FollowUserVO;
@@ -26,7 +27,9 @@ public class FollowController {
     private final FollowService followService;
 
     @LoginCheck
-    @SocialRateLimit(action = "follow", limit = 30, windowSeconds = 60)
+    @SocialRateLimit(action = SocialRateLimitConstants.FOLLOW,
+            limit = SocialRateLimitConstants.FOLLOW_LIMIT,
+            windowSeconds = SocialRateLimitConstants.SHORT_WINDOW_SECONDS)
     @PostMapping("/by-account/{targetAccountId}")
     public Result<Void> followByAccount(@PathVariable("targetAccountId") Long targetAccountId) {
         followService.followByAccountId(UserThreadLocal.getUserId(), targetAccountId);
@@ -41,7 +44,9 @@ public class FollowController {
     }
 
     @LoginCheck
-    @SocialRateLimit(action = "follow", limit = 30, windowSeconds = 60)
+    @SocialRateLimit(action = SocialRateLimitConstants.FOLLOW,
+            limit = SocialRateLimitConstants.FOLLOW_LIMIT,
+            windowSeconds = SocialRateLimitConstants.SHORT_WINDOW_SECONDS)
     @PostMapping("/{targetUserId}")
     public Result<Void> follow(@PathVariable("targetUserId") Long targetUserId) {
         followService.follow(UserThreadLocal.getUserId(), targetUserId);
@@ -56,7 +61,9 @@ public class FollowController {
     }
 
     @LoginCheck
-    @SocialRateLimit(action = "black", limit = 30, windowSeconds = 60)
+    @SocialRateLimit(action = SocialRateLimitConstants.BLACK,
+            limit = SocialRateLimitConstants.FOLLOW_LIMIT,
+            windowSeconds = SocialRateLimitConstants.SHORT_WINDOW_SECONDS)
     @PostMapping("/black/by-account/{targetAccountId}")
     public Result<Void> blackByAccount(@PathVariable("targetAccountId") Long targetAccountId) {
         followService.blackByAccountId(UserThreadLocal.getUserId(), targetAccountId);
@@ -64,7 +71,9 @@ public class FollowController {
     }
 
     @LoginCheck
-    @SocialRateLimit(action = "black", limit = 30, windowSeconds = 60)
+    @SocialRateLimit(action = SocialRateLimitConstants.BLACK,
+            limit = SocialRateLimitConstants.FOLLOW_LIMIT,
+            windowSeconds = SocialRateLimitConstants.SHORT_WINDOW_SECONDS)
     @PostMapping("/black/{targetUserId}")
     public Result<Void> black(@PathVariable("targetUserId") Long targetUserId) {
         followService.black(UserThreadLocal.getUserId(), targetUserId);

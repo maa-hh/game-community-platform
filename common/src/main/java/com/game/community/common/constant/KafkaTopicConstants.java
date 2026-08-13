@@ -14,6 +14,9 @@ public final class KafkaTopicConstants {
     /** 弹幕可靠接收事件；实时广播不依赖该 topic 的消费时延。 */
     public static final String DANMAKU_TOPIC = "danmaku-events";
 
+    /** 商城支付成功事件；下游权益服务按 orderNo 幂等消费。 */
+    public static final String SHOP_ORDER_PAID_TOPIC = "shop-order-paid-events";
+
     public static final String MODERATION_TASK_TOPIC = "moderation-task-events";
 
     public static final String NOTIFICATION_EVENT_TOPIC = "notification-events";

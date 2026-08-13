@@ -80,6 +80,15 @@ public class RedisUtils {
                     + "return score",
             Double.class);
 
+    private static final DefaultRedisScript<Long> Z_REPLACE_SCRIPT = new DefaultRedisScript<>(
+            "redis.call('DEL', KEYS[1]); "
+                    + "local limit = tonumber(ARGV[1]); "
+                    + "for i = 2, #ARGV, 2 do redis.call('ZADD', KEYS[1], ARGV[i], ARGV[i + 1]); end; "
+                    + "local size = redis.call('ZCARD', KEYS[1]); "
+                    + "if size > limit then redis.call('ZREMRANGEBYRANK', KEYS[1], 0, size - limit - 1); end; "
+                    + "return redis.call('ZCARD', KEYS[1])",
+            Long.class);
+
     private final StringRedisTemplate stringRedisTemplate;
 
     public void set(String key, String value) {
@@ -291,6 +300,24 @@ public class RedisUtils {
                 Z_INCREMENT_AND_TRIM_SCRIPT,
                 Collections.singletonList(key),
                 String.valueOf(delta), value, String.valueOf(limit));
+    }
+
+    /** 原子替换一个热榜 Sorted Set，避免重建期间出现空榜或半榜。 */
+    public long zReplace(String key, Map<String, Double> scores, long limit) {
+        List<String> args = new ArrayList<>();
+        args.add(String.valueOf(limit));
+        if (scores != null) {
+            scores.forEach((member, score) -> {
+                if (member != null && score != null && score > 0D) {
+                    args.add(String.valueOf(score));
+                    args.add(member);
+                }
+            });
+        }
+        Object[] scriptArgs = args.toArray();
+        Long result = stringRedisTemplate.execute(Z_REPLACE_SCRIPT,
+                Collections.singletonList(key), scriptArgs);
+        return result == null ? 0L : result;
     }
 
     public Set<String> zRangeByScore(String key, double min, double max) {

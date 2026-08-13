@@ -10,7 +10,8 @@ public final class SearchConstants {
     public static final String SEARCH_MODE_SEMANTIC = "semantic";
     public static final String SEARCH_MODE_HYBRID = "hybrid";
 
-    public static final int SEARCH_HISTORY_MAX_RECORDS = 10;
+    public static final int SEARCH_HISTORY_DEFAULT_MAX_RECORDS = 10;
+    public static final int SEARCH_HISTORY_MAX_ALLOWED_RECORDS = 100;
     public static final int SEARCH_PAGE_DEFAULT_SIZE = 10;
     public static final int GAME_SEARCH_DEFAULT_SIZE = 20;
     public static final int SEARCH_PAGE_MAX_SIZE = 50;
@@ -27,22 +28,17 @@ public final class SearchConstants {
     public static final String SUGGEST_STATUS_EXPIRED = "EXPIRED";
 
     public static final String SUGGEST_SOURCE_ARTICLE = "ARTICLE";
-    public static final String SUGGEST_SOURCE_TOKEN = "TOKEN";
-    public static final String SUGGEST_SOURCE_CATEGORY = "CATEGORY";
     public static final String SUGGEST_SOURCE_UPLOAD = "UPLOAD";
     public static final String SUGGEST_SOURCE_AI = "AI";
+    public static final String SUGGEST_SOURCE_GAME = "GAME";
 
     public static final int WEIGHT_UPLOAD = 3;
     public static final int WEIGHT_ARTICLE_TITLE = 2;
-    public static final int WEIGHT_CATEGORY = 2;
-    public static final int WEIGHT_TOKEN = 1;
     public static final int WEIGHT_AI = 1;
+    public static final int WEIGHT_GAME = 2;
 
     /** 新词观察期：入库后至少保留天数 */
     public static final int SUGGEST_OBSERVE_DAYS = 7;
-
-    /** 无触发自动淘汰天数（AI/分词） */
-    public static final int SUGGEST_COLD_TTL_DAYS = 60;
 
     public static final int SUGGEST_AI_COLD_TTL_DAYS = 30;
 

@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.game.community.common.exception.BusinessException;
+import com.game.community.common.constant.social.SocialConstants;
 import com.game.community.model.base.PageResult;
 import com.game.community.model.dto.social.AddGameReviewReplyDTO;
 import com.game.community.model.entity.social.SocialGameReview;
@@ -42,8 +43,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class GameReviewSocialServiceImpl implements GameReviewSocialService {
 
-    private static final int NORMAL = 1;
-
     private final SocialGameReviewMapper reviewMapper;
     private final SocialGameReviewLikeMapper reviewLikeMapper;
     private final SocialGameReviewReplyMapper replyMapper;
@@ -66,7 +65,7 @@ public class GameReviewSocialServiceImpl implements GameReviewSocialService {
             review.setAppId(appId);
             review.setLikeCount(0L);
             review.setReplyCount(0L);
-            review.setStatus(NORMAL);
+            review.setStatus(SocialConstants.GameReviewStatus.NORMAL);
             review.setCreateTime(createTime == null ? now : createTime);
             review.setUpdateTime(now);
             try {
@@ -74,8 +73,8 @@ public class GameReviewSocialServiceImpl implements GameReviewSocialService {
             } catch (DuplicateKeyException ignored) {
                 review = findReview(reviewId);
             }
-        } else if (review.getStatus() == null || review.getStatus() != NORMAL) {
-            review.setStatus(NORMAL);
+        } else if (review.getStatus() == null || review.getStatus() != SocialConstants.GameReviewStatus.NORMAL) {
+            review.setStatus(SocialConstants.GameReviewStatus.NORMAL);
             review.setUpdateTime(now);
             reviewMapper.updateById(review);
         }
@@ -132,7 +131,7 @@ public class GameReviewSocialServiceImpl implements GameReviewSocialService {
         Page<SocialGameReview> result = reviewMapper.selectPage(new Page<>(pageNo, pageSize),
                 new LambdaQueryWrapper<SocialGameReview>()
                         .eq(SocialGameReview::getAppId, appId)
-                        .eq(SocialGameReview::getStatus, NORMAL)
+                        .eq(SocialGameReview::getStatus, SocialConstants.GameReviewStatus.NORMAL)
                         .orderByDesc(SocialGameReview::getLikeCount)
                         .orderByDesc(SocialGameReview::getCreateTime)
                         .orderByDesc(SocialGameReview::getId));
@@ -151,7 +150,7 @@ public class GameReviewSocialServiceImpl implements GameReviewSocialService {
         Page<SocialGameReviewReply> result = replyMapper.selectPage(new Page<>(pageNo, pageSize),
                 new LambdaQueryWrapper<SocialGameReviewReply>()
                         .eq(SocialGameReviewReply::getReviewId, reviewId)
-                        .eq(SocialGameReviewReply::getStatus, NORMAL)
+                        .eq(SocialGameReviewReply::getStatus, SocialConstants.GameReviewStatus.NORMAL)
                         .orderByAsc(SocialGameReviewReply::getCreateTime)
                         .orderByAsc(SocialGameReviewReply::getId));
         List<String> replyIds = result.getRecords().stream().map(SocialGameReviewReply::getReplyId).toList();
@@ -196,7 +195,7 @@ public class GameReviewSocialServiceImpl implements GameReviewSocialService {
         reply.setUsername(user == null ? "玩家" + userId : user.getUsername());
         reply.setAvatar(user == null || user.getAvatar() == null ? "" : user.getAvatar());
         reply.setLikeCount(0L);
-        reply.setStatus(NORMAL);
+        reply.setStatus(SocialConstants.GameReviewStatus.NORMAL);
         reply.setCreateTime(now);
         reply.setUpdateTime(now);
         replyMapper.insert(reply);
@@ -220,7 +219,7 @@ public class GameReviewSocialServiceImpl implements GameReviewSocialService {
     public void deleteReply(Long userId, String replyId) {
         requireUser(userId);
         SocialGameReviewReply reply = replyMapper.selectOne(new LambdaQueryWrapper<SocialGameReviewReply>()
-                .eq(SocialGameReviewReply::getReplyId, replyId).eq(SocialGameReviewReply::getStatus, NORMAL)
+                .eq(SocialGameReviewReply::getReplyId, replyId).eq(SocialGameReviewReply::getStatus, SocialConstants.GameReviewStatus.NORMAL)
                 .last("LIMIT 1"));
         if (reply == null) return;
         if (!Objects.equals(reply.getUserId(), userId)) throw new BusinessException("无权删除该回复");
@@ -301,13 +300,13 @@ public class GameReviewSocialServiceImpl implements GameReviewSocialService {
 
     private SocialGameReview requireReview(String reviewId) {
         SocialGameReview review = findReview(reviewId);
-        if (review == null || !Objects.equals(review.getStatus(), NORMAL)) throw new BusinessException("短评不存在");
+        if (review == null || !Objects.equals(review.getStatus(), SocialConstants.GameReviewStatus.NORMAL)) throw new BusinessException("短评不存在");
         return review;
     }
 
     private SocialGameReviewReply requireReply(String replyId) {
         SocialGameReviewReply reply = replyMapper.selectOne(new LambdaQueryWrapper<SocialGameReviewReply>()
-                .eq(SocialGameReviewReply::getReplyId, replyId).eq(SocialGameReviewReply::getStatus, NORMAL)
+                .eq(SocialGameReviewReply::getReplyId, replyId).eq(SocialGameReviewReply::getStatus, SocialConstants.GameReviewStatus.NORMAL)
                 .last("LIMIT 1"));
         if (reply == null) throw new BusinessException("回复不存在");
         return reply;

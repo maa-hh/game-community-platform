@@ -17,7 +17,7 @@ shop-service 只提供 `/shop/**`，不保留 `/api/shop/**`、`list`、`save` �
 
 | 方法 | 路径 | 权限 | 说明 |
 |---|---|---|---|
-| POST | `/shop/exchange` | 登录 | 创建订单并扣除积分 |
+| POST | `/shop/exchange` | 登录 | 原子完成订单创建、库存/限购预占和积分扣除；返回 `PAID`/`COMPLETED` 状态，不需要前端再次支付 |
 | POST | `/shop/order` | 登录 | 创建待支付订单 |
 | POST | `/shop/order/pay` | 登录 | 支付订单 |
 | GET | `/shop/order/{orderNo}` | 登录 | 查询本人订单 |

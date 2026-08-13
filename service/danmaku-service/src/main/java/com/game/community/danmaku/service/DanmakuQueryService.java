@@ -2,13 +2,18 @@ package com.game.community.danmaku.service;
 
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.game.community.common.constant.KafkaTopicConstants;
 import com.game.community.common.exception.BusinessException;
 import com.game.community.danmaku.mapper.DanmakuMessageMapper;
+import com.game.community.feign.ContentFeignClient;
 import com.game.community.model.entity.danmaku.DanmakuMessage;
+import com.game.community.model.message.ArticleBehaviorMessage;
 import com.game.community.model.vo.danmaku.DanmakuVO;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -20,16 +25,19 @@ import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class DanmakuQueryService {
 
     private static final String RECENT_PREFIX = "danmaku:recent:";
     private static final String MESSAGE_PREFIX = "danmaku:message:";
 
     private final DanmakuArticleValidator articleValidator;
+    private final ContentFeignClient contentFeignClient;
     private final DanmakuMessageMapper mapper;
     private final StringRedisTemplate redis;
     private final ObjectMapper objectMapper;
     private final DanmakuRealtimeService realtimeService;
+    private final KafkaTemplate<String, Object> kafkaTemplate;
 
     @Value("${danmaku.history-window-ms:30000}")
     private long maxWindowMs;
@@ -103,13 +111,45 @@ public class DanmakuQueryService {
             realtimeService.publish(cached.getVideoPublicId(), DanmakuRealtimeMessage.removed(messageId));
             return;
         }
-        mapper.update(null, new LambdaUpdateWrapper<DanmakuMessage>()
+        Long articleId = resolveArticleId(entity.getVideoPublicId());
+        int updated = mapper.update(null, new LambdaUpdateWrapper<DanmakuMessage>()
                 .eq(DanmakuMessage::getId, messageId)
                 .eq(DanmakuMessage::getStatus, 1)
                 .set(DanmakuMessage::getStatus, 2));
+        if (updated > 0) {
+            publishHeatRemoval(entity, articleId);
+        }
         DanmakuVO removed = cached == null ? toVO(entity) : cached;
         evictCache(removed);
         realtimeService.publish(removed.getVideoPublicId(), DanmakuRealtimeMessage.removed(messageId));
+    }
+
+    /** 弹幕被隐藏后发送一次幂等负向行为，避免已经计入热榜的热度永久残留。 */
+    private void publishHeatRemoval(DanmakuMessage entity, Long articleId) {
+        ArticleBehaviorMessage behavior = new ArticleBehaviorMessage();
+        behavior.setEventId("danmaku-hide:" + entity.getEventId());
+        behavior.setArticleId(articleId);
+        behavior.setDanmakuDelta(-1L);
+        behavior.setEventTimeMs(System.currentTimeMillis());
+        kafkaTemplate.send(KafkaTopicConstants.ARTICLE_BEHAVIOR_TOPIC,
+                        String.valueOf(behavior.getArticleId()), behavior)
+                .whenComplete((ignored, error) -> {
+                    if (error != null) {
+                        // 当前状态表和 XXL-JOB 回填仍是最终校正来源，不能阻断审核结果。
+                        // 负向事件失败时由日志告警，避免把 Kafka 外部 IO 伪装成数据库事务。
+                        log.warn("弹幕热度扣减事件投递失败: danmakuId={}, eventId={}",
+                                entity.getId(), behavior.getEventId(), error);
+                    }
+                });
+    }
+
+    /** 通过视频公开 ID 获取内部文章 ID，内部事件边界不向公开接口暴露该字段。 */
+    private Long resolveArticleId(String videoPublicId) {
+        var result = contentFeignClient.getArticleByPublicId(videoPublicId);
+        if (result == null || result.getData() == null || result.getData().getId() == null) {
+            throw new BusinessException("视频帖子不存在");
+        }
+        return result.getData().getId();
     }
 
     private void evictCache(DanmakuVO vo) {

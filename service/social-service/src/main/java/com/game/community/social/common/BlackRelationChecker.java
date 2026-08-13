@@ -1,6 +1,7 @@
 package com.game.community.social.common;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.game.community.common.constant.social.SocialConstants;
 import com.game.community.model.entity.social.SocialBlack;
 import com.game.community.social.mapper.SocialBlackMapper;
 import lombok.RequiredArgsConstructor;
@@ -13,11 +14,10 @@ import com.game.community.utils.RedisUtils;
 @RequiredArgsConstructor
 public class BlackRelationChecker {
 
-    private static final long CACHE_SECONDS = 30;
-
     private final SocialBlackMapper blackMapper;
     private final RedisUtils redisUtils;
 
+    /** 查询双向黑名单关系，优先使用短时缓存降低社交写操作的重复查库。 */
     public boolean hasRelation(Long leftUserId, Long rightUserId) {
         if (leftUserId == null || rightUserId == null || leftUserId.equals(rightUserId)) {
             return false;
@@ -34,10 +34,11 @@ public class BlackRelationChecker {
                 .or(wrapper -> wrapper
                         .eq(SocialBlack::getUserId, rightUserId)
                         .eq(SocialBlack::getBlackUserId, leftUserId))) > 0;
-        redisUtils.set(key, relation ? "1" : "0", CACHE_SECONDS, TimeUnit.SECONDS);
+        redisUtils.set(key, relation ? "1" : "0", SocialConstants.BLACK_RELATION_CACHE_SECONDS, TimeUnit.SECONDS);
         return relation;
     }
 
+    /** 用户解除黑名单后删除双向关系缓存。 */
     public void evict(Long leftUserId, Long rightUserId) {
         if (leftUserId != null && rightUserId != null && !leftUserId.equals(rightUserId)) {
             redisUtils.del(key(leftUserId, rightUserId));
@@ -47,6 +48,6 @@ public class BlackRelationChecker {
     private String key(Long leftUserId, Long rightUserId) {
         long first = Math.min(leftUserId, rightUserId);
         long second = Math.max(leftUserId, rightUserId);
-        return "social:black:relation:" + first + ":" + second;
+        return SocialConstants.BLACK_RELATION_CACHE_KEY_PREFIX + first + ":" + second;
     }
 }

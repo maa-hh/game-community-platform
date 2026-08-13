@@ -2,7 +2,7 @@ package com.game.community.social.event;
 
 import com.game.community.common.constant.KafkaTopicConstants;
 import com.game.community.model.message.ArticleBehaviorMessage;
-import com.game.community.social.common.SocialOutboxEventTypes;
+import com.game.community.common.constant.social.SocialConstants;
 import com.game.community.social.service.SocialOutboxService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -46,7 +46,7 @@ public class ArticleBehaviorProducer {
                 replyLikeDelta,
                 System.currentTimeMillis());
         message.setEventId(UUID.randomUUID().toString());
-        socialOutboxService.enqueue(SocialOutboxEventTypes.ARTICLE_BEHAVIOR,
+        socialOutboxService.enqueue(SocialConstants.EventType.ARTICLE_BEHAVIOR,
                 KafkaTopicConstants.ARTICLE_BEHAVIOR_TOPIC, articleId.toString(), message);
     }
 

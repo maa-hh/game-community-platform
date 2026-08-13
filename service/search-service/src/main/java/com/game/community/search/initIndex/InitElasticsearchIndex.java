@@ -26,7 +26,9 @@ public class InitElasticsearchIndex {
         createIndexIfAbsent(SearchConstants.ARTICLE_INDEX, this::articleIndexRequest, indexProperties.getArticleReplicas());
         ensureArticleEmbeddingMapping();
         createIndexIfAbsent(SearchConstants.SUGGEST_INDEX, this::suggestIndexRequest, indexProperties.getSuggestReplicas());
+        ensureSuggestSourceTypesMapping();
         createIndexIfAbsent(SearchConstants.GAME_INDEX, this::gameIndexRequest, indexProperties.getGameReplicas());
+        ensureGameGenreMapping();
     }
 
     private void validateIndexProperties() {
@@ -144,6 +146,7 @@ public class InitElasticsearchIndex {
                         .properties("termId", p -> p.long_(l -> l))
                         .properties("weight", p -> p.integer(i -> i))
                         .properties("sourceType", p -> p.keyword(k -> k))
+                        .properties("sourceTypes", p -> p.keyword(k -> k))
                         .properties("sourceArticleId", p -> p.long_(l -> l))
                 )
                 .build();
@@ -169,6 +172,7 @@ public class InitElasticsearchIndex {
                         .properties("developers", p -> p.keyword(k -> k))
                         .properties("publishers", p -> p.keyword(k -> k))
                         .properties("genres", p -> p.keyword(k -> k))
+                        .properties("genreText", p -> p.text(t -> t.analyzer("ik_max_word").searchAnalyzer("ik_smart")))
                         .properties("coverUrl", p -> p.keyword(k -> k))
                         .properties("releaseDate", p -> p.keyword(k -> k))
                         .properties("steamReviewScore", p -> p.integer(i -> i))
@@ -216,6 +220,41 @@ public class InitElasticsearchIndex {
             log.warn("ES文章索引 embedding mapping 更新跳过: {}", e.getMessage());
         } catch (IOException e) {
             log.warn("ES文章索引 embedding mapping 更新失败: {}", e.getMessage());
+        }
+    }
+
+    /** 为已存在的游戏索引补充可全文检索的游戏类型字段。 */
+    private void ensureGameGenreMapping() {
+        try {
+            if (!indexExists(SearchConstants.GAME_INDEX)) {
+                return;
+            }
+            elasticsearchClient.indices().putMapping(m -> m
+                    .index(SearchConstants.GAME_INDEX)
+                    .properties("genreText", p -> p.text(t -> t
+                            .analyzer("ik_max_word")
+                            .searchAnalyzer("ik_smart"))));
+            log.info("ES游戏索引 genreText mapping 已确认: {}", SearchConstants.GAME_INDEX);
+        } catch (ElasticsearchException e) {
+            log.warn("ES游戏索引 genreText mapping 更新跳过: {}", e.getMessage());
+        } catch (IOException e) {
+            log.warn("ES游戏索引 genreText mapping 更新失败: {}", e.getMessage());
+        }
+    }
+
+    /** 为已存在的建议词索引补充多来源类型字段。 */
+    private void ensureSuggestSourceTypesMapping() {
+        try {
+            if (!indexExists(SearchConstants.SUGGEST_INDEX)) {
+                return;
+            }
+            elasticsearchClient.indices().putMapping(m -> m
+                    .index(SearchConstants.SUGGEST_INDEX)
+                    .properties("sourceTypes", p -> p.keyword(k -> k)));
+        } catch (ElasticsearchException e) {
+            log.warn("ES建议词索引 sourceTypes mapping 更新跳过: {}", e.getMessage());
+        } catch (IOException e) {
+            log.warn("ES建议词索引 sourceTypes mapping 更新失败: {}", e.getMessage());
         }
     }
 }

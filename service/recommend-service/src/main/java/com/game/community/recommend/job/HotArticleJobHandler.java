@@ -37,7 +37,18 @@ public class HotArticleJobHandler {
     public void hotRankBehaviorBackfillJob() {
         log.info("XXL-JOB 触发历史行为事件回填");
         long rows = hotRankBehaviorBackfillService.backfillFromSocial(true);
-        log.info("历史行为回填完成，写入 {} 条，开始重建总榜", rows);
+        log.info("历史行为回填完成，写入 {} 条，开始重建总榜和实时周期榜", rows);
         hotRankService.rebuildTotalBoard();
+        hotRankService.rebuildLivePeriodBoards();
+    }
+
+    /** 弹幕上线后的增量历史同步，不清空已有社交行为事件。 */
+    @XxlJob("hotRankDanmakuBackfillJob")
+    public void hotRankDanmakuBackfillJob() {
+        log.info("XXL-JOB 触发历史弹幕行为回填");
+        long rows = hotRankBehaviorBackfillService.backfillFromSocial(false);
+        log.info("历史弹幕行为回填完成，写入 {} 条，开始刷新热榜投影", rows);
+        hotRankService.rebuildTotalBoard();
+        hotRankService.rebuildLivePeriodBoards();
     }
 }

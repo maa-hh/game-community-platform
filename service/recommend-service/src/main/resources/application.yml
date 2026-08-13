@@ -78,9 +78,11 @@ xxl:
 recommend:
   kafka:
     consumer-group: ${RECOMMEND_KAFKA_CONSUMER_GROUP:recommend-service-hot-rank}
+    danmaku-consumer-group: ${RECOMMEND_KAFKA_DANMAKU_CONSUMER_GROUP:recommend-service-danmaku-hot-rank}
   startup:
     # 启动后自动执行热榜初始化（对应 hotRankDailyFinalizeJob / hotRankWeeklyJob / hotRankTotalDailyJob）
-    run-hot-rank-jobs: ${RECOMMEND_STARTUP_RUN_HOT_RANK_JOBS:true}
+    # 生产由 XXL-JOB 调度；本地需要启动即预热时显式开启。
+    run-hot-rank-jobs: ${RECOMMEND_STARTUP_RUN_HOT_RANK_JOBS:false}
     # 表为空时从 social/content 历史数据回填行为事件
     backfill-behavior-events: ${RECOMMEND_STARTUP_BACKFILL_BEHAVIOR_EVENTS:true}
 

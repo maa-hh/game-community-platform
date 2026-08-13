@@ -41,13 +41,14 @@ public class ShopCurrencyServiceImpl implements ShopCurrencyService {
         validateAmount(amount);
         validateUserId(userId);
         validateBizKey(bizType, bizRef);
-        ensureCurrency(userId);
-        if (StringUtils.hasText(bizRef) && ledgerMapper.selectByBizRef(bizType, bizRef) != null) {
-            return getOrCreate(userId);
+        ShopUserCurrency currency = ensureCurrencyForUpdate(userId);
+        ShopPointsLedger existing = ledgerMapper.selectByBizRef(bizType, bizRef);
+        if (existing != null) {
+            validateLedgerOwner(existing, userId);
+            return toVO(currency);
         }
         currencyMapper.addPoints(userId, amount);
-        ShopUserCurrency currency = currencyMapper.selectOne(new LambdaQueryWrapper<ShopUserCurrency>()
-                .eq(ShopUserCurrency::getUserId, userId));
+        currency.setPoints(currency.getPoints() + amount);
         writeLedger(userId, amount, currency.getPoints(), bizType, bizRef, remark);
         return toVO(currency);
     }
@@ -58,21 +59,37 @@ public class ShopCurrencyServiceImpl implements ShopCurrencyService {
         validateAmount(amount);
         validateUserId(userId);
         validateBizKey(bizType, bizRef);
-        ensureCurrency(userId);
-        if (StringUtils.hasText(bizRef) && ledgerMapper.selectByBizRef(bizType, bizRef) != null) {
-            return getOrCreate(userId);
+        ShopUserCurrency currency = ensureCurrencyForUpdate(userId);
+        ShopPointsLedger existing = ledgerMapper.selectByBizRef(bizType, bizRef);
+        if (existing != null) {
+            validateLedgerOwner(existing, userId);
+            return toVO(currency);
         }
         if (currencyMapper.deductPoints(userId, amount) == 0) {
             throw new BusinessException("积分不足");
         }
-        ShopUserCurrency currency = currencyMapper.selectOne(new LambdaQueryWrapper<ShopUserCurrency>()
-                .eq(ShopUserCurrency::getUserId, userId));
+        currency.setPoints(currency.getPoints() - amount);
         writeLedger(userId, -amount, currency.getPoints(), bizType, bizRef, remark);
         return toVO(currency);
     }
 
-    private void ensureCurrency(Long userId) {
-        getOrCreate(userId);
+    /** 在同一事务内锁定账户行，保证余额和流水的 balance_after 来自同一版本。 */
+    private ShopUserCurrency ensureCurrencyForUpdate(Long userId) {
+        ShopUserCurrency initial = new ShopUserCurrency();
+        initial.setUserId(userId);
+        initial.setPoints(ShopConstants.DEFAULT_POINTS);
+        currencyMapper.insertIfAbsent(initial);
+        ShopUserCurrency currency = currencyMapper.selectForUpdate(userId);
+        if (currency == null) {
+            throw new BusinessException("积分账户不存在");
+        }
+        return currency;
+    }
+
+    private void validateLedgerOwner(ShopPointsLedger ledger, Long userId) {
+        if (!userId.equals(ledger.getUserId())) {
+            throw new BusinessException("积分业务流水标识已被占用");
+        }
     }
 
     private void validateAmount(Long amount) {

@@ -64,6 +64,7 @@ public class GatewayConstants {
             "/social/favorite/article/check/",
             "/search/article",
             "/search/game",
+            "/search/suggest",
             "/user/ids",
             "/user/cosmetic/decorations/batch",
             "/hot-article/",

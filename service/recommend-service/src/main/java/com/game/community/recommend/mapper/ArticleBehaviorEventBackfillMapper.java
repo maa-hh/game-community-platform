@@ -11,6 +11,27 @@ public interface ArticleBehaviorEventBackfillMapper {
     @Select("SELECT COUNT(*) FROM t_article_behavior_event")
     long countAll();
 
+    /** 将当前可见弹幕按视频公开 ID 映射到文章，幂等补入统一行为事件表。 */
+    @Insert("""
+            INSERT IGNORE INTO t_article_behavior_event (
+                event_id, article_id, like_delta, comment_delta, danmaku_delta, view_delta,
+                favorite_delta, share_delta, comment_like_delta, reply_like_delta,
+                score_delta, event_time, event_time_ms
+            )
+            SELECT
+                CONCAT('backfill-danmaku-', d.id), a.id,
+                0, 0, 1, 0,
+                0, 0, 0, 0,
+                5.0,
+                COALESCE(d.create_time, #{fallbackTime}),
+                UNIX_TIMESTAMP(COALESCE(d.create_time, #{fallbackTime})) * 1000
+            FROM t_danmaku_message d
+            INNER JOIN t_article a ON a.public_id = d.video_public_id
+                AND a.post_type = 3 AND a.status = 1 AND a.deleted = 0
+            WHERE d.status = 1
+            """)
+    int backfillDanmaku(@Param("fallbackTime") String fallbackTime);
+
     @Insert("""
             INSERT INTO t_article_behavior_event (
                 event_id, article_id, like_delta, comment_delta, view_delta, favorite_delta, share_delta,

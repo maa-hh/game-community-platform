@@ -22,7 +22,6 @@ SET @test_password_hash := '$2y$10$/IaYnaaLW9nLarvvAAqqZOdzHMtRCwB2rDUcu50GU1xz0
 -- 清理旧数据（若曾手动插入半成品账号）
 DELETE FROM t_notification_message WHERE user_id = @test_user_id;
 DELETE FROM t_notification_user_state WHERE user_id = @test_user_id;
-DELETE FROM t_shop_user_coupon WHERE user_id = @test_user_id;
 DELETE FROM t_shop_user_currency WHERE user_id = @test_user_id;
 DELETE FROM t_user_operation_log WHERE user_id = @test_user_id;
 DELETE FROM t_user_audit_reject_log WHERE user_id = @test_user_id;
@@ -75,19 +74,11 @@ SET status = 1, user_id = @test_user_id, update_time = NOW()
 WHERE account_id = @test_account_id;
 
 -- 商城货币（与 shop.sql 种子策略一致）
-INSERT INTO t_shop_user_currency (user_id, gold, diamond)
-VALUES (@test_user_id, 1000, 500)
+INSERT INTO t_shop_user_currency (user_id, points)
+VALUES (@test_user_id, 100000)
 ON DUPLICATE KEY UPDATE
-    gold = GREATEST(gold, 1000),
-    diamond = GREATEST(diamond, 500);
-
--- 商城优惠券
-INSERT INTO t_shop_user_coupon (user_id, coupon_id, status)
-SELECT @test_user_id, c.id, 0
-FROM t_shop_coupon c
-WHERE c.id IN (1, 2, 3)
-ON DUPLICATE KEY UPDATE
-    status = IF(t_shop_user_coupon.status = 2, 0, t_shop_user_coupon.status);
+    points = GREATEST(points, 100000),
+    update_time = NOW();
 
 -- 通知用户状态（初始无未读）
 INSERT INTO t_notification_user_state (

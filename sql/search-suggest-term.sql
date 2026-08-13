@@ -1,9 +1,11 @@
+SET NAMES utf8mb4;
+
 -- 搜索前缀建议词主数据（MySQL 管生命周期，ES 管检索）
 CREATE TABLE IF NOT EXISTS t_suggest_term (
     id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '建议词ID',
     term VARCHAR(128) NOT NULL COMMENT '规范化后的建议词',
-    source_type VARCHAR(16) NOT NULL COMMENT 'ARTICLE/TOKEN/CATEGORY/UPLOAD/AI',
-    source_article_id BIGINT NOT NULL DEFAULT 0 COMMENT '来源帖子ID，0表示非帖子来源',
+    source_type VARCHAR(16) NOT NULL COMMENT 'ARTICLE/AI/GAME/UPLOAD',
+    source_article_id BIGINT NOT NULL DEFAULT 0 COMMENT '来源业务ID，文章/游戏使用对应ID，0表示无实体来源',
     weight INT NOT NULL DEFAULT 1 COMMENT '排序权重，越大越靠前',
     pinned TINYINT NOT NULL DEFAULT 0 COMMENT '运营置顶，不参与自动清理',
     status VARCHAR(16) NOT NULL DEFAULT 'ACTIVE' COMMENT 'ACTIVE/DISABLED/EXPIRED',
@@ -20,8 +22,8 @@ CREATE TABLE IF NOT EXISTS t_suggest_term (
 CREATE TABLE IF NOT EXISTS t_suggest_term_source (
     id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '来源关系ID',
     term_id BIGINT NOT NULL COMMENT '建议词ID',
-    source_type VARCHAR(16) NOT NULL COMMENT 'ARTICLE/TOKEN/CATEGORY/UPLOAD/AI',
-    source_article_id BIGINT NOT NULL DEFAULT 0 COMMENT '来源帖子ID，0表示非帖子来源',
+    source_type VARCHAR(16) NOT NULL COMMENT 'ARTICLE/AI/GAME/UPLOAD',
+    source_article_id BIGINT NOT NULL DEFAULT 0 COMMENT '来源业务ID，文章/游戏使用对应ID，0表示无实体来源',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '建立关系时间',
     UNIQUE KEY uk_suggest_term_source (term_id, source_type, source_article_id),
     KEY idx_suggest_source_article_type (source_article_id, source_type, term_id),

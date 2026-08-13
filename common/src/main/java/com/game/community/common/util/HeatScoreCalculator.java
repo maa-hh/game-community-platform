@@ -20,6 +20,7 @@ public final class HeatScoreCalculator {
                 + safe(message.getFavoriteDelta()) * RecommendConstants.FAVORITE_WEIGHT
                 + safe(message.getShareDelta()) * RecommendConstants.SHARE_WEIGHT
                 + safe(message.getCommentDelta()) * RecommendConstants.COMMENT_WEIGHT
+                + safe(message.getDanmakuDelta()) * RecommendConstants.DANMAKU_WEIGHT
                 + safe(message.getCommentLikeDelta()) * RecommendConstants.COMMENT_LIKE_WEIGHT
                 + safe(message.getReplyLikeDelta()) * RecommendConstants.REPLY_LIKE_WEIGHT;
     }

@@ -8,6 +8,7 @@ import com.game.community.content.util.ArticleMediaHelper;
 import com.game.community.feign.SteamFeignClient;
 import com.game.community.feign.SocialFeignClient;
 import com.game.community.model.entity.content.ContentOutboxEvent;
+import com.game.community.model.dto.social.PublishArticleFeedDTO;
 import com.game.community.model.message.ArticleSearchSyncMessage;
 import com.game.community.model.message.ModerationTaskMessage;
 import com.game.community.model.message.NotificationEventMessage;
@@ -128,8 +129,11 @@ public class ContentOutboxPublisher {
         Long authorId = toLong(payload.get("authorId"));
         Long articleId = toLong(payload.get("articleId"));
         String publishedTime = String.valueOf(payload.get("publishedTime"));
-        Result<Void> result = socialFeignClient.publishArticleToFollowers(
-                authorId, articleId, publishedTime, socialInternalToken);
+        PublishArticleFeedDTO request = new PublishArticleFeedDTO();
+        request.setAuthorId(authorId);
+        request.setArticleId(articleId);
+        request.setPublishedTime(LocalDateTime.parse(publishedTime));
+        Result<Void> result = socialFeignClient.publishArticleToFollowers(request, socialInternalToken);
         if (result == null || result.getCode() == null || result.getCode() != 200) {
             throw new IllegalStateException("社交 Feed 服务返回失败");
         }

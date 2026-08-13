@@ -145,6 +145,23 @@ public class ShopItemServiceImpl implements ShopItemService {
 
     private ShopItemVO enrichItem(ShopItemVO vo, Long userId) {
         vo.setCanBuy(true);
+        LocalDateTime now = LocalDateTime.now();
+        if (vo.getStatus() == null || vo.getStatus() != ShopConstants.ITEM_ON_SHELF) {
+            vo.setCanBuy(false);
+            vo.setCannotBuyReason("商品已下架");
+            return vo;
+        }
+        if ((vo.getBeginTime() != null && now.isBefore(vo.getBeginTime()))
+                || (vo.getEndTime() != null && now.isAfter(vo.getEndTime()))) {
+            vo.setCanBuy(false);
+            vo.setCannotBuyReason("商品当前不可购买");
+            return vo;
+        }
+        if (vo.getStock() != null && vo.getStock() == 0) {
+            vo.setCanBuy(false);
+            vo.setCannotBuyReason("库存不足");
+            return vo;
+        }
         if (userId == null) return vo;
         Result<CosmeticItemStateVO> state = userFeignClient.getCosmeticItemState(userId, vo.getCosmeticCode());
         if (state == null || state.getData() == null) {

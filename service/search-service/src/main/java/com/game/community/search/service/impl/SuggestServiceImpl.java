@@ -47,18 +47,23 @@ public class SuggestServiceImpl implements SuggestService {
     private final SuggestTermService suggestTermService;
 
     @Override
-    public List<SuggestItemVO> suggest(String prefix) {
+    public List<SuggestItemVO> suggest(String prefix, String sourceType) {
         if (!StringUtils.hasText(prefix)) {
             return List.of();
         }
         try {
+            BoolQuery.Builder boolQuery = new BoolQuery.Builder()
+                    .should(Query.of(sq -> sq.matchPhrasePrefix(m -> m.field("suggest").query(prefix.trim()))))
+                    .should(Query.of(sq -> sq.matchPhrasePrefix(m -> m.field("suggestNgram").query(prefix.trim()))))
+                    .minimumShouldMatch("1");
+            if (StringUtils.hasText(sourceType)) {
+                boolQuery.filter(
+                        Query.of(f -> f.term(t -> t.field("sourceTypes").value(sourceType.trim().toUpperCase()))));
+            }
             SearchRequest request = SearchRequest.of(s -> s
                     .index(SearchConstants.SUGGEST_INDEX)
-                    .query(q -> q.bool(b -> b
-                            .should(Query.of(sq -> sq.matchPhrasePrefix(m -> m.field("suggest").query(prefix.trim()))))
-                            .should(Query.of(sq -> sq.match(m -> m.field("suggestNgram").query(prefix.trim()).fuzziness("AUTO"))))
-                            .minimumShouldMatch("1")
-                    ))
+                    .query(Query.of(q -> q.bool(boolQuery.build())))
+                    .sort(so -> so.score(sc -> sc.order(SortOrder.Desc)))
                     .sort(so -> so.field(f -> f.field("weight").order(SortOrder.Desc)))
                     .size(SearchConstants.SUGGEST_MAX_RESULTS)
             );
@@ -83,7 +88,7 @@ public class SuggestServiceImpl implements SuggestService {
         if (!StringUtils.hasText(keyword)) {
             return SearchCorrectVO.noNeed();
         }
-        return suggest(keyword.trim()).stream()
+        return suggest(keyword.trim(), null).stream()
                 .map(SuggestItemVO::getTerm)
                 .filter(StringUtils::hasText)
                 .map(item -> SearchCorrectVO.of(keyword, item, "FUZZY", levenshteinDistance(keyword, item)))

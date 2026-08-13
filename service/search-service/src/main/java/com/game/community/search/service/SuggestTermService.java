@@ -14,9 +14,15 @@ public interface SuggestTermService {
 
     void replaceArticleTerms(Long articleId, Collection<TermSeed> seeds);
 
+    /** 替换某个游戏的建议词来源，保证游戏改名或类型变化后旧词不再被召回。 */
+    void replaceGameTerms(Long appId, Collection<TermSeed> seeds);
+
     void expireArticleSourceTypes(Long articleId, Collection<String> sourceTypes);
 
     void expireByArticleId(Long articleId);
+
+    /** 删除某个游戏产生的建议词来源，按来源类型隔离文章与游戏 ID。 */
+    void expireGameTerms(Long appId);
 
     void triggerAsync(Long termId, String term);
 

@@ -52,7 +52,7 @@ public class DanmakuCommandService {
         if (userId == null) {
             throw new BusinessException("请先登录后发送弹幕");
         }
-        articleValidator.requireVideo(videoPublicId);
+        var article = articleValidator.requireVideo(videoPublicId);
         validate(dto);
         rateLimiter.check(userId, videoPublicId);
 
@@ -79,6 +79,7 @@ public class DanmakuCommandService {
             DanmakuEvent event = new DanmakuEvent();
             event.setId(id);
             event.setEventId(UUID.randomUUID().toString());
+            event.setArticleId(article.getId());
             event.setClientMessageId(dto.getClientMessageId());
             event.setVideoPublicId(videoPublicId);
             event.setVideoTimeMs(dto.getVideoTimeMs());

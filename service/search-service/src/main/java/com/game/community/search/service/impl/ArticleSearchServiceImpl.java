@@ -3,6 +3,7 @@ package com.game.community.search.service.impl;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch._types.SortOrder;
 import co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery;
+import co.elastic.clients.elasticsearch._types.query_dsl.Operator;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import co.elastic.clients.elasticsearch._types.query_dsl.TextQueryType;
 import co.elastic.clients.elasticsearch.core.SearchRequest;
@@ -214,6 +215,10 @@ public class ArticleSearchServiceImpl implements ArticleSearchService {
             if (latestSort) {
                 request.sort(s -> s.field(f -> f.field("publishedTime").order(SortOrder.Desc)));
                 request.sort(s -> s.field(f -> f.field("id").order(SortOrder.Desc)));
+            } else {
+                request.sort(s -> s.score(sc -> sc.order(SortOrder.Desc)));
+                request.sort(s -> s.field(f -> f.field("publishedTime").order(SortOrder.Desc)));
+                request.sort(s -> s.field(f -> f.field("id").order(SortOrder.Desc)));
             }
 
             SearchResponse<ArticleDocument> response = elasticsearchClient.search(request.build(), ArticleDocument.class);
@@ -279,23 +284,33 @@ public class ArticleSearchServiceImpl implements ArticleSearchService {
                 .should(s -> s.multiMatch(m -> m
                         .query(keyword)
                         .fields("title^10")
-                        .type(TextQueryType.Phrase)))
+                        .type(TextQueryType.Phrase)
+                        .boost(2.0F)))
                 .should(s -> s.multiMatch(m -> m
                         .query(keyword)
                         .fields("summary^7")
-                        .type(TextQueryType.Phrase)))
+                        .type(TextQueryType.Phrase)
+                        .boost(2.0F)))
                 .should(s -> s.multiMatch(m -> m
                         .query(keyword)
                         .fields("content^3")
-                        .type(TextQueryType.Phrase)))
+                        .type(TextQueryType.Phrase)
+                        .boost(2.0F)))
                 .should(s -> s.multiMatch(m -> m
                         .query(keyword)
                         .fields("gameTags.name^5")
-                        .type(TextQueryType.Phrase)))
+                        .type(TextQueryType.Phrase)
+                        .boost(2.0F)))
                 .should(s -> s.multiMatch(m -> m
                         .query(keyword)
                         .fields("categoryNames^1", "categoryName^1")
-                        .type(TextQueryType.Phrase)))
+                        .type(TextQueryType.Phrase)
+                        .boost(2.0F)))
+                .should(s -> s.multiMatch(m -> m
+                        .query(keyword)
+                        .fields("title^10", "summary^7", "gameTags.name^5", "content^3",
+                                "categoryNames^1", "categoryName^1")
+                        .operator(Operator.And)))
                 .minimumShouldMatch("1")));
     }
 
