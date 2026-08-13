@@ -5,7 +5,6 @@ CREATE TABLE IF NOT EXISTS t_article_behavior_event (
     article_id BIGINT NOT NULL,
     like_delta BIGINT NOT NULL DEFAULT 0,
     comment_delta BIGINT NOT NULL DEFAULT 0,
-    danmaku_delta BIGINT NOT NULL DEFAULT 0 COMMENT '弹幕增量，权重与评论相同',
     view_delta BIGINT NOT NULL DEFAULT 0,
     favorite_delta BIGINT NOT NULL DEFAULT 0,
     share_delta BIGINT NOT NULL DEFAULT 0,

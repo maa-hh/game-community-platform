@@ -1,5 +1,6 @@
 package com.game.community.recommend.mapper;
 
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -10,6 +11,14 @@ public interface ArticleBehaviorEventBackfillMapper {
 
     @Select("SELECT COUNT(*) FROM t_article_behavior_event")
     long countAll();
+
+    /** 删除由弹幕事实派生的旧投影，随后按当前可见状态重建，修正隐藏/删除造成的历史残留。 */
+    @Delete("""
+            DELETE FROM t_article_behavior_event
+            WHERE event_id LIKE 'danmaku:%'
+               OR event_id LIKE 'backfill-danmaku-%'
+            """)
+    int deleteDanmakuEvents();
 
     /** 将当前可见弹幕按视频公开 ID 映射到文章，幂等补入统一行为事件表。 */
     @Insert("""
@@ -26,7 +35,8 @@ public interface ArticleBehaviorEventBackfillMapper {
                 COALESCE(d.create_time, #{fallbackTime}),
                 UNIX_TIMESTAMP(COALESCE(d.create_time, #{fallbackTime})) * 1000
             FROM t_danmaku_message d
-            INNER JOIN t_article a ON a.public_id = d.video_public_id
+            INNER JOIN t_article a ON a.public_id COLLATE utf8mb4_unicode_ci
+                = d.video_public_id COLLATE utf8mb4_unicode_ci
                 AND a.post_type = 3 AND a.status = 1 AND a.deleted = 0
             WHERE d.status = 1
             """)

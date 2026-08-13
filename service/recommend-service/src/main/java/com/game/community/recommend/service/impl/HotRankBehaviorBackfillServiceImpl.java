@@ -78,6 +78,7 @@ public class HotRankBehaviorBackfillServiceImpl implements HotRankBehaviorBackfi
     /** 补入当前可见弹幕；使用稳定 eventId，重复执行不会重复计分。 */
     private int backfillDanmaku() {
         LocalDateTime fallback = LocalDate.now(HotRankPeriodUtils.SHANGHAI).minusDays(1).atTime(12, 0);
+        backfillMapper.deleteDanmakuEvents();
         return backfillMapper.backfillDanmaku(fallback.format(FALLBACK_TIME));
     }
 }

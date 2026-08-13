@@ -30,6 +30,7 @@ SELECT
     COALESCE(d.create_time, NOW()),
     UNIX_TIMESTAMP(COALESCE(d.create_time, NOW())) * 1000
 FROM t_danmaku_message d
-INNER JOIN t_article a ON a.public_id = d.video_public_id
+INNER JOIN t_article a ON a.public_id COLLATE utf8mb4_unicode_ci
+    = d.video_public_id COLLATE utf8mb4_unicode_ci
     AND a.post_type = 3 AND a.status = 1 AND a.deleted = 0
 WHERE d.status = 1;
