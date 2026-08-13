@@ -48,13 +48,7 @@ spring:
     bootstrap-servers: ${KAFKA_SERVERS:localhost:9093}
     consumer:
       auto-offset-reset: ${RECOMMEND_KAFKA_AUTO_OFFSET_RESET:earliest}
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       enable-auto-commit: false
-      properties:
-        spring.json.trusted.packages: com.game.community.model.message
-        spring.json.value.default.type: com.game.community.model.message.ArticleBehaviorMessage
-        spring.json.use.type.headers: false
 
     listener:
       ack-mode: record

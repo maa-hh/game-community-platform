@@ -1,5 +1,6 @@
 package com.game.community.recommend.config;
 
+import com.game.community.model.message.ArticleBehaviorMessage;
 import com.game.community.model.message.DanmakuEvent;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
@@ -14,6 +15,7 @@ import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.support.serializer.JsonDeserializer;
+import org.springframework.kafka.listener.ContainerProperties;
 import org.springframework.util.backoff.FixedBackOff;
 
 import java.util.HashMap;
@@ -31,6 +33,34 @@ public class KafkaConsumerConfig {
         return new DefaultErrorHandler(recoverer, new FixedBackOff(1_000L, 3L));
     }
 
+    /** 为文章行为事件提供明确类型的反序列化工厂，避免 JsonDeserializer 属性与 setter 重复配置。 */
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, ArticleBehaviorMessage>
+            articleBehaviorKafkaListenerContainerFactory(
+                    KafkaProperties kafkaProperties,
+                    CommonErrorHandler kafkaErrorHandler) {
+        Map<String, Object> properties = new HashMap<>(kafkaProperties.buildConsumerProperties());
+        properties.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
+        properties.remove(JsonDeserializer.TRUSTED_PACKAGES);
+        properties.remove(JsonDeserializer.VALUE_DEFAULT_TYPE);
+        properties.remove(JsonDeserializer.USE_TYPE_INFO_HEADERS);
+
+        JsonDeserializer<ArticleBehaviorMessage> deserializer =
+                new JsonDeserializer<>(ArticleBehaviorMessage.class);
+        deserializer.addTrustedPackages("com.game.community.model.message");
+        deserializer.setUseTypeHeaders(false);
+
+        ConsumerFactory<String, ArticleBehaviorMessage> consumerFactory =
+                new DefaultKafkaConsumerFactory<>(properties, new StringDeserializer(), deserializer);
+        ConcurrentKafkaListenerContainerFactory<String, ArticleBehaviorMessage> factory =
+                new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(consumerFactory);
+        factory.setCommonErrorHandler(kafkaErrorHandler);
+        factory.setConcurrency(3);
+        factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.RECORD);
+        return factory;
+    }
+
     /** 为 DanmakuEvent 提供独立反序列化工厂，避免全局行为事件默认类型误解析弹幕消息。 */
     @Bean
     public ConcurrentKafkaListenerContainerFactory<String, DanmakuEvent> danmakuKafkaListenerContainerFactory(
@@ -38,6 +68,9 @@ public class KafkaConsumerConfig {
             CommonErrorHandler kafkaErrorHandler) {
         Map<String, Object> properties = new HashMap<>(kafkaProperties.buildConsumerProperties());
         properties.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
+        properties.remove(JsonDeserializer.TRUSTED_PACKAGES);
+        properties.remove(JsonDeserializer.VALUE_DEFAULT_TYPE);
+        properties.remove(JsonDeserializer.USE_TYPE_INFO_HEADERS);
         JsonDeserializer<DanmakuEvent> deserializer = new JsonDeserializer<>(DanmakuEvent.class);
         deserializer.addTrustedPackages("com.game.community.model.message");
         deserializer.setUseTypeHeaders(false);
@@ -48,6 +81,7 @@ public class KafkaConsumerConfig {
         factory.setConsumerFactory(consumerFactory);
         factory.setCommonErrorHandler(kafkaErrorHandler);
         factory.setConcurrency(1);
+        factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.RECORD);
         return factory;
     }
 }

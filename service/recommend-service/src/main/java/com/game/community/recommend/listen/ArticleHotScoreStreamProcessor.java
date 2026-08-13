@@ -18,7 +18,8 @@ public class ArticleHotScoreStreamProcessor {
     private final HotRankService hotRankService;
 
     @KafkaListener(topics = KafkaTopicConstants.ARTICLE_BEHAVIOR_TOPIC,
-            groupId = "${recommend.kafka.consumer-group:" + RecommendConstants.BEHAVIOR_CONSUMER_GROUP + "}")
+            groupId = "${recommend.kafka.consumer-group:" + RecommendConstants.BEHAVIOR_CONSUMER_GROUP + "}",
+            containerFactory = "articleBehaviorKafkaListenerContainerFactory")
     public void handleBehaviorMessage(ConsumerRecord<String, ArticleBehaviorMessage> record) {
         ArticleBehaviorMessage message = record == null ? null : record.value();
         if (message == null || message.getArticleId() == null || message.getArticleId() <= 0) {
