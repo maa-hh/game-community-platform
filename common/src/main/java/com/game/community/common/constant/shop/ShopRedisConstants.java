@@ -12,6 +12,8 @@ public final class ShopRedisConstants {
 
     public static final String LIMIT_RESERVATION_KEY_PREFIX = "shop:limit:reservation:";
 
+    public static final String ONCE_BITMAP_KEY_PREFIX = "shop:limit:once:bitmap:";
+
     public static final String ORDER_STATE_KEY_PREFIX = "shop:order:state:";
 
     public static final String ORDER_EXPIRE_QUEUE = "shop:order:expire:queue";
@@ -42,6 +44,10 @@ public final class ShopRedisConstants {
 
     public static String limitReservationKey(Long itemId, Long userId, String orderNo) {
         return LIMIT_RESERVATION_KEY_PREFIX + "{" + itemId + "}:" + userId + ":" + orderNo;
+    }
+
+    public static String onceBitmapKey(Long itemId) {
+        return ONCE_BITMAP_KEY_PREFIX + "{" + itemId + "}";
     }
 
     private ShopRedisConstants() {

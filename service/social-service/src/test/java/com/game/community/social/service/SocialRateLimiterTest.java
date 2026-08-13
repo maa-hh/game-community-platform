@@ -1,5 +1,6 @@
 package com.game.community.social.service;
 
+import com.game.community.common.constant.social.SocialRateLimitConstants;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -23,8 +24,10 @@ class SocialRateLimiterTest {
         SocialRateLimiter limiter = new SocialRateLimiter(redis);
         ReflectionTestUtils.setField(limiter, "enabled", true);
 
-        assertTrue(limiter.allow(7L, "comment:create", 1, 60));
-        assertFalse(limiter.allow(7L, "comment:create", 1, 60));
+        assertTrue(limiter.allow(7L, SocialRateLimitConstants.COMMENT_CREATE, 1,
+                SocialRateLimitConstants.SHORT_WINDOW_SECONDS));
+        assertFalse(limiter.allow(7L, SocialRateLimitConstants.COMMENT_CREATE, 1,
+                SocialRateLimitConstants.SHORT_WINDOW_SECONDS));
     }
 
     @Test
@@ -33,6 +36,7 @@ class SocialRateLimiterTest {
         SocialRateLimiter limiter = new SocialRateLimiter(redis);
         ReflectionTestUtils.setField(limiter, "enabled", false);
 
-        assertTrue(limiter.allow(7L, "comment:create", 1, 60));
+        assertTrue(limiter.allow(7L, SocialRateLimitConstants.COMMENT_CREATE, 1,
+                SocialRateLimitConstants.SHORT_WINDOW_SECONDS));
     }
 }

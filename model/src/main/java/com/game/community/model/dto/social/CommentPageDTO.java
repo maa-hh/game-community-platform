@@ -9,7 +9,8 @@ import java.io.Serializable;
 public class CommentPageDTO implements Serializable {
 
     @NotNull(message = "文章ID不能为空")
-    private Long articleId;
+    /** 文章对外标识；内部主键由 Service 边界解析。 */
+    private String articleId;
 
     private Long page = 1L;
 

@@ -1,6 +1,8 @@
 package com.game.community.feign;
 
+import com.game.community.common.constant.social.SocialConstants;
 import com.game.community.model.base.Result;
+import com.game.community.model.dto.social.PublishArticleFeedDTO;
 import com.game.community.model.vo.social.ArticleStatsVO;
 import com.game.community.model.vo.social.CommentVO;
 import com.game.community.model.vo.social.ReplyVO;
@@ -12,6 +14,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.DeleteMapping;
 
 import java.util.List;
@@ -24,10 +27,8 @@ public interface SocialFeignClient {
                                           @RequestParam(value = "userId", required = false) Long userId);
 
     @PostMapping("/feed/publish")
-    Result<Void> publishArticleToFollowers(@RequestParam("authorId") Long authorId,
-                                           @RequestParam("articleId") Long articleId,
-                                           @RequestParam("publishedTime") String publishedTime,
-                                           @RequestHeader("X-Internal-Token") String internalToken);
+    Result<Void> publishArticleToFollowers(@RequestBody PublishArticleFeedDTO request,
+                                           @RequestHeader(SocialConstants.INTERNAL_TOKEN_HEADER) String internalToken);
 
     @GetMapping("/comments/{commentId}")
     Result<CommentVO> getCommentDetail(@PathVariable("commentId") Long commentId);

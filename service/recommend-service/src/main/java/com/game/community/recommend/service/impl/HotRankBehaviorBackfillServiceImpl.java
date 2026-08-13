@@ -1,6 +1,7 @@
 package com.game.community.recommend.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.game.community.common.constant.RecommendConstants;
 import com.game.community.recommend.mapper.ArticleBehaviorEventBackfillMapper;
 import com.game.community.recommend.mapper.ArticleBehaviorEventMapper;
 import com.game.community.recommend.service.HotRankBehaviorBackfillService;
@@ -32,7 +33,7 @@ public class HotRankBehaviorBackfillServiceImpl implements HotRankBehaviorBackfi
     @Transactional(rollbackFor = Exception.class)
     public long backfillFromSocial(boolean force) {
         String token = UUID.randomUUID().toString();
-        Boolean locked = redisUtils.setIfAbsent("recommend:lock:behavior-backfill", token, 1_800L);
+        Boolean locked = redisUtils.setIfAbsent(RecommendConstants.BEHAVIOR_BACKFILL_LOCK_KEY, token, 1_800L);
         if (!Boolean.TRUE.equals(locked)) {
             log.warn("历史行为回填正在其他实例执行，跳过本次任务");
             return 0L;
@@ -40,8 +41,10 @@ public class HotRankBehaviorBackfillServiceImpl implements HotRankBehaviorBackfi
         try {
             long existing = backfillMapper.countAll();
             if (existing > 0 && !force) {
-                log.info("行为事件表已有 {} 条，跳过历史回填（force=false）", existing);
-                return 0L;
+                int danmakuOnly = backfillDanmaku();
+                log.info("行为事件表已有 {} 条，跳过社交历史回填，补入 {} 条历史弹幕（force=false）",
+                        existing, danmakuOnly);
+                return danmakuOnly;
             }
             if (force && existing > 0) {
                 log.warn("强制回填：清空 t_article_behavior_event（{} 条）", existing);
@@ -61,13 +64,20 @@ public class HotRankBehaviorBackfillServiceImpl implements HotRankBehaviorBackfi
             int shares = backfillMapper.backfillShareCounts(fallbackTime, fallbackTimeMs);
             int commentLikes = backfillMapper.backfillCommentLikes(fallbackTime);
             int replyLikes = backfillMapper.backfillReplyLikes(fallbackTime);
+            int danmaku = backfillDanmaku();
 
-            long total = likes + favorites + comments + replies + views + reposts + shares + commentLikes + replyLikes;
-            log.info("历史行为回填完成: like={}, favorite={}, comment={}, reply={}, view={}, repost={}, shareStat={}, commentLike={}, replyLike={}, total={}",
-                    likes, favorites, comments, replies, views, reposts, shares, commentLikes, replyLikes, total);
+            long total = likes + favorites + comments + replies + views + reposts + shares + commentLikes + replyLikes + danmaku;
+            log.info("历史行为回填完成: like={}, favorite={}, comment={}, reply={}, view={}, repost={}, shareStat={}, commentLike={}, replyLike={}, danmaku={}, total={}",
+                    likes, favorites, comments, replies, views, reposts, shares, commentLikes, replyLikes, danmaku, total);
             return total;
         } finally {
-            redisUtils.unlock("recommend:lock:behavior-backfill", token);
+            redisUtils.unlock(RecommendConstants.BEHAVIOR_BACKFILL_LOCK_KEY, token);
         }
+    }
+
+    /** 补入当前可见弹幕；使用稳定 eventId，重复执行不会重复计分。 */
+    private int backfillDanmaku() {
+        LocalDateTime fallback = LocalDate.now(HotRankPeriodUtils.SHANGHAI).minusDays(1).atTime(12, 0);
+        return backfillMapper.backfillDanmaku(fallback.format(FALLBACK_TIME));
     }
 }

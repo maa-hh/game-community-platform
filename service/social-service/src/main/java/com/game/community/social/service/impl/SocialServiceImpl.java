@@ -10,6 +10,7 @@ import com.game.community.model.base.PageResult;
 import com.game.community.model.dto.social.AddCommentDTO;
 import com.game.community.model.dto.social.AddReplyDTO;
 import com.game.community.model.dto.social.CommentPageDTO;
+import com.game.community.model.dto.social.FeedQueryDTO;
 import com.game.community.model.dto.social.ReplyPageDTO;
 import com.game.community.model.dto.social.ShareArticleDTO;
 import com.game.community.model.vo.article.ArticleListVO;
@@ -70,12 +71,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class SocialServiceImpl implements SocialService {
 
-    private static final Set<String> ARTICLE_STAT_COLUMNS = Set.of(
-            "like_count", "comment_count", "comment_like_count", "reply_count",
-            "reply_like_count", "view_count", "favorite_count", "share_count");
-    private static final Set<String> COMMENT_COUNTER_COLUMNS = Set.of("like_count", "reply_count");
-    private static final Set<String> REPLY_COUNTER_COLUMNS = Set.of("like_count");
-    private static final Set<String> SHARE_CHANNELS = Set.of("link", "repost", "external");
 
     private final SocialCommentMapper commentMapper;
     private final SocialReplyMapper replyMapper;
@@ -98,7 +93,7 @@ public class SocialServiceImpl implements SocialService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long addComment(Long userId, AddCommentDTO dto) {
-        ArticleListVO article = requirePublishedArticle(dto.getInternalArticleId());
+        ArticleListVO article = requirePublishedArticle(dto.getArticleId());
         assertArticleInteractionAllowed(userId, article);
         if (!dfaAuditUtils.pass(dto.getContent())) {
             throw new BusinessException("评论包含敏感内容");
@@ -159,11 +154,11 @@ public class SocialServiceImpl implements SocialService {
 
     @Override
     public PageResult<CommentVO> listComments(Long userId, CommentPageDTO dto) {
-        requirePublishedArticle(dto.getArticleId());
+        Long articleId = requirePublishedArticle(dto.getArticleId()).getId();
         long page = normalizePage(dto.getPage());
         long size = normalizeSize(dto.getSize());
         Page<SocialComment> result = commentMapper.selectPage(new Page<>(page, size), new LambdaQueryWrapper<SocialComment>()
-                .eq(SocialComment::getArticleId, dto.getArticleId())
+                .eq(SocialComment::getArticleId, articleId)
                 .eq(SocialComment::getStatus, SocialConstants.CommentStatus.NORMAL)
                 .orderByDesc(SocialComment::getCreateTime));
         List<Long> commentIds = result.getRecords().stream().map(SocialComment::getId).toList();
@@ -354,6 +349,13 @@ public class SocialServiceImpl implements SocialService {
         }
     }
 
+    /** 将公开文章标识转换为内部主键后执行点赞，内部主键不经过 Controller。 */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void likeArticle(Long userId, String articlePublicId) {
+        likeArticle(userId, resolveArticleId(articlePublicId));
+    }
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void unlikeArticle(Long userId, Long articleId) {
@@ -364,6 +366,12 @@ public class SocialServiceImpl implements SocialService {
             incrementArticleStats(articleId, "like_count", -1);
             articleBehaviorProducer.publish(articleId, -1L, 0L, 0L);
         }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void unlikeArticle(Long userId, String articlePublicId) {
+        unlikeArticle(userId, resolveArticleId(articlePublicId));
     }
 
     @Override
@@ -455,6 +463,11 @@ public class SocialServiceImpl implements SocialService {
     }
 
     @Override
+    public boolean hasLikedArticle(Long userId, String articlePublicId) {
+        return hasLikedArticle(userId, resolveArticleId(articlePublicId));
+    }
+
+    @Override
     public boolean hasLikedComment(Long userId, Long commentId) {
         return userId != null && commentLikeMapper.selectCount(new LambdaQueryWrapper<SocialCommentLike>()
                 .eq(SocialCommentLike::getCommentId, commentId)
@@ -489,6 +502,12 @@ public class SocialServiceImpl implements SocialService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ArticleListVO viewArticle(Long userId, String articlePublicId) {
+        return viewArticle(userId, resolveArticleId(articlePublicId));
+    }
+
+    @Override
     public ArticleStatsVO getArticleStats(Long userId, Long articleId) {
         SocialArticleStats cached = socialStatsCache.get(articleId);
         if (cached == null) {
@@ -499,6 +518,13 @@ public class SocialServiceImpl implements SocialService {
                 cached,
                 hasLikedArticle(userId, articleId),
                 hasFavoritedArticle(userId, articleId));
+    }
+
+    @Override
+    public ArticleStatsVO getArticleStats(Long userId, String articlePublicId) {
+        ArticleStatsVO stats = getArticleStats(userId, resolveArticleId(articlePublicId));
+        stats.setPublicId(articlePublicId);
+        return stats;
     }
 
     @Override
@@ -524,6 +550,31 @@ public class SocialServiceImpl implements SocialService {
                         likedIds.contains(id),
                         favoritedIds.contains(id)))
                 .toList();
+    }
+
+    /** 批量解析公开文章标识，并保持返回顺序与请求顺序一致。 */
+    @Override
+    public List<ArticleStatsVO> getArticleStatsBatchByPublicIds(Long userId, List<String> articlePublicIds) {
+        if (articlePublicIds == null || articlePublicIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Map<String, ArticleListVO> articles = remoteClient.listArticlesByPublicIds(articlePublicIds).stream()
+                .filter(article -> article != null && article.getPublicId() != null && article.getId() != null)
+                .collect(Collectors.toMap(ArticleListVO::getPublicId, Function.identity(), (left, right) -> left));
+        List<Long> articleIds = articlePublicIds.stream()
+                .map(articles::get)
+                .map(article -> {
+                    if (article == null) {
+                        throw new BusinessException("帖子不存在");
+                    }
+                    return article.getId();
+                })
+                .toList();
+        List<ArticleStatsVO> stats = getArticleStatsBatch(userId, articleIds);
+        Map<Long, String> publicIdsByArticleId = articles.values().stream()
+                .collect(Collectors.toMap(ArticleListVO::getId, ArticleListVO::getPublicId, (left, right) -> left));
+        stats.forEach(item -> item.setPublicId(publicIdsByArticleId.get(item.getArticleId())));
+        return stats;
     }
 
     @Override
@@ -752,6 +803,12 @@ public class SocialServiceImpl implements SocialService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public void favoriteArticle(Long userId, String articlePublicId) {
+        favoriteArticle(userId, resolveArticleId(articlePublicId));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void unfavoriteArticle(Long userId, Long articleId) {
         int deleted = favoriteMapper.delete(new LambdaQueryWrapper<SocialFavorite>()
                 .eq(SocialFavorite::getArticleId, articleId)
@@ -763,10 +820,21 @@ public class SocialServiceImpl implements SocialService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void unfavoriteArticle(Long userId, String articlePublicId) {
+        unfavoriteArticle(userId, resolveArticleId(articlePublicId));
+    }
+
+    @Override
     public boolean hasFavoritedArticle(Long userId, Long articleId) {
         return userId != null && favoriteMapper.selectCount(new LambdaQueryWrapper<SocialFavorite>()
                 .eq(SocialFavorite::getArticleId, articleId)
                 .eq(SocialFavorite::getUserId, userId)) > 0;
+    }
+
+    @Override
+    public boolean hasFavoritedArticle(Long userId, String articlePublicId) {
+        return hasFavoritedArticle(userId, resolveArticleId(articlePublicId));
     }
 
     @Override
@@ -797,7 +865,7 @@ public class SocialServiceImpl implements SocialService {
         ArticleListVO article = requirePublishedArticle(articleId);
         assertArticleInteractionAllowed(userId, article);
         if (dto != null && StringUtils.hasText(dto.getChannel())
-                && !SHARE_CHANNELS.contains(dto.getChannel().trim())) {
+                && !SocialConstants.SHARE_CHANNELS.contains(dto.getChannel().trim())) {
             throw new BusinessException("分享渠道不合法");
         }
         incrementArticleStats(articleId, "share_count", 1);
@@ -805,12 +873,17 @@ public class SocialServiceImpl implements SocialService {
     }
 
     @Override
-    public PageResult<ArticleListVO> listFeed(Long userId, LocalDateTime before, Long beforeArticleId,
-                                              Long size, Integer postType, Boolean includeSelf) {
-        long pageSize = normalizeSize(size);
-        LocalDateTime cursor = before == null ? LocalDateTime.now().plusSeconds(1) : before;
-        Long cursorArticleId = beforeArticleId == null ? Long.MAX_VALUE : beforeArticleId;
-        boolean withSelf = includeSelf == null || includeSelf;
+    @Transactional(rollbackFor = Exception.class)
+    public void shareArticle(Long userId, String articlePublicId, ShareArticleDTO dto) {
+        shareArticle(userId, resolveArticleId(articlePublicId), dto);
+    }
+
+    @Override
+    public PageResult<ArticleListVO> listFeed(Long userId, FeedQueryDTO query) {
+        long pageSize = normalizeSize(query == null ? null : query.getSize());
+        LocalDateTime cursor = parseFeedCursor(query == null ? null : query.getBefore());
+        Long cursorArticleId = Long.MAX_VALUE;
+        boolean withSelf = query == null || query.getIncludeSelf() == null || query.getIncludeSelf();
         long fetchLimit = Math.min(500L, pageSize * 3L);
 
         List<SocialFeedItem> feedItems = feedItemMapper.selectList(new LambdaQueryWrapper<SocialFeedItem>()
@@ -869,7 +942,8 @@ public class SocialServiceImpl implements SocialService {
                 .distinct()
                 .map(articleMap::get)
                 .filter(Objects::nonNull)
-                .filter(article -> postType == null || Objects.equals(article.getPostType(), postType))
+                .filter(article -> query == null || query.getPostType() == null
+                        || Objects.equals(article.getPostType(), query.getPostType()))
                 .sorted((a, b) -> {
                     LocalDateTime left = a.getPublishedTime() == null ? a.getCreateTime() : a.getPublishedTime();
                     LocalDateTime right = b.getPublishedTime() == null ? b.getCreateTime() : b.getPublishedTime();
@@ -1298,6 +1372,37 @@ public class SocialServiceImpl implements SocialService {
         return article;
     }
 
+    /** 在 Service 边界解析文章 publicId，避免 Controller 接触内容库内部主键。 */
+    private ArticleListVO requirePublishedArticle(String articlePublicId) {
+        ArticleListVO article = remoteClient.getArticleByPublicId(articlePublicId);
+        if (article == null || article.getId() == null
+                || !Objects.equals(article.getStatus(), ContentConstants.ArticleStatus.PUBLISHED)) {
+            throw new BusinessException("文章不存在");
+        }
+        return article;
+    }
+
+    /** 仅完成 publicId 到内部主键的边界映射，是否已发布由具体业务动作决定。 */
+    private Long resolveArticleId(String articlePublicId) {
+        ArticleListVO article = remoteClient.getArticleByPublicId(articlePublicId);
+        if (article == null || article.getId() == null) {
+            throw new BusinessException("文章不存在");
+        }
+        return article.getId();
+    }
+
+    /** 解析公开信息流时间游标，避免 Controller 直接处理日期格式异常。 */
+    private LocalDateTime parseFeedCursor(String before) {
+        if (!StringUtils.hasText(before)) {
+            return LocalDateTime.now().plusSeconds(1);
+        }
+        try {
+            return LocalDateTime.parse(before);
+        } catch (RuntimeException e) {
+            throw new BusinessException("信息流游标格式不正确");
+        }
+    }
+
     private SocialComment requireComment(Long commentId) {
         SocialComment comment = commentMapper.selectById(commentId);
         if (comment == null || comment.getStatus() == null || comment.getStatus() != SocialConstants.CommentStatus.NORMAL) {
@@ -1457,7 +1562,7 @@ public class SocialServiceImpl implements SocialService {
     }
 
     private void incrementArticleStats(Long articleId, String column, long delta) {
-        validateCounterColumn(column, ARTICLE_STAT_COLUMNS);
+        validateCounterColumn(column, SocialConstants.ARTICLE_STAT_COLUMNS);
         ensureArticleStats(articleId);
         String expression = delta >= 0
                 ? column + " = " + column + " + " + delta
@@ -1470,7 +1575,7 @@ public class SocialServiceImpl implements SocialService {
     }
 
     private void incrementComment(Long commentId, String column, long delta) {
-        validateCounterColumn(column, COMMENT_COUNTER_COLUMNS);
+        validateCounterColumn(column, SocialConstants.COMMENT_COUNTER_COLUMNS);
         String expression = delta >= 0
                 ? column + " = " + column + " + " + delta
                 : column + " = GREATEST(0, " + column + " - " + Math.abs(delta) + ")";
@@ -1481,7 +1586,7 @@ public class SocialServiceImpl implements SocialService {
     }
 
     private void incrementReply(Long replyId, String column, long delta) {
-        validateCounterColumn(column, REPLY_COUNTER_COLUMNS);
+        validateCounterColumn(column, SocialConstants.REPLY_COUNTER_COLUMNS);
         String expression = delta >= 0
                 ? column + " = " + column + " + " + delta
                 : column + " = GREATEST(0, " + column + " - " + Math.abs(delta) + ")";

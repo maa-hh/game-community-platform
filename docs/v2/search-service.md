@@ -7,11 +7,11 @@
 **核心能力**：
 - Elasticsearch 全文搜索（IK 中文分词，多字段加权匹配）
 - 帖子词法、语义和混合搜索；语义召回由配置开关控制，失败自动回退词法搜索
-- 搜索建议（前缀匹配 + 模糊匹配）
+- 搜索建议（ES 前缀匹配，支持按 `GAME` 来源过滤）
 - 搜索纠错（Levenshtein 编辑距离算法）
 - Kafka 增量同步文章索引（新增/更新/删除）
 - 启动时自动初始化 ES 索引 + 重建全量索引
-- 用户搜索历史管理（MySQL 存储，最多 10 条）
+- 用户搜索历史管理（MySQL 存储，默认最多 10 条，可配置）
 - 建议词管理（批量添加、XLS 导入、分页查询、删除）
 - 管理员手动触发索引重建
 
@@ -39,7 +39,7 @@
 - `uk_search_history_user_keyword (user_id, keyword)` UNIQUE — 同一用户同一关键词仅一条记录
 - `idx_search_history_user_time (user_id, update_time, id)` — 按时间倒序查询
 
-建议词由 `t_suggest_term` 和 `t_suggest_term_source` 两张表组成：主表保存词的聚合属性，关联表保存多个帖子/分类/AI 来源，避免删除一个帖子时误删其他帖子仍在使用的词。业务列均为 `NOT NULL`；非帖子来源使用 `source_article_id = 0`，未触发时间使用纪元时间。
+建议词由 `t_suggest_term` 和 `t_suggest_term_source` 两张表组成：主表保存词的聚合属性，关联表保存多个文章/游戏/AI 来源，避免删除一个实体时误删其他实体仍在使用的词。业务列均为 `NOT NULL`；无实体来源使用 `source_article_id = 0`，未触发时间使用纪元时间。
 
 关键索引：`uk_suggest_term (term)`、`idx_suggest_status_weight_id (status, weight, id)`、`uk_suggest_term_source (term_id, source_type, source_article_id)`、`idx_suggest_source_article_type (source_article_id, source_type, term_id)`。
 
@@ -53,9 +53,9 @@
 | userId | long | — | 作者ID |
 | username | keyword | — | 作者用户名 |
 | avatar | keyword | — | 作者头像URL |
-| title | text | ik_max_word / ik_smart | 文章标题（搜索权重 ×4） |
-| summary | text | ik_max_word / ik_smart | 文章摘要（搜索权重 ×2） |
-| content | text | ik_max_word / ik_smart | 文章正文 |
+| title | text | ik_max_word / ik_smart | 文章标题（搜索权重 ×10） |
+| summary | text | ik_max_word / ik_smart | 文章摘要（搜索权重 ×7） |
+| content | text | ik_max_word / ik_smart | 文章正文（搜索权重 ×3） |
 | coverUrl | keyword | — | 封面URL |
 | categoryId | long | — | 分类ID |
 | categoryName | keyword | — | 分类名称（搜索权重 ×1） |
@@ -73,6 +73,7 @@
 | id | long | — | 建议词ID（CRC32 生成） |
 | suggest | text + keyword 子字段 | ik_max_word / ik_smart | 建议词全文 + 精确匹配 |
 | suggestNgram | text | ik_max_word / ik_smart | 建议词（模糊匹配用） |
+| sourceTypes | keyword | — | 建议词来源类型集合，支持 `GAME` 过滤 |
 
 **索引设置**：分片数和副本数由 `search.index.*` 配置。
 
@@ -210,7 +211,7 @@ public class ArticleSearchSyncMessage implements Serializable {
    - 调用 `userFeignClient` 获取作者信息（username、avatar）
    - 调用 `contentFeignClient` 获取分类名称
    - 组装 `ArticleDocument` 并写入 ES
-   - 从文章标题/摘要/分类名提取建议词，写入 `suggest_index`，来源写入 `t_suggest_term_source`
+   - 从文章标题提取建议词；AI 开启时异步根据标题、摘要和正文扩词；游戏同步游戏名称。来源写入 `t_suggest_term_source`
 
 ### 3.4 全量索引重建
 
@@ -221,9 +222,10 @@ public class ArticleSearchSyncMessage implements Serializable {
 
 **rebuildArticleSuggestions**：
 
-1. 收集所有启用的分类名称
-2. 分页遍历已发布文章，收集标题和摘要
-3. 去重后批量写入 `suggest_index`
+1. 按 `search-v2-migration.sql` 的结果清理旧来源和孤立词
+2. 清空建议词 ES 索引，避免残留旧版本文档继续被召回
+3. 分页遍历已发布文章，重建标题建议词和可选 AI 建议词
+4. 分页遍历游戏目录，重建游戏名称建议词
 
 ### 3.5 搜索建议
 
@@ -236,7 +238,7 @@ SearchRequest request = SearchRequest.of(s -> s
     .index(InitElasticsearchIndex.SUGGEST_INDEX)
     .query(q -> q.bool(b -> b
         .should(Query.of(sq -> sq.matchPhrasePrefix(m -> m.field("suggest").query(prefix.trim()))))
-        .should(Query.of(sq -> sq.match(m -> m.field("suggestNgram").query(prefix.trim()).fuzziness("AUTO"))))
+        .should(Query.of(sq -> sq.matchPhrasePrefix(m -> m.field("suggestNgram").query(prefix.trim()))))
         .minimumShouldMatch("1")
     ))
     .size(10)
@@ -244,7 +246,7 @@ SearchRequest request = SearchRequest.of(s -> s
 ```
 
 - 使用 `match_phrase_prefix` 实现前缀匹配
-- 使用 `fuzziness("AUTO")` 实现模糊匹配
+- 可传 `sourceType=GAME`，只返回游戏名称候选
 - 结果去重（按 suggest 文本）
 - 最多返回 10 条
 
@@ -279,7 +281,7 @@ private int levenshteinDistance(String s1, String s2) {
 1. 关键词规范化（trim）
 2. 若已存在相同用户+关键词的记录，更新 `update_time`（最近搜索时间）
 3. 若不存在，插入新记录
-4. 裁剪旧记录：仅保留最近 10 条（`MAX_RECORD_COUNT = 10`）
+4. 裁剪旧记录：仅保留最近 `search.history.max-records` 条，默认 10 条
 
 **获取搜索记录**（`getRecords`）：
 - 按 `update_time DESC, id DESC` 排序
@@ -322,8 +324,8 @@ private int levenshteinDistance(String s1, String s2) {
 
 | 方法 | 路径 | 权限 | 说明 |
 |------|------|------|------|
-| GET | `/search/article` | @LoginCheck | 文章全文搜索 |
-| GET | `/search/suggest` | @LoginCheck | 搜索建议（前缀匹配） |
+| GET | `/search/article` | 游客可读 | 文章全文搜索 |
+| GET | `/search/suggest` | 游客可读 | 搜索建议（前缀匹配，可按来源过滤） |
 | GET | `/search/correct` | @LoginCheck | 搜索纠错 |
 | GET | `/search/suggest/list` | @AdminCheck | 分页获取建议词列表 |
 | POST | `/search/suggest/batch` | @AdminCheck | 批量添加建议词 |
@@ -362,6 +364,7 @@ private int levenshteinDistance(String s1, String s2) {
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | prefix | String | 是 | 搜索前缀 |
+| sourceType | String | 否 | 来源过滤；游戏 tab 传 `GAME` |
 
 **GET /search/correct**：
 
@@ -508,6 +511,8 @@ management:
         include: '*'
 
 search:
+  history:
+    max-records: ${SEARCH_HISTORY_MAX_RECORDS:10}
   ai:
     enabled: ${SEARCH_AI_ENABLED:false}
     semantic-enabled: ${SEARCH_SEMANTIC_ENABLED:false}
@@ -531,6 +536,7 @@ search:
 | `spring.elasticsearch.uris` | http://localhost:9201 | ES 连接地址（非默认9200） |
 | `spring.kafka.consumer.group-id` | search-service-sync | Kafka 消费组 |
 | `spring.kafka.consumer.auto-offset-reset` | earliest | 从最早消息开始消费 |
+| `search.history.max-records` | 10 | 每个用户保留的搜索历史条数（最大 100） |
 | `search.ai.semantic-enabled` | false | 是否允许语义向量召回 |
 | `search.ai.hybrid-enabled` | false | 未指定 mode 时是否默认混合检索 |
 | `search.index.*` | 见配置 | ES 分片/副本容量参数 |
@@ -541,7 +547,6 @@ search:
 |---------------|----------|----------|------|
 | ContentFeignClient | content-service | `getArticleDetail` | 获取文章详情（含正文） |
 | ContentFeignClient | content-service | `listPublishedArticlesPage` | 分页获取已发布文章 |
-| ContentFeignClient | content-service | `listEnabledCategories` | 获取启用的分类列表 |
 | ContentFeignClient | content-service | `getCategoryById` | 获取分类名称 |
 | UserFeignClient | user-service | `getUsersByIds` | 获取作者信息 |
 
@@ -558,7 +563,7 @@ search:
 | 参数 | 值 | 说明 |
 |------|------|------|
 | REBUILD_PAGE_SIZE | 100 | 重建时每页获取文章数 |
-| MAX_RECORD_COUNT | 10 | 搜索历史最大保留条数 |
+| `search.history.max-records` | 10 | 搜索历史最大保留条数 |
 | 默认搜索分页 | 10 | 文章搜索默认 size |
 | 最大搜索分页 | 50 | 文章搜索 size 上限 |
 | 建议词返回上限 | 10 | suggest 最多返回条数 |
@@ -575,5 +580,5 @@ CREATE TABLE IF NOT EXISTS t_search_history (
     update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最近搜索时间',
     UNIQUE KEY uk_search_history_user_keyword (user_id, keyword),
     KEY idx_search_history_user_time (user_id, update_time, id)
-) COMMENT='用户搜索历史表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户搜索历史表';
 ```

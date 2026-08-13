@@ -75,9 +75,9 @@ public class SearchController {
 
     @Operation(summary = "搜索建议")
     @GetMapping("/suggest")
-    @LoginCheck
-    public Result<List<SuggestItemVO>> suggest(@RequestParam("prefix") String prefix) {
-        return Result.success(suggestService.suggest(prefix));
+    public Result<List<SuggestItemVO>> suggest(@RequestParam("prefix") String prefix,
+                                               @RequestParam(value = "sourceType", required = false) String sourceType) {
+        return Result.success(suggestService.suggest(prefix, sourceType));
     }
 
     @Operation(summary = "记录建议词触发（选中下拉项）")

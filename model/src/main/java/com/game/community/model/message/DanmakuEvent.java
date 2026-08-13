@@ -13,6 +13,9 @@ public class DanmakuEvent implements Serializable {
 
     private String eventId;
 
+    /** 发送时已解析出的内部文章 ID；历史消息为空时由消费方按 videoPublicId 回源解析。 */
+    private Long articleId;
+
     private String clientMessageId;
 
     private String videoPublicId;

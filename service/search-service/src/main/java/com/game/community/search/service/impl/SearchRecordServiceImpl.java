@@ -2,12 +2,12 @@ package com.game.community.search.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.game.community.model.entity.search.SearchHistory;
-import com.game.community.common.constant.search.SearchConstants;
+import com.game.community.search.config.SearchHistoryProperties;
 import com.game.community.search.mapper.SearchHistoryMapper;
 import com.game.community.search.service.SearchRecordService;
+import com.game.community.model.vo.search.SearchHistoryVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -19,9 +19,9 @@ import java.util.List;
 public class SearchRecordServiceImpl implements SearchRecordService {
 
     private final SearchHistoryMapper searchHistoryMapper;
+    private final SearchHistoryProperties searchHistoryProperties;
 
     @Override
-    @Async("taskExecutor")
     @Transactional(rollbackFor = Exception.class)
     public void addRecord(Long userId, String keyword) {
         if (userId == null || !StringUtils.hasText(keyword)) {
@@ -34,7 +34,7 @@ public class SearchRecordServiceImpl implements SearchRecordService {
     }
 
     @Override
-    public List<SearchHistory> getRecords(Long userId) {
+    public List<SearchHistoryVO> getRecords(Long userId) {
         if (userId == null) {
             return List.of();
         }
@@ -42,7 +42,10 @@ public class SearchRecordServiceImpl implements SearchRecordService {
                 .eq(SearchHistory::getUserId, userId)
                 .orderByDesc(SearchHistory::getUpdateTime)
                 .orderByDesc(SearchHistory::getId)
-                .last("LIMIT " + SearchConstants.SEARCH_HISTORY_MAX_RECORDS));
+                .last("LIMIT " + searchHistoryProperties.normalizedMaxRecords()))
+                .stream()
+                .map(this::toHistoryVO)
+                .toList();
     }
 
     @Override
@@ -65,6 +68,15 @@ public class SearchRecordServiceImpl implements SearchRecordService {
     }
 
     private void trimOldRecords(Long userId) {
-        searchHistoryMapper.deleteExcess(userId, SearchConstants.SEARCH_HISTORY_MAX_RECORDS);
+        searchHistoryMapper.deleteExcess(userId, searchHistoryProperties.normalizedMaxRecords());
+    }
+
+    /** 将搜索历史实体裁剪成对外只读视图。 */
+    private SearchHistoryVO toHistoryVO(SearchHistory history) {
+        SearchHistoryVO vo = new SearchHistoryVO();
+        vo.setId(history.getId());
+        vo.setKeyword(history.getKeyword());
+        vo.setUpdateTime(history.getUpdateTime());
+        return vo;
     }
 }

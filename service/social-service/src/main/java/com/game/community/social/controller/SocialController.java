@@ -1,14 +1,16 @@
 package com.game.community.social.controller;
 
 import com.game.community.common.annotation.LoginCheck;
-import com.game.community.common.exception.BusinessException;
+import com.game.community.common.constant.social.SocialRateLimitConstants;
 import com.fasterxml.jackson.annotation.JsonView;
 import com.game.community.model.base.PageResult;
 import com.game.community.model.base.Result;
 import com.game.community.model.dto.social.AddCommentDTO;
 import com.game.community.model.dto.social.AddGameReviewReplyDTO;
 import com.game.community.model.dto.social.AddReplyDTO;
+import com.game.community.model.dto.social.ArticleStatsBatchQueryDTO;
 import com.game.community.model.dto.social.CommentPageDTO;
+import com.game.community.model.dto.social.FeedQueryDTO;
 import com.game.community.model.dto.social.ReplyPageDTO;
 import com.game.community.model.dto.social.ShareArticleDTO;
 import com.game.community.model.json.ApiJsonViews;
@@ -22,7 +24,6 @@ import com.game.community.model.vo.social.ReplyVO;
 import com.game.community.social.service.GameReviewSocialService;
 import com.game.community.social.service.SocialService;
 import com.game.community.social.aspect.SocialRateLimit;
-import com.game.community.social.client.SocialRemoteClient;
 import com.game.community.utils.ThreadLocal.UserThreadLocal;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -34,8 +35,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.ModelAttribute;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 @RestController
@@ -44,15 +45,14 @@ import java.util.List;
 public class SocialController {
 
     private final SocialService socialService;
-    private final SocialRemoteClient remoteClient;
-
     private final GameReviewSocialService gameReviewSocialService;
 
     @LoginCheck
-    @SocialRateLimit(action = "comment:create", limit = 10, windowSeconds = 60)
+    @SocialRateLimit(action = SocialRateLimitConstants.COMMENT_CREATE,
+            limit = SocialRateLimitConstants.COMMENT_CREATE_LIMIT,
+            windowSeconds = SocialRateLimitConstants.SHORT_WINDOW_SECONDS)
     @PostMapping("/comment")
     public Result<Long> addComment(@Valid @RequestBody AddCommentDTO dto) {
-        dto.setInternalArticleId(resolvePublicArticleId(dto.getArticleId()));
         return Result.success(socialService.addComment(UserThreadLocal.getUserId(), dto));
     }
 
@@ -68,7 +68,7 @@ public class SocialController {
                                               @RequestParam(value = "page", defaultValue = "1") Long page,
                                               @RequestParam(value = "size", defaultValue = "20") Long size) {
         CommentPageDTO dto = new CommentPageDTO();
-        dto.setArticleId(resolvePublicArticleId(publicId));
+        dto.setArticleId(publicId);
         dto.setPage(page);
         dto.setSize(size);
         return socialService.listComments(UserThreadLocal.getUserId(), dto);
@@ -80,7 +80,9 @@ public class SocialController {
     }
 
     @LoginCheck
-    @SocialRateLimit(action = "reply:create", limit = 20, windowSeconds = 60)
+    @SocialRateLimit(action = SocialRateLimitConstants.REPLY_CREATE,
+            limit = SocialRateLimitConstants.REPLY_CREATE_LIMIT,
+            windowSeconds = SocialRateLimitConstants.SHORT_WINDOW_SECONDS)
     @PostMapping("/reply")
     public Result<Long> addReply(@Valid @RequestBody AddReplyDTO dto) {
         return Result.success(socialService.addReply(UserThreadLocal.getUserId(), dto));
@@ -110,22 +112,26 @@ public class SocialController {
     }
 
     @LoginCheck
-    @SocialRateLimit(action = "like:article", limit = 120, windowSeconds = 60)
+    @SocialRateLimit(action = SocialRateLimitConstants.LIKE_ARTICLE,
+            limit = SocialRateLimitConstants.LIKE_LIMIT,
+            windowSeconds = SocialRateLimitConstants.SHORT_WINDOW_SECONDS)
     @PostMapping("/like/article/{articleId}")
     public Result<Void> likeArticle(@PathVariable("articleId") String publicId) {
-        socialService.likeArticle(UserThreadLocal.getUserId(), resolvePublicArticleId(publicId));
+        socialService.likeArticle(UserThreadLocal.getUserId(), publicId);
         return Result.success(null);
     }
 
     @LoginCheck
     @DeleteMapping("/like/article/{articleId}")
     public Result<Void> unlikeArticle(@PathVariable("articleId") String publicId) {
-        socialService.unlikeArticle(UserThreadLocal.getUserId(), resolvePublicArticleId(publicId));
+        socialService.unlikeArticle(UserThreadLocal.getUserId(), publicId);
         return Result.success(null);
     }
 
     @LoginCheck
-    @SocialRateLimit(action = "like:comment", limit = 120, windowSeconds = 60)
+    @SocialRateLimit(action = SocialRateLimitConstants.LIKE_COMMENT,
+            limit = SocialRateLimitConstants.LIKE_LIMIT,
+            windowSeconds = SocialRateLimitConstants.SHORT_WINDOW_SECONDS)
     @PostMapping("/like/comment/{commentId}")
     public Result<Void> likeComment(@PathVariable("commentId") Long commentId) {
         socialService.likeComment(UserThreadLocal.getUserId(), commentId);
@@ -140,7 +146,9 @@ public class SocialController {
     }
 
     @LoginCheck
-    @SocialRateLimit(action = "like:reply", limit = 120, windowSeconds = 60)
+    @SocialRateLimit(action = SocialRateLimitConstants.LIKE_REPLY,
+            limit = SocialRateLimitConstants.LIKE_LIMIT,
+            windowSeconds = SocialRateLimitConstants.SHORT_WINDOW_SECONDS)
     @PostMapping("/like/reply/{replyId}")
     public Result<Void> likeReply(@PathVariable("replyId") Long replyId) {
         socialService.likeReply(UserThreadLocal.getUserId(), replyId);
@@ -205,7 +213,7 @@ public class SocialController {
 
     @GetMapping("/like/article/check/{articleId}")
     public Result<Boolean> hasLikedArticle(@PathVariable("articleId") String publicId) {
-        return Result.success(socialService.hasLikedArticle(UserThreadLocal.getUserId(), resolvePublicArticleId(publicId)));
+        return Result.success(socialService.hasLikedArticle(UserThreadLocal.getUserId(), publicId));
     }
 
     @GetMapping("/like/comment/check/{commentId}")
@@ -222,42 +230,21 @@ public class SocialController {
     @GetMapping("/article/{articleId}")
     @JsonView(ApiJsonViews.Public.class)
     public Result<ArticleListVO> viewArticle(@PathVariable("articleId") String publicId) {
-        return Result.success(socialService.viewArticle(UserThreadLocal.getUserId(), resolvePublicArticleId(publicId)));
+        return Result.success(socialService.viewArticle(UserThreadLocal.getUserId(), publicId));
     }
 
     @GetMapping("/article/count/{articleId}")
     @JsonView(ApiJsonViews.Public.class)
     public Result<ArticleStatsVO> getArticleStats(@PathVariable("articleId") String publicId) {
-        ArticleStatsVO stats = socialService.getArticleStats(UserThreadLocal.getUserId(), resolvePublicArticleId(publicId));
-        stats.setPublicId(publicId);
-        return Result.success(stats);
+        return Result.success(socialService.getArticleStats(UserThreadLocal.getUserId(), publicId));
     }
 
     @GetMapping("/article/counts")
     @JsonView(ApiJsonViews.Public.class)
-    public Result<List<ArticleStatsVO>> getArticleStatsBatch(@RequestParam("articleIds") List<String> publicIds) {
-        var articles = remoteClient.listArticlesByPublicIds(publicIds).stream()
-                .collect(java.util.stream.Collectors.toMap(ArticleListVO::getPublicId,
-                        java.util.function.Function.identity(), (left, right) -> left));
-        java.util.Map<Long, ArticleListVO> articlesById = articles.values().stream()
-                .filter(article -> article.getId() != null)
-                .collect(java.util.stream.Collectors.toMap(ArticleListVO::getId,
-                        java.util.function.Function.identity(), (left, right) -> left));
-        List<Long> articleIds = publicIds.stream().map(publicId -> {
-            ArticleListVO article = articles.get(publicId);
-            if (article == null || article.getId() == null) {
-                throw new BusinessException("帖子不存在");
-            }
-            return article.getId();
-        }).toList();
-        List<ArticleStatsVO> stats = socialService.getArticleStatsBatch(UserThreadLocal.getUserId(), articleIds);
-        stats.forEach(item -> {
-            ArticleListVO article = articlesById.get(item.getArticleId());
-            if (article != null) {
-                item.setPublicId(article.getPublicId());
-            }
-        });
-        return Result.success(stats);
+    public Result<List<ArticleStatsVO>> getArticleStatsBatch(
+            @Valid @ModelAttribute ArticleStatsBatchQueryDTO query) {
+        return Result.success(socialService.getArticleStatsBatchByPublicIds(
+                UserThreadLocal.getUserId(), query.getArticleIds()));
     }
 
     @LoginCheck
@@ -339,23 +326,25 @@ public class SocialController {
     }
 
     @LoginCheck
-    @SocialRateLimit(action = "favorite:article", limit = 60, windowSeconds = 60)
+    @SocialRateLimit(action = SocialRateLimitConstants.FAVORITE_ARTICLE,
+            limit = SocialRateLimitConstants.FAVORITE_LIMIT,
+            windowSeconds = SocialRateLimitConstants.SHORT_WINDOW_SECONDS)
     @PostMapping("/favorite/article/{articleId}")
     public Result<Void> favoriteArticle(@PathVariable("articleId") String publicId) {
-        socialService.favoriteArticle(UserThreadLocal.getUserId(), resolvePublicArticleId(publicId));
+        socialService.favoriteArticle(UserThreadLocal.getUserId(), publicId);
         return Result.success(null);
     }
 
     @LoginCheck
     @DeleteMapping("/favorite/article/{articleId}")
     public Result<Void> unfavoriteArticle(@PathVariable("articleId") String publicId) {
-        socialService.unfavoriteArticle(UserThreadLocal.getUserId(), resolvePublicArticleId(publicId));
+        socialService.unfavoriteArticle(UserThreadLocal.getUserId(), publicId);
         return Result.success(null);
     }
 
     @GetMapping("/favorite/article/check/{articleId}")
     public Result<Boolean> hasFavoritedArticle(@PathVariable("articleId") String publicId) {
-        return Result.success(socialService.hasFavoritedArticle(UserThreadLocal.getUserId(), resolvePublicArticleId(publicId)));
+        return Result.success(socialService.hasFavoritedArticle(UserThreadLocal.getUserId(), publicId));
     }
 
     @LoginCheck
@@ -367,31 +356,20 @@ public class SocialController {
     }
 
     @LoginCheck
-    @SocialRateLimit(action = "share:article", limit = 30, windowSeconds = 60)
+    @SocialRateLimit(action = SocialRateLimitConstants.SHARE_ARTICLE,
+            limit = SocialRateLimitConstants.SHARE_LIMIT,
+            windowSeconds = SocialRateLimitConstants.SHORT_WINDOW_SECONDS)
     @PostMapping("/share/article/{articleId}")
     public Result<Void> shareArticle(@PathVariable("articleId") String publicId,
                                      @RequestBody(required = false) ShareArticleDTO dto) {
-        socialService.shareArticle(UserThreadLocal.getUserId(), resolvePublicArticleId(publicId), dto);
+        socialService.shareArticle(UserThreadLocal.getUserId(), publicId, dto);
         return Result.success(null);
     }
 
     @LoginCheck
     @GetMapping("/feed")
     @JsonView(ApiJsonViews.Public.class)
-    public PageResult<ArticleListVO> listFeed(@RequestParam(value = "before", required = false) String before,
-                                        @RequestParam(value = "beforeArticleId", required = false) Long beforeArticleId,
-                                        @RequestParam(value = "size", defaultValue = "20") Long size,
-                                        @RequestParam(value = "postType", required = false) Integer postType,
-                                        @RequestParam(value = "includeSelf", defaultValue = "true") Boolean includeSelf) {
-        LocalDateTime beforeTime = before == null || before.isBlank() ? null : LocalDateTime.parse(before);
-        return socialService.listFeed(UserThreadLocal.getUserId(), beforeTime, beforeArticleId, size, postType, includeSelf);
-    }
-
-    private Long resolvePublicArticleId(String publicId) {
-        ArticleListVO article = remoteClient.getArticleByPublicId(publicId);
-        if (article == null || article.getId() == null) {
-            throw new BusinessException("帖子不存在");
-        }
-        return article.getId();
+    public PageResult<ArticleListVO> listFeed(@Valid @ModelAttribute FeedQueryDTO query) {
+        return socialService.listFeed(UserThreadLocal.getUserId(), query);
     }
 }

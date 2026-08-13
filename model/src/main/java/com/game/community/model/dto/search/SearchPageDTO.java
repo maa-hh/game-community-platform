@@ -19,6 +19,6 @@ public class SearchPageDTO extends PageDto implements Serializable {
      */
     private String sort = "relevance";
 
-    /** lexical、semantic 或 hybrid；不传时由 search.ai.hybrid-enabled 决定。 */
+    /** lexical、semantic 或 hybrid；不传时由搜索服务的 AI 配置决定。 */
     private String mode;
 }

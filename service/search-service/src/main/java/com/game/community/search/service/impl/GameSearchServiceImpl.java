@@ -17,6 +17,8 @@ import com.game.community.model.vo.game.GameTagVO;
 import com.game.community.common.constant.search.SearchConstants;
 import com.game.community.search.service.ElasticsearchService;
 import com.game.community.search.service.GameSearchService;
+import com.game.community.search.service.SuggestTermService;
+import com.game.community.search.service.SuggestTermService.TermSeed;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -38,6 +40,7 @@ public class GameSearchServiceImpl implements GameSearchService {
     private final ElasticsearchService elasticsearchService;
     private final SteamFeignClient steamFeignClient;
     private final GameIndexAsyncService gameIndexAsyncService;
+    private final SuggestTermService suggestTermService;
 
     @Override
     public PageResult<GameListItemVO> search(String keyword, Long page, Long size) {
@@ -52,9 +55,9 @@ public class GameSearchServiceImpl implements GameSearchService {
                             .index(SearchConstants.GAME_INDEX)
                             .from((int) ((pageNo - 1) * pageSize))
                             .size((int) pageSize)
-                            .query(q -> q.bool(b -> b
+                        .query(q -> q.bool(b -> b
                                     .must(buildGameKeywordQuery(query))
-                                    .filter(f -> f.term(t -> t.field("status").value(1)))))
+                                    .filter(f -> f.term(t -> t.field("status").value(SearchConstants.GAME_STATUS_ACTIVE)))))
                             .sort(so -> so.score(sc -> sc.order(SortOrder.Desc)))
                             .sort(so -> so.field(f -> f.field("steamReviewCount").order(SortOrder.Desc))),
                     GameIndexDocument.class);
@@ -229,11 +232,13 @@ public class GameSearchServiceImpl implements GameSearchService {
     @Override
     public void index(GameListItemVO game) {
         elasticsearchService.indexGame(game);
+        syncGameSuggestionTerms(game);
     }
 
     @Override
     public void delete(Long appId) {
         elasticsearchService.deleteGame(appId);
+        suggestTermService.expireGameTerms(appId);
     }
 
     @Override
@@ -262,21 +267,48 @@ public class GameSearchServiceImpl implements GameSearchService {
         }
     }
 
+    /** 将游戏名称及中英文名称同步为游戏来源建议词。 */
+    private void syncGameSuggestionTerms(GameListItemVO game) {
+        if (game == null || game.getAppId() == null) {
+            return;
+        }
+        List<TermSeed> seeds = new ArrayList<>();
+        addGameTerm(seeds, game.getName(), game.getAppId());
+        addGameTerm(seeds, game.getNameZh(), game.getAppId());
+        addGameTerm(seeds, game.getNameEn(), game.getAppId());
+        if (game.getAliases() != null) {
+            game.getAliases().forEach(alias -> addGameTerm(seeds, alias, game.getAppId()));
+        }
+        suggestTermService.replaceGameTerms(game.getAppId(), seeds);
+    }
+
+    /** 添加一个去空的游戏名称候选，归一化和去重由建议词服务统一处理。 */
+    private void addGameTerm(List<TermSeed> seeds, String value, Long appId) {
+        if (StringUtils.hasText(value)) {
+            seeds.add(new TermSeed(value, SearchConstants.SUGGEST_SOURCE_GAME, appId,
+                    SearchConstants.WEIGHT_GAME, false));
+        }
+    }
+
     /**
-     * 游戏搜索只匹配游戏名称，完整短语优先，名称分词 AND 作为兼容补充。
-     * 这样不会因为别名、开发商、类型或简介中的单个词召回无关游戏。
+     * 游戏搜索只匹配游戏标题和类型标签，标题优先，类型标签作为补充召回。
      */
     private Query buildGameKeywordQuery(String keyword) {
         return Query.of(q -> q.bool(b -> b
                 .should(s -> s.multiMatch(m -> m
                         .query(keyword)
-                        .fields("name^10", "nameZh^9", "nameEn^9", "aliases^5")
+                        .fields("name^10", "nameZh^9", "nameEn^9")
                         .type(TextQueryType.Phrase)))
                 .should(s -> s.match(m -> m
                         .field("name")
                         .query(keyword)
                         .operator(Operator.And)
                         .boost(5.0F)))
+                .should(s -> s.match(m -> m
+                        .field("genreText")
+                        .query(keyword)
+                        .operator(Operator.And)
+                        .boost(3.0F)))
                 .minimumShouldMatch("1")));
     }
 

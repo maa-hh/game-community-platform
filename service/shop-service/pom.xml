@@ -11,7 +11,7 @@
 
     <artifactId>shop-service</artifactId>
     <name>shop-service</name>
-    <description>商城服务 - 商品、订单、优惠券</description>
+    <description>商城服务 - 商品、订单、积分、权益发放</description>
 
     <dependencies>
 
@@ -52,6 +52,14 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.xuxueli</groupId>
+            <artifactId>xxl-job-core</artifactId>
         </dependency>
         <dependency>
             <groupId>com.game.community</groupId>

@@ -23,6 +23,8 @@ public class ArticleBehaviorEvent implements Serializable {
 
     private Long commentDelta;
 
+    private Long danmakuDelta;
+
     private Long viewDelta;
 
     private Long favoriteDelta;

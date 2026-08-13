@@ -36,6 +36,11 @@ spring:
       port: ${REDIS_PORT:6380}
       database: 0
       timeout: 5000ms
+  kafka:
+    bootstrap-servers: ${KAFKA_SERVERS:localhost:9093}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
   # Nacos 配置
   cloud:
     nacos:
@@ -79,3 +84,15 @@ shop:
     create-poll-ms: ${SHOP_ORDER_CREATE_POLL_MS:500}
   delivery:
     poll-ms: ${SHOP_DELIVERY_POLL_MS:500}
+  kafka:
+    outbox-poll-ms: ${SHOP_KAFKA_OUTBOX_POLL_MS:500}
+
+# 生产环境建议将订单修复/对账任务交给 XXL-JOB Admin 调度；本地保留 Scheduled 轮询作为兜底。
+xxl:
+  job:
+    admin-addresses: ${XXL_JOB_ADMIN_ADDRESS:http://localhost:8088/xxl-job-admin}
+    access-token: ${XXL_JOB_ACCESS_TOKEN:}
+    appname: shop-service
+    port: ${XXL_JOB_PORT:9998}
+    log-path: logs/xxl-job/shop-service
+    log-retention-days: 30

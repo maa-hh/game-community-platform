@@ -79,6 +79,8 @@ springdoc:
 
 # 搜索同步 / AI
 search:
+  history:
+    max-records: ${SEARCH_HISTORY_MAX_RECORDS:10}
   sync:
     on-startup: ${SEARCH_SYNC_ON_STARTUP:true}
   ai:

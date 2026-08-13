@@ -11,7 +11,8 @@ import java.util.List;
 
 public interface SuggestService {
 
-    List<SuggestItemVO> suggest(String prefix);
+    /** 根据前缀查询公开建议词，可按来源类型过滤游戏候选。 */
+    List<SuggestItemVO> suggest(String prefix, String sourceType);
 
     SearchCorrectVO correct(String keyword);
 

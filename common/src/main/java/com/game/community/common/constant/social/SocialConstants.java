@@ -1,9 +1,42 @@
 package com.game.community.common.constant.social;
 
+import java.util.Set;
+
 /**
- * 社交服务状态与类型常量。
+ * 社交领域跨模块共享的状态、类型和动作常量。
  */
-public class SocialConstants {
+public final class SocialConstants {
+
+    /** 文章分享渠道，接口只接受这些稳定的协议值。 */
+    public static final Set<String> SHARE_CHANNELS = Set.of("link", "repost", "external");
+
+    /** 统计表允许更新的字段白名单，避免把动态字段名直接交给 SQL。 */
+    public static final Set<String> ARTICLE_STAT_COLUMNS = Set.of(
+            "like_count", "comment_count", "comment_like_count", "reply_count",
+            "reply_like_count", "view_count", "favorite_count", "share_count");
+    public static final Set<String> COMMENT_COUNTER_COLUMNS = Set.of("like_count", "reply_count");
+    public static final Set<String> REPLY_COUNTER_COLUMNS = Set.of("like_count");
+    public static final String INTERNAL_TOKEN_HEADER = "X-Internal-Token";
+    public static final String FEED_PUBLISH_PATH = "/feign/social/feed/publish";
+    public static final String BLACK_RELATION_CACHE_KEY_PREFIX = "social:black:relation:";
+    public static final long BLACK_RELATION_CACHE_SECONDS = 30;
+
+    /** 事件类型由社交服务生产、由 outbox 发布器消费。 */
+    public static final class EventType {
+        public static final String ARTICLE_BEHAVIOR = "ARTICLE_BEHAVIOR";
+        public static final String NOTIFICATION = "NOTIFICATION";
+        public static final String REPORT_AUDIT = "REPORT_AUDIT";
+
+        private EventType() {
+        }
+    }
+
+    public static final class GameReviewStatus {
+        public static final int NORMAL = 1;
+
+        private GameReviewStatus() {
+        }
+    }
 
     public static class CommentStatus {
         public static final int NORMAL = 1;

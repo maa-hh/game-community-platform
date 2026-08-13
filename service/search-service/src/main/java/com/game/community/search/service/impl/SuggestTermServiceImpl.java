@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.game.community.common.constant.search.SearchConstants;
 import com.game.community.model.elasticsearch.SuggestDocument;
 import com.game.community.model.entity.search.SuggestTerm;
+import com.game.community.model.entity.search.SuggestTermSource;
 import com.game.community.search.mapper.SuggestTermMapper;
 import com.game.community.search.mapper.SuggestTermSourceMapper;
 import com.game.community.search.service.ElasticsearchService;
@@ -57,37 +58,23 @@ public class SuggestTermServiceImpl implements SuggestTermService {
         if (SearchConstants.SUGGEST_STATUS_DISABLED.equals(existing.getStatus())) {
             return existing;
         }
-        syncToEs(existing);
         suggestTermSourceMapper.upsert(existing.getId(), seed.sourceType(), sourceArticleId);
+        syncToEs(existing);
         return existing;
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void replaceArticleTerms(Long articleId, Collection<TermSeed> seeds) {
-        if (articleId == null) {
-            return;
-        }
-        List<String> sourceTypes = List.of(SearchConstants.SUGGEST_SOURCE_ARTICLE,
-                SearchConstants.SUGGEST_SOURCE_TOKEN, SearchConstants.SUGGEST_SOURCE_CATEGORY);
-        List<Long> oldTermIds = suggestTermSourceMapper.selectTermIdsByArticleAndTypes(articleId, sourceTypes);
-        suggestTermSourceMapper.deleteByArticleAndTypes(articleId, sourceTypes);
-        expireOrphanTerms(oldTermIds);
-        if (CollectionUtils.isEmpty(seeds)) {
-            return;
-        }
-        Map<String, TermSeed> dedup = new LinkedHashMap<>();
-        for (TermSeed seed : seeds) {
-            String normalized = SuggestTermNormalizer.normalize(seed.term());
-            if (!StringUtils.hasText(normalized)) {
-                continue;
-            }
-            TermSeed current = dedup.get(normalized);
-            if (current == null || seed.weight() > current.weight()) {
-                dedup.put(normalized, seed);
-            }
-        }
-        dedup.values().forEach(this::upsertActive);
+        replaceSourceTerms(articleId, List.of(
+                SearchConstants.SUGGEST_SOURCE_ARTICLE), seeds);
+    }
+
+    /** 替换游戏名称来源的建议词，并清理已不存在的旧游戏词。 */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void replaceGameTerms(Long appId, Collection<TermSeed> seeds) {
+        replaceSourceTerms(appId, List.of(SearchConstants.SUGGEST_SOURCE_GAME), seeds);
     }
 
     @Override
@@ -96,22 +83,27 @@ public class SuggestTermServiceImpl implements SuggestTermService {
         if (articleId == null || CollectionUtils.isEmpty(sourceTypes)) {
             return;
         }
-        List<Long> termIds = suggestTermSourceMapper.selectTermIdsByArticleAndTypes(articleId, sourceTypes);
-        suggestTermSourceMapper.deleteByArticleAndTypes(articleId, sourceTypes);
+        List<Long> termIds = suggestTermSourceMapper.selectTermIdsBySourceAndTypes(articleId, sourceTypes);
+        suggestTermSourceMapper.deleteBySourceAndTypes(articleId, sourceTypes);
         expireOrphanTerms(termIds);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void expireByArticleId(Long articleId) {
-        if (articleId == null) {
+        expireArticleSourceTypes(articleId, List.of(
+                SearchConstants.SUGGEST_SOURCE_ARTICLE,
+                SearchConstants.SUGGEST_SOURCE_AI));
+    }
+
+    /** 删除某个游戏的建议词来源并清理孤立词。 */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void expireGameTerms(Long appId) {
+        if (appId == null) {
             return;
         }
-        List<Long> termIds = suggestTermSourceMapper.selectList(new LambdaQueryWrapper<com.game.community.model.entity.search.SuggestTermSource>()
-                        .eq(com.game.community.model.entity.search.SuggestTermSource::getSourceArticleId, articleId))
-                .stream().map(com.game.community.model.entity.search.SuggestTermSource::getTermId).distinct().toList();
-        suggestTermSourceMapper.deleteByArticle(articleId);
-        expireOrphanTerms(termIds);
+        expireArticleSourceTypes(appId, List.of(SearchConstants.SUGGEST_SOURCE_GAME));
     }
 
     @Override
@@ -145,11 +137,8 @@ public class SuggestTermServiceImpl implements SuggestTermService {
     public int cleanupExpiredTerms() {
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime observeBefore = now.minusDays(SearchConstants.SUGGEST_OBSERVE_DAYS);
-        LocalDateTime tokenColdBefore = now.minusDays(SearchConstants.SUGGEST_COLD_TTL_DAYS);
         LocalDateTime aiColdBefore = now.minusDays(SearchConstants.SUGGEST_AI_COLD_TTL_DAYS);
 
-        int tokenExpired = suggestTermMapper.expireColdTerms(
-                SearchConstants.SUGGEST_SOURCE_TOKEN, observeBefore, tokenColdBefore, now);
         int aiExpired = suggestTermMapper.expireColdTerms(
                 SearchConstants.SUGGEST_SOURCE_AI, observeBefore, aiColdBefore, now);
 
@@ -159,8 +148,8 @@ public class SuggestTermServiceImpl implements SuggestTermService {
         for (SuggestTerm row : expiredRows) {
             elasticsearchService.deleteSuggestion(row.getId());
         }
-        log.info("建议词清理完成: tokenExpired={}, aiExpired={}", tokenExpired, aiExpired);
-        return tokenExpired + aiExpired;
+        log.info("建议词清理完成: aiExpired={}", aiExpired);
+        return aiExpired;
     }
 
     @Override
@@ -221,6 +210,7 @@ public class SuggestTermServiceImpl implements SuggestTermService {
         document.setWeight(row.getWeight());
         document.setSourceType(row.getSourceType());
         document.setSourceArticleId(row.getSourceArticleId());
+        document.setSourceTypes(suggestTermSourceMapper.selectSourceTypesByTermId(row.getId()));
         elasticsearchService.indexSuggestion(document);
     }
 
@@ -230,10 +220,53 @@ public class SuggestTermServiceImpl implements SuggestTermService {
         }
         for (Long termId : termIds.stream().filter(Objects::nonNull).distinct().toList()) {
             if (suggestTermSourceMapper.countByTermId(termId) > 0) {
+                refreshAggregateSource(termId);
                 continue;
             }
             SuggestTerm row = suggestTermMapper.selectById(termId);
             expireRow(row);
         }
+    }
+
+    /** 来源关系变更后同步主表聚合来源，保证 ES 展示字段与 sourceTypes 一致。 */
+    private void refreshAggregateSource(Long termId) {
+        SuggestTermSource primary = suggestTermSourceMapper.selectPrimarySourceByTermId(termId);
+        SuggestTerm row = suggestTermMapper.selectById(termId);
+        if (primary == null || row == null) {
+            return;
+        }
+        row.setSourceType(primary.getSourceType());
+        row.setSourceArticleId(primary.getSourceArticleId());
+        row.setUpdatedAt(LocalDateTime.now());
+        suggestTermMapper.updateById(row);
+        syncToEs(row);
+    }
+
+    /** 替换同一业务实体下指定来源类型的建议词关系。 */
+    private void replaceSourceTerms(Long sourceId, Collection<String> sourceTypes, Collection<TermSeed> seeds) {
+        if (sourceId == null) {
+            return;
+        }
+        List<Long> oldTermIds = suggestTermSourceMapper.selectTermIdsBySourceAndTypes(sourceId, sourceTypes);
+        suggestTermSourceMapper.deleteBySourceAndTypes(sourceId, sourceTypes);
+        expireOrphanTerms(oldTermIds);
+        if (CollectionUtils.isEmpty(seeds)) {
+            return;
+        }
+        Map<String, TermSeed> dedup = new LinkedHashMap<>();
+        for (TermSeed seed : seeds) {
+            if (seed == null) {
+                continue;
+            }
+            String normalized = SuggestTermNormalizer.normalize(seed.term());
+            if (!StringUtils.hasText(normalized)) {
+                continue;
+            }
+            TermSeed current = dedup.get(normalized);
+            if (current == null || seed.weight() > current.weight()) {
+                dedup.put(normalized, seed);
+            }
+        }
+        dedup.values().forEach(this::upsertActive);
     }
 }

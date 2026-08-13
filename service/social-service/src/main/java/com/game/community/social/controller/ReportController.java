@@ -2,10 +2,12 @@ package com.game.community.social.controller;
 
 import com.game.community.common.annotation.AdminCheck;
 import com.game.community.common.annotation.LoginCheck;
+import com.game.community.common.constant.social.SocialRateLimitConstants;
 import com.game.community.model.base.PageResult;
 import com.game.community.model.base.Result;
 import com.game.community.model.dto.social.CreateReportDTO;
 import com.game.community.model.dto.social.HandleReportDTO;
+import com.game.community.model.dto.social.ReportPageQueryDTO;
 import com.game.community.model.vo.social.ReportVO;
 import com.game.community.social.service.ReportService;
 import com.game.community.social.aspect.SocialRateLimit;
@@ -18,8 +20,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.ModelAttribute;
 
 @RestController
 @RequestMapping("/report")
@@ -29,7 +31,9 @@ public class ReportController {
     private final ReportService reportService;
 
     @LoginCheck
-    @SocialRateLimit(action = "report:create", limit = 5, windowSeconds = 300)
+    @SocialRateLimit(action = SocialRateLimitConstants.REPORT_CREATE,
+            limit = SocialRateLimitConstants.REPORT_LIMIT,
+            windowSeconds = SocialRateLimitConstants.REPORT_WINDOW_SECONDS)
     @PostMapping
     public Result<Long> createReport(@Valid @RequestBody CreateReportDTO dto) {
         return Result.success(reportService.createReport(UserThreadLocal.getUserId(), dto));
@@ -45,10 +49,7 @@ public class ReportController {
 
     @AdminCheck
     @GetMapping("/page")
-    public PageResult<ReportVO> pageReports(@RequestParam(value = "page", defaultValue = "1") Long page,
-                                            @RequestParam(value = "size", defaultValue = "20") Long size,
-                                            @RequestParam(value = "status", required = false) Integer status,
-                                            @RequestParam(value = "targetType", required = false) Integer targetType) {
-        return reportService.pageReports(page, size, status, targetType);
+    public PageResult<ReportVO> pageReports(@ModelAttribute ReportPageQueryDTO query) {
+        return reportService.pageReports(query);
     }
 }

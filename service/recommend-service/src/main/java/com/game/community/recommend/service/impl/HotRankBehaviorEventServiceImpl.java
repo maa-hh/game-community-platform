@@ -36,6 +36,7 @@ public class HotRankBehaviorEventServiceImpl implements HotRankBehaviorEventServ
         row.setArticleId(message.getArticleId());
         row.setLikeDelta(defaultLong(message.getLikeDelta()));
         row.setCommentDelta(defaultLong(message.getCommentDelta()));
+        row.setDanmakuDelta(defaultLong(message.getDanmakuDelta()));
         row.setViewDelta(defaultLong(message.getViewDelta()));
         row.setFavoriteDelta(defaultLong(message.getFavoriteDelta()));
         row.setShareDelta(defaultLong(message.getShareDelta()));

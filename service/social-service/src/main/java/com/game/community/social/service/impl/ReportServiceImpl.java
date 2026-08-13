@@ -8,6 +8,7 @@ import com.game.community.common.exception.BusinessException;
 import com.game.community.model.base.PageResult;
 import com.game.community.model.dto.social.CreateReportDTO;
 import com.game.community.model.dto.social.HandleReportDTO;
+import com.game.community.model.dto.social.ReportPageQueryDTO;
 import com.game.community.model.entity.social.SocialComment;
 import com.game.community.model.entity.social.SocialReport;
 import com.game.community.model.entity.social.SocialReply;
@@ -129,13 +130,13 @@ public class ReportServiceImpl implements ReportService {
     }
 
     @Override
-    public PageResult<ReportVO> pageReports(Long page, Long size, Integer status, Integer targetType) {
-        long current = page == null || page < 1 ? 1 : page;
-        long pageSize = size == null || size < 1 ? 20 : Math.min(size, 100);
+    public PageResult<ReportVO> pageReports(ReportPageQueryDTO query) {
+        long current = query.getPage() < 1 ? 1 : query.getPage();
+        long pageSize = query.getSize() < 1 ? 20 : Math.min(query.getSize(), 100);
         Page<SocialReport> result = reportMapper.selectPage(new Page<>(current, pageSize),
                 new LambdaQueryWrapper<SocialReport>()
-                        .eq(status != null, SocialReport::getStatus, status)
-                        .eq(targetType != null, SocialReport::getTargetType, targetType)
+                        .eq(query.getStatus() != null, SocialReport::getStatus, query.getStatus())
+                        .eq(query.getTargetType() != null, SocialReport::getTargetType, query.getTargetType())
                         .orderByDesc(SocialReport::getCreateTime));
         List<ReportVO> records = result.getRecords().stream().map(this::toVO).toList();
         return PageResult.of(records, current, pageSize, result.getTotal());

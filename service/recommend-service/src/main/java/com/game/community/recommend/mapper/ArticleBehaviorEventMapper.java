@@ -16,11 +16,11 @@ public interface ArticleBehaviorEventMapper extends BaseMapper<ArticleBehaviorEv
 
     @Insert("""
             INSERT INTO t_article_behavior_event (
-                event_id, article_id, like_delta, comment_delta, view_delta,
+                event_id, article_id, like_delta, comment_delta, danmaku_delta, view_delta,
                 favorite_delta, share_delta, comment_like_delta, reply_like_delta,
                 score_delta, event_time, event_time_ms
             ) VALUES (
-                #{eventId}, #{articleId}, #{likeDelta}, #{commentDelta}, #{viewDelta},
+                #{eventId}, #{articleId}, #{likeDelta}, #{commentDelta}, #{danmakuDelta}, #{viewDelta},
                 #{favoriteDelta}, #{shareDelta}, #{commentLikeDelta}, #{replyLikeDelta},
                 #{scoreDelta}, #{eventTime}, #{eventTimeMs}
             )
@@ -31,6 +31,8 @@ public interface ArticleBehaviorEventMapper extends BaseMapper<ArticleBehaviorEv
     @Select("""
             SELECT e.article_id AS articleId, SUM(e.score_delta) AS totalScore
             FROM t_article_behavior_event e
+            INNER JOIN t_article a ON e.article_id = a.id
+                AND a.status = 1 AND a.deleted = 0
             WHERE e.event_time >= #{start} AND e.event_time < #{end}
             GROUP BY e.article_id
             HAVING totalScore > 0

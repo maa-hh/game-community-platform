@@ -19,7 +19,7 @@ public class SuggestTermSource implements Serializable {
 
     private String sourceType;
 
-    /** 0 表示分类、上传等非帖子来源，避免数据库 NULL。 */
+    /** 0 表示游戏、上传等非帖子来源，避免数据库 NULL。 */
     private Long sourceArticleId;
 
     private LocalDateTime createdAt;

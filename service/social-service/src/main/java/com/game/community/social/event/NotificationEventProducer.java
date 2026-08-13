@@ -5,7 +5,7 @@ import com.game.community.common.constant.notification.NotificationConstants;
 import com.game.community.common.constant.social.SocialConstants;
 import com.game.community.model.message.NotificationEventMessage;
 import com.game.community.model.vo.user.UserCardInternalVO;
-import com.game.community.social.common.SocialOutboxEventTypes;
+import com.game.community.common.constant.social.SocialConstants;
 import com.game.community.social.service.SocialOutboxService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -179,7 +179,7 @@ public class NotificationEventProducer {
     }
 
     private void doPublish(NotificationEventMessage event) {
-        socialOutboxService.enqueue(SocialOutboxEventTypes.NOTIFICATION,
+        socialOutboxService.enqueue(SocialConstants.EventType.NOTIFICATION,
                 KafkaTopicConstants.NOTIFICATION_EVENT_TOPIC,
                 String.valueOf(event.getRecipientUserId()), event);
     }

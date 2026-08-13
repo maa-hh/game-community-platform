@@ -2,7 +2,7 @@ package com.game.community.social.event;
 
 import com.game.community.common.constant.KafkaTopicConstants;
 import com.game.community.model.message.ReportAuditMessage;
-import com.game.community.social.common.SocialOutboxEventTypes;
+import com.game.community.common.constant.social.SocialConstants;
 import com.game.community.social.service.SocialOutboxService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -38,7 +38,7 @@ public class ReportAuditProducer {
                            Long reportedUserId, String reason) {
         ReportAuditMessage message = new ReportAuditMessage(reportId, targetType, targetId,
                 reporterId, reportedUserId, reason, LocalDateTime.now());
-        socialOutboxService.enqueue(SocialOutboxEventTypes.REPORT_AUDIT,
+        socialOutboxService.enqueue(SocialConstants.EventType.REPORT_AUDIT,
                 KafkaTopicConstants.REPORT_AUDIT_TOPIC, String.valueOf(reportId), message);
     }
 }

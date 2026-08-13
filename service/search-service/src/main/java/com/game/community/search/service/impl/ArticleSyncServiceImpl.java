@@ -27,10 +27,8 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -41,7 +39,6 @@ public class ArticleSyncServiceImpl implements ArticleSyncService {
     private final UserFeignClient userFeignClient;
     private final ElasticsearchService elasticsearchService;
     private final SuggestTermService suggestTermService;
-    private final SuggestTermTokenizer suggestTermTokenizer;
     private final ArticleEmbeddingService articleEmbeddingService;
     private final AiSuggestTermService aiSuggestTermService;
 
@@ -101,16 +98,11 @@ public class ArticleSyncServiceImpl implements ArticleSyncService {
 
     @Override
     public void rebuildArticleSuggestions() {
-        loadEnabledCategoryNames().forEach(name ->
-                suggestTermService.upsertActive(new TermSeed(
-                        name,
-                        SearchConstants.SUGGEST_SOURCE_CATEGORY,
-                        null,
-                        SearchConstants.WEIGHT_CATEGORY,
-                        false)));
+        suggestTermService.cleanupExpiredTerms();
+        elasticsearchService.clearSuggestions();
 
         int offset = 0;
-            int pageSize = SearchConstants.SUGGEST_ES_SYNC_PAGE_SIZE;
+        int pageSize = SearchConstants.SUGGEST_ES_SYNC_PAGE_SIZE;
         int synced = 0;
         while (true) {
             List<com.game.community.model.entity.search.SuggestTerm> rows =
@@ -123,7 +115,7 @@ public class ArticleSyncServiceImpl implements ArticleSyncService {
                         row.getTerm(),
                         row.getSourceType(),
                         row.getSourceArticleId(),
-                        row.getWeight() == null ? SearchConstants.WEIGHT_TOKEN : row.getWeight(),
+                        row.getWeight() == null ? SearchConstants.WEIGHT_ARTICLE_TITLE : row.getWeight(),
                         row.getPinned() != null && row.getPinned() == 1));
                 synced++;
             }
@@ -192,29 +184,16 @@ public class ArticleSyncServiceImpl implements ArticleSyncService {
         List<TermSeed> seeds = new ArrayList<>();
         Long articleId = document.getId();
         addTitleSeeds(seeds, articleId, document.getTitle());
-        addTitleSeeds(seeds, articleId, document.getSummary());
-        if (!CollectionUtils.isEmpty(document.getCategoryNames())) {
-            for (String categoryName : document.getCategoryNames()) {
-                seeds.add(new TermSeed(categoryName, SearchConstants.SUGGEST_SOURCE_CATEGORY, articleId, SearchConstants.WEIGHT_CATEGORY, false));
-            }
-        } else if (StringUtils.hasText(document.getCategoryName())) {
-            seeds.add(new TermSeed(document.getCategoryName(), SearchConstants.SUGGEST_SOURCE_CATEGORY, articleId, SearchConstants.WEIGHT_CATEGORY, false));
-        }
         return seeds;
     }
 
+    /** 将文章标题本身作为唯一的非 AI 建议词来源，避免摘要或分词产生噪声。 */
     private void addTitleSeeds(List<TermSeed> seeds, Long articleId, String text) {
         String normalized = SuggestTermNormalizer.normalize(text);
         if (!StringUtils.hasText(normalized)) {
             return;
         }
         seeds.add(new TermSeed(normalized, SearchConstants.SUGGEST_SOURCE_ARTICLE, articleId, SearchConstants.WEIGHT_ARTICLE_TITLE, false));
-        for (String token : suggestTermTokenizer.tokenize(text)) {
-            if (Objects.equals(token, normalized)) {
-                continue;
-            }
-            seeds.add(new TermSeed(token, SearchConstants.SUGGEST_SOURCE_TOKEN, articleId, SearchConstants.WEIGHT_TOKEN, false));
-        }
     }
 
     private void enrichAuthor(ArticleDocument document) {
@@ -255,19 +234,4 @@ public class ArticleSyncServiceImpl implements ArticleSyncService {
         }
     }
 
-    private List<String> loadEnabledCategoryNames() {
-        try {
-            return Optional.ofNullable(contentFeignClient.listEnabledCategories())
-                    .map(Result::getData)
-                    .orElse(List.of())
-                    .stream()
-                    .map(CategoryVO::getName)
-                    .filter(StringUtils::hasText)
-                    .distinct()
-                    .toList();
-        } catch (Exception e) {
-            log.warn("搜索建议词加载分类失败: {}", e.getMessage(), e);
-            return List.of();
-        }
-    }
 }

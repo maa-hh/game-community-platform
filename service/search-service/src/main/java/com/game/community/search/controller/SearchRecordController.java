@@ -2,7 +2,7 @@ package com.game.community.search.controller;
 
 import com.game.community.common.annotation.LoginCheck;
 import com.game.community.model.base.Result;
-import com.game.community.model.entity.search.SearchHistory;
+import com.game.community.model.vo.search.SearchHistoryVO;
 import com.game.community.search.service.SearchRecordService;
 import com.game.community.utils.ThreadLocal.UserThreadLocal;
 import io.swagger.v3.oas.annotations.Operation;
@@ -37,7 +37,7 @@ public class SearchRecordController {
     @Operation(summary = "获取搜索记录")
     @GetMapping("/list")
     @LoginCheck
-    public Result<List<SearchHistory>> getRecords() {
+    public Result<List<SearchHistoryVO>> getRecords() {
         return Result.success(searchRecordService.getRecords(UserThreadLocal.getUserId()));
     }
 

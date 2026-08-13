@@ -5,7 +5,7 @@ import com.game.community.model.entity.social.SocialOutboxEvent;
 import com.game.community.model.message.ArticleBehaviorMessage;
 import com.game.community.model.message.NotificationEventMessage;
 import com.game.community.model.message.ReportAuditMessage;
-import com.game.community.social.common.SocialOutboxEventTypes;
+import com.game.community.common.constant.social.SocialConstants;
 import com.game.community.social.mapper.SocialOutboxMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -65,11 +65,11 @@ public class SocialOutboxPublisher {
 
     private Object deserialize(SocialOutboxEvent event) throws Exception {
         return switch (event.getEventType()) {
-            case SocialOutboxEventTypes.ARTICLE_BEHAVIOR ->
+            case SocialConstants.EventType.ARTICLE_BEHAVIOR ->
                     objectMapper.readValue(event.getPayload(), ArticleBehaviorMessage.class);
-            case SocialOutboxEventTypes.NOTIFICATION ->
+            case SocialConstants.EventType.NOTIFICATION ->
                     objectMapper.readValue(event.getPayload(), NotificationEventMessage.class);
-            case SocialOutboxEventTypes.REPORT_AUDIT ->
+            case SocialConstants.EventType.REPORT_AUDIT ->
                     objectMapper.readValue(event.getPayload(), ReportAuditMessage.class);
             default -> throw new IllegalArgumentException("未知社交 Outbox 事件类型: " + event.getEventType());
         };
