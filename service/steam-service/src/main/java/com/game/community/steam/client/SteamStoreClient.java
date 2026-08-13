@@ -39,7 +39,7 @@ public class SteamStoreClient {
 
     /** 获取游戏基础信息，并分别保存中文名和英文名。 */
     public SteamGameBasicPayload fetchBasicAppInfo(long appId) {
-        SteamGameBasicPayload chinese = fetchBasicAppInfoByLanguage(
+        SteamGameBasicPayload chinese = fetchBasicAppInfoByLanguageWithFallback(
                 appId, SteamApiConstants.LIBRARY_NAME_ZH_LANGUAGE);
         SteamGameBasicPayload english = fetchBasicAppInfoByLanguage(
                 appId, SteamApiConstants.LIBRARY_NAME_EN_LANGUAGE);
@@ -50,6 +50,19 @@ public class SteamStoreClient {
         chinese.setDisplayName(StringUtils.hasText(chinese.getNameZh())
                 ? chinese.getNameZh() : chinese.getNameEn());
         return chinese;
+    }
+
+    /** 中文基础信息没有名称时回退到 all，避免把空值写入游戏目录。 */
+    private SteamGameBasicPayload fetchBasicAppInfoByLanguageWithFallback(long appId, String language) {
+        try {
+            SteamGameBasicPayload primary = fetchBasicAppInfoByLanguage(appId, language);
+            if (StringUtils.hasText(primary.getDisplayName())) {
+                return primary;
+            }
+        } catch (BusinessException e) {
+            log.warn("Steam 中文基础信息为空，准备回退 all: appId={}", appId);
+        }
+        return fetchBasicAppInfoByLanguage(appId, SteamApiConstants.REVIEW_ALL_LANGUAGE);
     }
 
     /** 按指定语言获取 Steam 游戏基础字段。 */
@@ -71,16 +84,12 @@ public class SteamStoreClient {
 
     /** 获取游戏完整资料、价格、评价摘要、媒体和成就定义。 */
     public SteamGameDetailsPayload fetchAppDetails(long appId) {
-        JsonNode data = fetchAppData(appId, steamProperties.getApiLang());
+        JsonNode data = fetchDetailDataWithFallback(appId);
         SteamGameDetailsPayload result = new SteamGameDetailsPayload();
         result.setAppId(appId);
         result.setSteamName(data.path("name").asText(null));
         result.setDisplayName(data.path("name").asText(null));
-        if (SteamApiConstants.LIBRARY_NAME_ZH_LANGUAGE.equals(steamProperties.getApiLang())) {
-            result.setNameZh(result.getDisplayName());
-        } else {
-            result.setNameEn(result.getDisplayName());
-        }
+        result.setNameZh(result.getDisplayName());
         result.setShortDescription(data.path("short_description").asText(null));
         result.setAboutHtml(data.path("about_the_game").asText(null));
         result.setHeaderImage(data.path("header_image").asText(null));
@@ -97,6 +106,26 @@ public class SteamStoreClient {
         }
         applyDetailFields(result, data);
         return result;
+    }
+
+    /** 详情优先使用中文，中文返回无有效内容时回退 all。 */
+    private JsonNode fetchDetailDataWithFallback(long appId) {
+        try {
+            JsonNode chinese = fetchAppData(appId, SteamApiConstants.LIBRARY_NAME_ZH_LANGUAGE);
+            if (hasDetailContent(chinese)) {
+                return chinese;
+            }
+        } catch (BusinessException e) {
+            log.warn("Steam 中文游戏详情获取失败，准备回退 all: appId={}", appId);
+        }
+        return fetchAppData(appId, SteamApiConstants.REVIEW_ALL_LANGUAGE);
+    }
+
+    /** 判断 Steam 详情是否至少包含名称或介绍。 */
+    private boolean hasDetailContent(JsonNode data) {
+        return StringUtils.hasText(data.path("name").asText(null))
+                || StringUtils.hasText(data.path("short_description").asText(null))
+                || StringUtils.hasText(data.path("about_the_game").asText(null));
     }
 
     /** 请求 Steam appdetails 并返回指定游戏数据节点。 */

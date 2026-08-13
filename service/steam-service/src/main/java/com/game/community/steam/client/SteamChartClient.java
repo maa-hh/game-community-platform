@@ -18,6 +18,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Steam 搜索和榜单接口客户端。
@@ -26,6 +28,9 @@ import java.util.Set;
 @Component
 @RequiredArgsConstructor
 public class SteamChartClient {
+
+    private static final Pattern APP_ID_IN_ASSET_URL =
+            Pattern.compile("/apps/(\\d+)(?:/|$)");
 
     private final RestTemplate restTemplate;
     private final SteamProperties steamProperties;
@@ -52,7 +57,7 @@ public class SteamChartClient {
             }
             List<SteamChartGamePayload> result = new ArrayList<>();
             for (JsonNode item : items) {
-                long appId = item.path("id").asLong(0L);
+                long appId = resolveAppId(item);
                 if (appId <= 0) {
                     continue;
                 }
@@ -71,7 +76,7 @@ public class SteamChartClient {
     /** 按榜单和偏移量分页拉取轻量游戏卡片。 */
     public List<SteamChartGamePayload> fetchChartGames(String board, int start, int limit) {
         int safeStart = Math.max(0, start);
-        int safeLimit = Math.max(1, Math.min(limit, SteamApiConstants.CHART_LIMIT));
+        int safeLimit = Math.max(1, Math.min(limit, SteamApiConstants.CHART_REQUEST_PAGE_SIZE));
         if (safeStart > 0 || GameBoardConstants.FREE.equalsIgnoreCase(board)) {
             return fetchSearchChartGames(board, safeStart, safeLimit);
         }
@@ -88,7 +93,8 @@ public class SteamChartClient {
     private JsonNode loadFeaturedCategories() {
         String url = UriComponentsBuilder.fromHttpUrl(SteamApiConstants.FEATURED_CATEGORIES_URL)
                 .queryParam("cc", steamProperties.getApiCc())
-                .queryParam("l", steamProperties.getApiLang())
+                // 榜单展示固定使用中文，不受通用 Steam 语言配置影响。
+                .queryParam("l", SteamApiConstants.LIBRARY_NAME_ZH_LANGUAGE)
                 .toUriString();
         try {
             return objectMapper.readTree(restTemplate.getForObject(url, String.class));
@@ -125,7 +131,7 @@ public class SteamChartClient {
         List<SteamChartGamePayload> result = new ArrayList<>();
         Set<Long> appIds = new LinkedHashSet<>();
         for (JsonNode item : items) {
-            long appId = item.path("id").asLong(0L);
+            long appId = resolveAppId(item);
             if (appId <= 0 || !appIds.add(appId)) {
                 continue;
             }
@@ -147,7 +153,8 @@ public class SteamChartClient {
                 .queryParam("count", limit)
                 .queryParam("category1", 998)
                 .queryParam("cc", steamProperties.getApiCc())
-                .queryParam("l", steamProperties.getApiLang());
+                // 榜单展示固定使用中文，不受通用 Steam 语言配置影响。
+                .queryParam("l", SteamApiConstants.LIBRARY_NAME_ZH_LANGUAGE);
         if (GameBoardConstants.FREE.equalsIgnoreCase(board)) {
             builder.queryParam("maxprice", "free");
         } else if (GameBoardConstants.HOT.equalsIgnoreCase(board)) {
@@ -168,7 +175,7 @@ public class SteamChartClient {
             List<SteamChartGamePayload> result = new ArrayList<>();
             Set<Long> appIds = new LinkedHashSet<>();
             for (JsonNode item : items) {
-                long appId = item.path("id").asLong(0L);
+                long appId = resolveAppId(item);
                 if (appId <= 0 || !appIds.add(appId)) {
                     continue;
                 }
@@ -212,7 +219,7 @@ public class SteamChartClient {
         SteamChartGamePayload game = new SteamChartGamePayload();
         game.setAppId(appId);
         game.setName(item.path("name").asText("游戏 " + appId));
-        game.setCoverUrl(item.path("header_image").asText(null));
+        game.setCoverUrl(resolveCoverUrl(item));
         JsonNode price = item.path("price");
         if (price.isMissingNode() || price.isNull()) {
             return game;
@@ -227,5 +234,37 @@ public class SteamChartClient {
         pricePayload.setFormatted(price.path("final_formatted").asText(null));
         game.setPrice(pricePayload);
         return game;
+    }
+
+    /** 兼容精选榜单的 id/appid 和搜索结果图片 URL 中的 AppID。 */
+    private long resolveAppId(JsonNode item) {
+        long appId = item.path("id").asLong(0L);
+        if (appId <= 0) {
+            appId = item.path("appid").asLong(0L);
+        }
+        if (appId > 0) {
+            return appId;
+        }
+        for (String field : List.of("header_image", "logo", "icon")) {
+            String assetUrl = item.path(field).asText(null);
+            Matcher matcher = assetUrl == null ? null : APP_ID_IN_ASSET_URL.matcher(assetUrl);
+            if (matcher != null && matcher.find()) {
+                try {
+                    return Long.parseLong(matcher.group(1));
+                } catch (NumberFormatException ignored) {
+                    // 继续尝试其他图片字段。
+                }
+            }
+        }
+        return 0L;
+    }
+
+    /** 兼容精选接口的 header_image 和搜索接口的 logo。 */
+    private String resolveCoverUrl(JsonNode item) {
+        String headerImage = item.path("header_image").asText(null);
+        if (StringUtils.hasText(headerImage)) {
+            return headerImage;
+        }
+        return item.path("logo").asText(null);
     }
 }
