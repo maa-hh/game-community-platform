@@ -7,6 +7,7 @@ import com.game.community.common.exception.BusinessException;
 import com.game.community.steam.mapper.GameCatalogMapper;
 import com.game.community.steam.mapper.GameChartSnapshotMapper;
 import com.game.community.steam.service.GameCatalogService;
+import com.game.community.steam.service.GameChartService;
 import com.game.community.steam.service.GameDiscoverService;
 import com.game.community.model.base.PageResult;
 import com.game.community.model.dto.game.GameDiscoverQuery;
@@ -32,6 +33,7 @@ public class GameDiscoverServiceImpl implements GameDiscoverService {
     private final GameCatalogMapper gameCatalogMapper;
     private final GameCatalogService gameCatalogService;
     private final GameChartSnapshotMapper gameChartSnapshotMapper;
+    private final GameChartService gameChartService;
 
     /** 规范化发现查询后，根据 all 或具体榜单选择分页策略。 */
     @Override
@@ -61,13 +63,17 @@ public class GameDiscoverServiceImpl implements GameDiscoverService {
 
     /** 从定时任务生成的当前榜单快照分页查询，不触发 Steam API。 */
     private PageResult<GameChartItemVO> pageChartBoard(GameDiscoverQuery query) {
+        int requiredCount = Math.toIntExact(query.getPage() * query.getSize());
+        GameChartService.ChartCapacityStatus capacityStatus =
+                gameChartService.ensureChartCapacity(query.getBoard(), requiredCount);
         List<GameChartSnapshot> snapshots = gameChartSnapshotMapper.selectList(
                 new LambdaQueryWrapper<GameChartSnapshot>()
                         .eq(GameChartSnapshot::getBoardType, query.getBoard())
                         .eq(GameChartSnapshot::getIsCurrent, 1)
                         .orderByAsc(GameChartSnapshot::getRankNo));
         if (snapshots.isEmpty()) {
-            return chartPageResult(List.of(), query, 0L);
+            return chartPageResult(List.of(), query, 0L,
+                    capacityStatus == GameChartService.ChartCapacityStatus.IN_PROGRESS);
         }
 
         Map<Long, Integer> rankMap = new HashMap<>();
@@ -85,7 +91,8 @@ public class GameDiscoverServiceImpl implements GameDiscoverService {
         long total = sorted.size();
         long from = (query.getPage() - 1) * query.getSize();
         if (from >= total) {
-            return chartPageResult(List.of(), query, total);
+            return chartPageResult(List.of(), query, total,
+                    capacityStatus == GameChartService.ChartCapacityStatus.IN_PROGRESS);
         }
         int to = (int) Math.min(from + query.getSize(), sorted.size());
         List<GameChartItemVO> records = sorted.subList((int) from, to).stream()
@@ -98,15 +105,16 @@ public class GameDiscoverServiceImpl implements GameDiscoverService {
         List<Long> visibleAppIds = records.stream().map(GameChartItemVO::getAppId).toList();
         gameCatalogService.refreshMetricsPriceAsync(visibleAppIds);
         gameCatalogService.warmupBasicInfoAsync(visibleAppIds);
-        return chartPageResult(records, query, total);
+        return chartPageResult(records, query, total,
+                capacityStatus == GameChartService.ChartCapacityStatus.IN_PROGRESS);
     }
 
     private PageResult<GameChartItemVO> chartPageResult(
-            List<GameChartItemVO> records,
-            GameDiscoverQuery query,
-            long total) {
+            List<GameChartItemVO> records, GameDiscoverQuery query, long total,
+            boolean expanding) {
         PageResult<GameChartItemVO> result = PageResult.of(
                 records, query.getPage(), query.getSize(), total);
+        result.setExpanding(expanding);
         return result;
     }
 

@@ -34,12 +34,24 @@ public final class SteamApiConstants {
     public static final int ACHIEVEMENT_SYNC_LIMIT = 60;
     public static final int ACHIEVEMENT_ENRICH_LIMIT = 30;
     public static final int CHART_BATCH_SIZE = 20;
-    public static final int CHART_MAX_BATCHES = 5;
-    public static final int CHART_LIMIT = CHART_BATCH_SIZE * CHART_MAX_BATCHES;
+    /** Steam Store 搜索榜单实际按 25 条一页返回，分页偏移也必须按 25 递增。 */
+    public static final int CHART_REQUEST_PAGE_SIZE = 25;
+    /** 榜单定时同步只预取前 100 条，后续由用户翻页时按需追加。 */
+    public static final int CHART_MAX_BATCHES = 4;
+    public static final int CHART_LIMIT = CHART_REQUEST_PAGE_SIZE * CHART_MAX_BATCHES;
     public static final int LIBRARY_SYNC_BATCH_SIZE = 20;
     public static final int LIBRARY_SYNC_MAX_BATCHES_PER_REQUEST = 5;
     public static final String LIBRARY_NAME_ZH_LANGUAGE = "schinese";
     public static final String LIBRARY_NAME_EN_LANGUAGE = "english";
+    /** Steam 商店总评价必须使用 all，避免按界面语言过滤掉绝大多数评价。 */
+    public static final String REVIEW_ALL_LANGUAGE = "all";
+    /** Steam 评价汇总需要统计所有购买类型。 */
+    public static final String REVIEW_ALL_PURCHASE_TYPE = "all";
+    /** Steam 评价接口至少返回一条评价时才会返回稳定的汇总字段。 */
+    public static final int REVIEW_REQUEST_PAGE_SIZE = 1;
+    public static final String REVIEW_FILTER_ALL = "all";
+    public static final String CHART_EXPAND_LOCK_PREFIX = "steam:chart:expand:";
+    public static final long CHART_EXPAND_LOCK_SECONDS = 120L;
     public static final String STEAM_HEADER_IMAGE_URL_PREFIX =
             "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/";
     public static final int REVIEW_BACKFILL_BATCH_SIZE = 20;

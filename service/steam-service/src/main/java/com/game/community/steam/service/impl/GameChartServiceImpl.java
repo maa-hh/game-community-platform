@@ -133,14 +133,63 @@ public class GameChartServiceImpl implements GameChartService {
         }
     }
 
-    /** 分批拉取榜单轻量数据，限制总量并去重，所有 Steam 调用只发生在定时任务中。 */
-    /** 分批抓取榜单轻量数据，避免在榜单同步中请求完整详情。 */
+    /** 用户翻页时按需扩展榜单，避免首次同步抓取完整 Steam 榜单。 */
+    @Override
+    public ChartCapacityStatus ensureChartCapacity(String board, int requiredCount) {
+        String resolvedBoard = resolveBoard(board);
+        int targetCount = Math.max(1, requiredCount);
+        List<GameChartSnapshot> current = loadCurrentSnapshots(resolvedBoard);
+        if (current.size() >= targetCount) {
+            return ChartCapacityStatus.READY;
+        }
+
+        String lockKey = SteamApiConstants.CHART_EXPAND_LOCK_PREFIX + resolvedBoard;
+        String lockToken = UUID.randomUUID().toString();
+        Boolean acquired = redisUtils.setIfAbsent(
+                lockKey, lockToken, SteamApiConstants.CHART_EXPAND_LOCK_SECONDS);
+        if (!Boolean.TRUE.equals(acquired)) {
+            return ChartCapacityStatus.IN_PROGRESS;
+        }
+        try {
+            current = loadCurrentSnapshots(resolvedBoard);
+            if (current.isEmpty()) {
+                syncChart(resolvedBoard);
+                current = loadCurrentSnapshots(resolvedBoard);
+            }
+            while (current.size() < targetCount) {
+                int start = current.size();
+                List<SteamChartGamePayload> batch = steamChartClient.fetchChartGames(
+                        resolvedBoard, start, SteamApiConstants.CHART_REQUEST_PAGE_SIZE);
+                if (batch.isEmpty()) {
+                    return ChartCapacityStatus.EXHAUSTED;
+                }
+                List<GameListItemVO> newGames = toDistinctNewGames(batch, current);
+                if (newGames.isEmpty()) {
+                    return ChartCapacityStatus.EXHAUSTED;
+                }
+                appendChartBatch(resolvedBoard, current, newGames);
+                newGames.forEach(gameCatalogService::upsertBasicCatalog);
+                gameCatalogService.warmupBasicInfoAsync(
+                        newGames.stream().map(GameListItemVO::getAppId).toList());
+                current = loadCurrentSnapshots(resolvedBoard);
+                if (batch.size() < SteamApiConstants.CHART_REQUEST_PAGE_SIZE) {
+                    return current.size() >= targetCount
+                            ? ChartCapacityStatus.READY : ChartCapacityStatus.EXHAUSTED;
+                }
+            }
+            return ChartCapacityStatus.READY;
+        } finally {
+            redisUtils.unlock(lockKey, lockToken);
+        }
+    }
+
+    /** 按 Steam 分页结果抓取完整榜单，去重后保存基础数据。 */
     private List<GameListItemVO> fetchChartGamesInBatches(String board) {
         Map<Long, GameListItemVO> games = new LinkedHashMap<>();
         for (int start = 0; start < SteamApiConstants.CHART_LIMIT;
-             start += SteamApiConstants.CHART_BATCH_SIZE) {
+             start += SteamApiConstants.CHART_REQUEST_PAGE_SIZE) {
             List<SteamChartGamePayload> batch = steamChartClient.fetchChartGames(
-                    board, start, SteamApiConstants.CHART_BATCH_SIZE);
+                    board, start, SteamApiConstants.CHART_REQUEST_PAGE_SIZE);
             if (batch.isEmpty()) {
                 break;
             }
@@ -154,11 +203,63 @@ public class GameChartServiceImpl implements GameChartService {
                 // 不应让本次榜单同步被误判为失败。
                 break;
             }
-            if (batch.size() < SteamApiConstants.CHART_BATCH_SIZE) {
+            if (batch.size() < SteamApiConstants.CHART_REQUEST_PAGE_SIZE) {
                 break;
             }
         }
         return new ArrayList<>(games.values());
+    }
+
+    /** 过滤已经进入当前快照的游戏，避免 Steam 分页重复时中断后续扩展。 */
+    private List<GameListItemVO> toDistinctNewGames(
+            List<SteamChartGamePayload> batch, List<GameChartSnapshot> current) {
+        Map<Long, Boolean> existing = new LinkedHashMap<>();
+        current.forEach(snapshot -> existing.put(snapshot.getAppId(), Boolean.TRUE));
+        Map<Long, GameListItemVO> result = new LinkedHashMap<>();
+        batch.stream()
+                .filter(game -> game != null && game.getAppId() != null && game.getAppId() > 0)
+                .map(this::toListItemVO)
+                .filter(game -> !existing.containsKey(game.getAppId()))
+                .forEach(game -> result.putIfAbsent(game.getAppId(), game));
+        return new ArrayList<>(result.values());
+    }
+
+    /** 在当前快照末尾追加一批榜单记录，并清理列表缓存。 */
+    private void appendChartBatch(
+            String board, List<GameChartSnapshot> current, List<GameListItemVO> games) {
+        if (games.isEmpty()) {
+            return;
+        }
+        String periodKey = current.isEmpty()
+                ? currentDailyPeriodKey() : current.get(0).getPeriodKey();
+        LocalDateTime now = LocalDateTime.now(SHANGHAI);
+        String snapshotId = current.isEmpty()
+                ? UUID.randomUUID().toString().replace("-", "")
+                : current.get(0).getSnapshotId();
+        int[] nextRank = {current.size() + 1};
+        transactionTemplate.executeWithoutResult(status -> {
+            for (GameListItemVO game : games) {
+                GameChartSnapshot row = new GameChartSnapshot();
+                row.setBoardType(board);
+                row.setPeriodKey(periodKey);
+                row.setAppId(game.getAppId());
+                row.setRankNo(nextRank[0]++);
+                row.setSnapshotTime(now);
+                row.setSnapshotId(snapshotId);
+                row.setIsCurrent(1);
+                gameChartSnapshotMapper.insert(row);
+            }
+        });
+        redisUtils.del(SteamRedisConstants.GAME_CHART_KEY_PREFIX + board);
+    }
+
+    /** 查询指定榜单的当前快照。 */
+    private List<GameChartSnapshot> loadCurrentSnapshots(String board) {
+        return gameChartSnapshotMapper.selectList(
+                new LambdaQueryWrapper<GameChartSnapshot>()
+                        .eq(GameChartSnapshot::getBoardType, board)
+                        .eq(GameChartSnapshot::getIsCurrent, 1)
+                        .orderByAsc(GameChartSnapshot::getRankNo));
     }
 
     /** 将 Steam 榜单 payload 转成统一游戏列表项。 */

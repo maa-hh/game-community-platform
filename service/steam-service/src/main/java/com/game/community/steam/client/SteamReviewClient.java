@@ -28,9 +28,12 @@ public class SteamReviewClient {
         String url = UriComponentsBuilder
                 .fromHttpUrl(SteamApiConstants.APP_REVIEWS_URL + "/" + appId)
                 .queryParam("json", 1)
-                .queryParam("language", steamProperties.getApiLang())
-                .queryParam("num_per_page", 0)
-                .queryParam("filter", "summary")
+                // 评分要与 Steam 商店总评价一致，不能沿用 appdetails 的中文语言过滤。
+                .queryParam("language", SteamApiConstants.REVIEW_ALL_LANGUAGE)
+                // num_per_page=0 在部分游戏上会返回空汇总；请求一条即可拿到总数。
+                .queryParam("num_per_page", SteamApiConstants.REVIEW_REQUEST_PAGE_SIZE)
+                .queryParam("filter", SteamApiConstants.REVIEW_FILTER_ALL)
+                .queryParam("purchase_type", SteamApiConstants.REVIEW_ALL_PURCHASE_TYPE)
                 .toUriString();
         try {
             JsonNode root = objectMapper.readTree(restTemplate.getForObject(url, String.class));
