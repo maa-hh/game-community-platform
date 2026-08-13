@@ -3,6 +3,7 @@ import {
   resolveGameDisplayName,
   type IGameNameFields,
 } from '@/utils/gameDisplayName';
+import { resolveSteamReviewMetrics } from '@/utils/mapSteamReview';
 
 type GameListItemRaw = IGameListItem &
   IGameNameFields & {
@@ -25,24 +26,6 @@ export interface IGameListEnrichment {
   reviewCount?: number;
 }
 
-function resolveSteamScore(raw: {
-  steamScore?: number;
-  steamReviewScore?: number;
-}): number | undefined {
-  // steamReviewScore 是当前后端的标准字段。旧缓存/旧索引可能同时带着
-  // steamScore: 0，不能让这个历史占位值覆盖已经刷新的真实好评率。
-  if (
-    raw.steamReviewScore != null &&
-    Number.isFinite(Number(raw.steamReviewScore))
-  ) {
-    return Number(raw.steamReviewScore);
-  }
-  if (raw.steamScore != null && Number.isFinite(Number(raw.steamScore))) {
-    return Number(raw.steamScore);
-  }
-  return undefined;
-}
-
 function mapGamePrice(raw?: GameListItemRaw['price']): IGamePrice | undefined {
   if (!raw) return undefined;
   const mapped = {
@@ -63,6 +46,8 @@ function mapGamePrice(raw?: GameListItemRaw['price']): IGamePrice | undefined {
 }
 
 function mapSharedGameFields(raw: GameListItemRaw | UserGameItemRaw) {
+  const steamReview = resolveSteamReviewMetrics(raw);
+
   return {
     appId: raw.appId,
     name: resolveGameDisplayName(raw) || `游戏 ${raw.appId}`,
@@ -71,13 +56,8 @@ function mapSharedGameFields(raw: GameListItemRaw | UserGameItemRaw) {
     developer: raw.developer,
     publisher: raw.publisher,
     releaseDate: raw.releaseDate,
-    steamScore: resolveSteamScore(raw),
-    steamReviewCount:
-      'steamReviewCount' in raw &&
-      raw.steamReviewCount != null &&
-      Number.isFinite(Number(raw.steamReviewCount))
-        ? Number(raw.steamReviewCount)
-        : undefined,
+    steamScore: steamReview.score,
+    steamReviewCount: steamReview.count,
     avgScore: raw.avgScore != null ? Number(raw.avgScore) : undefined,
     reviewCount: raw.reviewCount ?? 0,
     discussCount: raw.discussCount ?? 0,

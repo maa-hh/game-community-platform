@@ -21,7 +21,10 @@ import SteamCoverImage from '@/base-ui/SteamCoverImage';
 import PostFeedList from '@/components/PostFeedList';
 import { useRequireLogin } from '@/hooks/useRequireLogin';
 import { formatApiError } from '@/utils/apiError';
-import { formatSteamScore } from '@/utils/formatGameScore';
+import {
+  formatSteamReviewCount,
+  formatSteamScore,
+} from '@/utils/formatGameScore';
 import { formatGamePrice } from '@/utils/formatGamePrice';
 import {
   buildReturnNavigationState,
@@ -186,6 +189,7 @@ function GameDetail() {
   }
 
   const steamScoreText = formatSteamScore(detail.steamReviewScore);
+  const steamReviewText = formatSteamReviewCount(detail.steamReviewCount);
 
   return (
     <div className="game-detail">
@@ -236,6 +240,7 @@ function GameDetail() {
               {detail.steamReviewScore != null ? (
                 <span className="game-detail__stat">
                   Steam {steamScoreText}
+                  {steamReviewText ? ` · ${steamReviewText}` : ''}
                 </span>
               ) : null}
               {detail.metacritic?.score != null ? (

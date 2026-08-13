@@ -22,6 +22,7 @@ import type { IArticleRaw } from '@/utils/mapPost';
 import { appendGameShareMarker } from '@/utils/gameRepost';
 import { mapGameListItem, type IGameListEnrichment } from '@/utils/mapGameItem';
 import { resolveGameDisplayName } from '@/utils/gameDisplayName';
+import { resolveSteamReviewMetrics } from '@/utils/mapSteamReview';
 import { searchGameIndexApi } from './search';
 
 interface IGameDetailRaw {
@@ -96,12 +97,7 @@ export function mapGameDetail(raw: IGameDetailRaw): IGameDetail & {
   averageScore?: number;
   reviewCount?: number;
 } {
-  const steamReviewScore =
-    raw.steamReviewScore != null
-      ? Number(raw.steamReviewScore)
-      : raw.steamScore != null
-        ? Number(raw.steamScore)
-        : undefined;
+  const steamReview = resolveSteamReviewMetrics(raw);
 
   return {
     appId: raw.appId,
@@ -117,15 +113,8 @@ export function mapGameDetail(raw: IGameDetailRaw): IGameDetail & {
     developer: raw.developers?.[0],
     publisher: raw.publishers?.[0],
     steamUrl: raw.steamUrl,
-    steamReviewScore:
-      steamReviewScore != null && Number.isFinite(steamReviewScore)
-        ? steamReviewScore
-        : undefined,
-    steamReviewCount:
-      raw.steamReviewCount != null &&
-      Number.isFinite(Number(raw.steamReviewCount))
-        ? Number(raw.steamReviewCount)
-        : undefined,
+    steamReviewScore: steamReview.score,
+    steamReviewCount: steamReview.count,
     discussCount: raw.discussCount,
     screenshots: raw.screenshots,
     movies: raw.movies,
@@ -165,12 +154,6 @@ export async function fetchGameListEnrichmentApi(
         });
         const raw = res.data;
         const detail = mapGameDetail(raw);
-        const steamScore =
-          raw.steamScore != null
-            ? Number(raw.steamScore)
-            : raw.steamReviewScore != null
-              ? Number(raw.steamReviewScore)
-              : undefined;
 
         return [
           appId,
@@ -180,10 +163,7 @@ export async function fetchGameListEnrichmentApi(
             developer: detail.developer,
             publisher: detail.publisher,
             releaseDate: detail.releaseDate,
-            steamScore:
-              steamScore != null && Number.isFinite(steamScore)
-                ? steamScore
-                : undefined,
+            steamScore: detail.steamReviewScore,
             avgScore: detail.averageScore,
             reviewCount: detail.reviewCount,
           },
