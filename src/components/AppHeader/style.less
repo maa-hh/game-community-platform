@@ -123,6 +123,32 @@
     }
   }
 
+  &__search-history-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+
+    > span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  &__search-history-delete {
+    margin-left: auto;
+    padding: 2px 4px;
+    border: 0;
+    background: transparent;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+
+    &:hover {
+      color: var(--color-primary);
+    }
+  }
+
   &__link {
     padding: 6px 14px;
     border-radius: 6px;

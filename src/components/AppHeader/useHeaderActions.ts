@@ -18,6 +18,7 @@ import { logoutAction } from '@/store/modules/auth';
 import { fetchNotificationMetaAction } from '@/store/modules/notification';
 import { useAuthModal } from '@/hooks/useAuthModal';
 import { isAuthenticated } from '@/utils/storage';
+import { addSearchHistoryApi } from '@/service/search';
 
 import { headerActions, headerSearch, userMenuSchema } from './config';
 import { isUserMenuDivider } from './types';
@@ -48,11 +49,14 @@ export function useHeaderActions() {
     (keyword: string) => {
       const q = keyword.trim();
       if (!q) return;
+      if (loggedIn) {
+        void addSearchHistoryApi(q).catch(() => undefined);
+      }
       navigate(
         `/search?q=${encodeURIComponent(q)}&tab=${headerSearch.defaultTab}`,
       );
     },
-    [navigate],
+    [loggedIn, navigate],
   );
 
   const handlePublish = useCallback(() => {

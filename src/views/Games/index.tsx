@@ -31,6 +31,8 @@ import type {
 import { formatApiError } from '@/utils/apiError';
 import { buildReturnNavigationState } from '@/utils/returnNavigation';
 import { searchGamesApi } from '@/service/game';
+import { fetchSuggestApi, triggerSuggestApi } from '@/service/search';
+import type { ISuggestItem } from '@/service/search';
 
 import { useGamesPage, type GamesTabKey } from './useGamesPage';
 
@@ -80,7 +82,7 @@ function Games() {
   const [gameSearchItems, setGameSearchItems] = useState<IGameListItem[]>([]);
   const [gameSearchLoading, setGameSearchLoading] = useState(false);
   const [gameSearchSuggestions, setGameSearchSuggestions] = useState<
-    IGameListItem[]
+    ISuggestItem[]
   >([]);
   const [gameSearchSuggestLoading, setGameSearchSuggestLoading] =
     useState(false);
@@ -163,10 +165,7 @@ function Games() {
       setGameSearchSuggestLoading(true);
       setGameSearchSuggestResolved(false);
       gameSearchSuggestDebounceRef.current = window.setTimeout(() => {
-        void searchGamesApi(keyword, {
-          page: 1,
-          size: GAME_SEARCH_SUGGEST_SIZE,
-        })
+        void fetchSuggestApi(keyword, 'GAME')
           .then((res) => {
             if (requestId !== gameSearchRequestRef.current) return;
             setGameSearchSuggestions(res.data || []);
@@ -374,10 +373,12 @@ function Games() {
         {discoverBoard === 'all' ? (
           <AutoComplete
             className="games-page__discover-search"
-            options={gameSearchSuggestions.map((game) => ({
-              value: game.name || `游戏 ${game.appId}`,
-              label: game.name || `游戏 ${game.appId}`,
-            }))}
+            options={gameSearchSuggestions
+              .slice(0, GAME_SEARCH_SUGGEST_SIZE)
+              .map((item) => ({
+                value: item.term,
+                label: item.term,
+              }))}
             open={gameSearchPopupOpen && gameSearchText.trim().length > 0}
             filterOption={false}
             notFoundContent={
@@ -406,6 +407,9 @@ function Games() {
             onSelect={(value) => {
               setGameSearchText(value);
               setGameSearchPopupOpen(false);
+              if (isLoggedIn) {
+                void triggerSuggestApi({ term: value }).catch(() => undefined);
+              }
               void submitGameSearch(value);
             }}
           >

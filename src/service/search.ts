@@ -43,10 +43,16 @@ export interface ISuggestItem {
   sourceType?: string;
 }
 
-export function fetchSuggestApi(prefix: string) {
+export interface ISearchHistoryItem {
+  id: number;
+  keyword: string;
+  updateTime?: string;
+}
+
+export function fetchSuggestApi(prefix: string, sourceType?: string) {
   return hyRequest.get<IDataType<ISuggestItem[]>>({
     url: '/search/suggest',
-    params: { prefix },
+    params: { prefix, sourceType },
   });
 }
 
@@ -54,6 +60,25 @@ export function triggerSuggestApi(payload: { termId?: number; term: string }) {
   return hyRequest.post<IDataType<null>>({
     url: '/search/suggest/trigger',
     data: payload,
+  });
+}
+
+export function fetchSearchHistoryApi() {
+  return hyRequest.get<IDataType<ISearchHistoryItem[]>>({
+    url: '/search/record/list',
+  });
+}
+
+export function addSearchHistoryApi(keyword: string) {
+  return hyRequest.post<IDataType<null>>({
+    url: '/search/record',
+    params: { keyword },
+  });
+}
+
+export function deleteSearchHistoryApi(id: number) {
+  return hyRequest.delete<IDataType<null>>({
+    url: `/search/record/${id}`,
   });
 }
 
