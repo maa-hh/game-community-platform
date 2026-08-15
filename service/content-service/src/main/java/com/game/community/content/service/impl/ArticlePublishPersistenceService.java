@@ -31,16 +31,19 @@ public class ArticlePublishPersistenceService {
     private final ArticleNotificationEventProducer articleNotificationEventProducer;
     private final ModerationTaskProducer moderationTaskProducer;
 
+    /**
+     * 在事务内保存正文、切换发布状态，并写入发布后的同步事件。
+     */
     @Transactional(rollbackFor = Exception.class)
     public boolean publish(Long articleId, Long userId, String content, Map<String, String> paragraphs,
                            List<String> publicImages, String publicCover, String publicVideo,
-                           LocalDateTime publishedTime) {
+                           LocalDateTime publishedTime, String auditMessage) {
         articleContentService.saveContent(articleId, content, paragraphs, publicImages, userId);
         int updated = articleMapper.update(null, new LambdaUpdateWrapper<Article>()
                 .eq(Article::getId, articleId)
                 .eq(Article::getStatus, ContentConstants.ArticleStatus.PENDING)
                 .set(Article::getStatus, ContentConstants.ArticleStatus.PUBLISHED)
-                .set(Article::getAuditMessage, "审核通过")
+                .set(Article::getAuditMessage, auditMessage)
                 .set(Article::getCoverUrl, publicCover)
                 .set(Article::getVideoUrl, publicVideo)
                 .set(Article::getPublishedTime, publishedTime)
@@ -82,26 +85,4 @@ public class ArticlePublishPersistenceService {
         return true;
     }
 
-    @Transactional(rollbackFor = Exception.class)
-    public boolean publishAfterManualApproval(Long articleId, Long userId, String content,
-                                              Map<String, String> paragraphs, List<String> publicImages,
-                                              String publicCover, String publicVideo,
-                                              LocalDateTime publishedTime) {
-        articleContentService.saveContent(articleId, content, paragraphs, publicImages, userId);
-        int updated = articleMapper.update(null, new LambdaUpdateWrapper<Article>()
-                .eq(Article::getId, articleId)
-                .eq(Article::getStatus, ContentConstants.ArticleStatus.PENDING)
-                .set(Article::getStatus, ContentConstants.ArticleStatus.PUBLISHED)
-                .set(Article::getAuditMessage, "人工审核通过")
-                .set(Article::getCoverUrl, publicCover)
-                .set(Article::getVideoUrl, publicVideo)
-                .set(Article::getPublishedTime, publishedTime)
-                .set(Article::getUpdateTime, publishedTime));
-        if (updated == 0) {
-            return false;
-        }
-        articleSearchSyncProducer.upsert(articleId);
-        articleSocialFeedProducer.publish(userId, articleId, publishedTime);
-        return true;
-    }
 }

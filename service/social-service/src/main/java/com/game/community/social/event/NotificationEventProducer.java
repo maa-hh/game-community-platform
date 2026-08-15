@@ -5,7 +5,6 @@ import com.game.community.common.constant.notification.NotificationConstants;
 import com.game.community.common.constant.social.SocialConstants;
 import com.game.community.model.message.NotificationEventMessage;
 import com.game.community.model.vo.user.UserCardInternalVO;
-import com.game.community.common.constant.social.SocialConstants;
 import com.game.community.social.service.SocialOutboxService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -88,15 +87,18 @@ public class NotificationEventProducer {
     }
 
     public void publishReportSubmitted(Long recipientUserId, Long targetType, Long articleId, Long commentId,
-                                       Long replyId, Long targetUserId, String reason) {
+                                       Long replyId, Long danmakuId, String videoPublicId, Long targetUserId,
+                                       Long reportId, String reason) {
         NotificationEventMessage event = systemEvent(
                 recipientUserId,
                 NotificationConstants.EventType.REPORT_SUBMITTED,
                 routeTypeForTargetType(targetType),
-                articleId, commentId, replyId, null, targetUserId, null,
+                articleId, commentId, replyId, reportId, targetUserId, null,
                 "举报已提交，管理员会尽快处理",
                 trimText(reason)
         );
+        event.setDanmakuId(danmakuId);
+        event.setVideoPublicId(videoPublicId);
         publish(event);
     }
 
@@ -158,6 +160,7 @@ public class NotificationEventProducer {
             case SocialConstants.ReportTargetType.COMMENT -> NotificationConstants.RouteType.COMMENT;
             case SocialConstants.ReportTargetType.REPLY -> NotificationConstants.RouteType.REPLY;
             case SocialConstants.ReportTargetType.USER -> NotificationConstants.RouteType.USER;
+            case SocialConstants.ReportTargetType.DANMAKU -> NotificationConstants.RouteType.DANMAKU;
             default -> NotificationConstants.RouteType.NONE;
         };
     }

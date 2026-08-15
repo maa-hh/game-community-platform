@@ -124,7 +124,7 @@ public class NotificationAggregate implements Serializable {
             event.setActorAvatar(latestActorAvatar);
         }
         event.setPreviewText(buildPreview(actors, total));
-        event.setResultText(NotificationAggregatePayloadCodec.encode(actors, total));
+        event.setResultText(NotificationAggregatePayloadCodec.encode(actors, total, hasLike, hasFavorite));
         event.setEventId("aggregate:" + NotificationAggregateKey.build(event) + ":" +
                 (occurredAt == null ? "0" : occurredAt.toEpochSecond(java.time.ZoneOffset.UTC)));
         if (hasFavorite && hasLike) {

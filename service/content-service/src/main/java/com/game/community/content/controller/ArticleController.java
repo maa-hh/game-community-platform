@@ -41,41 +41,38 @@ public class ArticleController {
     @LoginCheck
     @PostMapping
     public Result<String> saveArticle(@Valid @RequestBody ArticleDTO articleDTO) {
-        Long articleId = articleService.saveArticleForCurrentUser(articleDTO).getData();
-        return Result.success(articleService.getPublicId(articleId));
+        return articleService.saveArticleForCurrentUser(articleDTO);
     }
 
     @LoginCheck
     @PutMapping("/{id}")
     public Result<String> updateArticle(@PathVariable("id") String publicId,
                                         @Valid @RequestBody ArticleDTO articleDTO) {
-        Long articleId = articleService.resolvePublicId(publicId);
-        Long savedId = articleService.updateArticleForCurrentUser(articleId, articleDTO).getData();
-        return Result.success(articleService.getPublicId(savedId));
+        return articleService.updateArticleForCurrentUser(publicId, articleDTO);
     }
 
     @LoginCheck
     @DeleteMapping("/{id}")
     public Result<Void> deleteArticle(@PathVariable("id") String publicId) {
-        return articleService.deleteArticleForCurrentUser(articleService.resolvePublicId(publicId));
+        return articleService.deleteArticleForCurrentUser(publicId);
     }
 
     @GetMapping("/{id}")
     @JsonView(ApiJsonViews.Public.class)
     public Result<ArticleDetailVO> getArticleDetail(@PathVariable("id") String publicId) {
-        return articleService.queryArticleDetail(articleService.resolvePublicId(publicId));
+        return articleService.queryArticleDetail(publicId);
     }
 
     @LoginCheck
     @GetMapping("/{id}/mine")
     @JsonView(ApiJsonViews.Public.class)
     public Result<ArticleDetailVO> getMyArticleDetail(@PathVariable("id") String publicId) {
-        return articleService.queryArticleDetailForOwner(articleService.resolvePublicId(publicId));
+        return articleService.queryArticleDetailForOwner(publicId);
     }
 
     @GetMapping("/{id}/content")
     public Result<ArticleContentVO> getArticleContent(@PathVariable("id") String publicId) {
-        return articleService.queryArticleContent(articleService.resolvePublicId(publicId));
+        return articleService.queryArticleContent(publicId);
     }
 
     @GetMapping("/page")
@@ -114,27 +111,27 @@ public class ArticleController {
     @GetMapping("/more")
     @JsonView(ApiJsonViews.Public.class)
     public Result<List<ArticleListVO>> getMoreArticles(@RequestParam(value = "categoryId", required = false) Long categoryId,
-                                                     @RequestParam("lastId") String lastId,
+                                                     @RequestParam("lastId") String lastPublicId,
                                                      @RequestParam(value = "size", defaultValue = "10") Integer size) {
-        return articleService.queryMoreArticles(categoryId, articleService.resolvePublicId(lastId), size);
+        return articleService.queryMoreArticles(categoryId, lastPublicId, size);
     }
 
     @LoginCheck
     @GetMapping("/{id}/progress")
     public Result<ArticleProgressVO> getArticleProgress(@PathVariable("id") String publicId) {
-        return articleService.queryArticleProgress(articleService.resolvePublicId(publicId));
+        return articleService.queryArticleProgress(publicId);
     }
 
     @LoginCheck
     @PutMapping("/{id}/publish")
     public Result<Void> publishArticle(@PathVariable("id") String publicId) {
-        return articleService.submitPublish(articleService.resolvePublicId(publicId));
+        return articleService.submitPublish(publicId);
     }
 
     @LoginCheck
     @PutMapping("/{id}/unpublish")
     public Result<Void> unpublishArticle(@PathVariable("id") String publicId) {
-        return articleService.submitUnpublish(articleService.resolvePublicId(publicId));
+        return articleService.submitUnpublish(publicId);
     }
 
     @GetMapping("/listPublished")

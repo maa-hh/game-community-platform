@@ -23,11 +23,13 @@ import com.game.community.model.entity.audit.ModerationTask;
 import com.game.community.model.message.ModerationTaskMessage;
 import com.game.community.model.message.ReportAuditMessage;
 import com.game.community.model.vo.article.ArticleDetailVO;
+import com.game.community.model.vo.article.ArticleListVO;
 import com.game.community.model.vo.audit.ModerationTaskDetailVO;
 import com.game.community.model.vo.audit.ModerationTaskClaimVO;
 import com.game.community.model.vo.audit.ModerationTaskVO;
 import com.game.community.model.vo.social.CommentVO;
 import com.game.community.model.vo.social.ReplyVO;
+import com.game.community.model.vo.danmaku.DanmakuVO;
 import com.game.community.model.vo.user.UserAuditTaskBriefVO;
 import com.game.community.model.vo.user.UserCardInternalVO;
 import lombok.RequiredArgsConstructor;
@@ -45,6 +47,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -57,6 +60,12 @@ public class ModerationServiceImpl implements ModerationService {
             ModerationConstants.HandleAction.HIDE_REPLY,
             ModerationConstants.HandleAction.HIDE_DANMAKU,
             ModerationConstants.HandleAction.BAN_USER
+    );
+
+    private static final Set<String> TASK_TYPES = Set.of(
+            ModerationConstants.TaskType.REPORT,
+            ModerationConstants.TaskType.ARTICLE_AUDIT,
+            ModerationConstants.TaskType.PROFILE_AUDIT
     );
 
     private final ModerationTaskMapper taskMapper;
@@ -81,6 +90,7 @@ public class ModerationServiceImpl implements ModerationService {
             return;
         }
         ModerationTask task = new ModerationTask();
+        task.setPublicId(UUID.randomUUID().toString());
         task.setTaskType(message.getTaskType());
         task.setSourceId(message.getSourceId());
         task.setTargetType(message.getTargetType());
@@ -125,6 +135,9 @@ public class ModerationServiceImpl implements ModerationService {
 
     @Override
     public PageResult<ModerationTaskVO> pageTasks(Long page, Long size, Integer status, String taskType) {
+        if (StringUtils.hasText(taskType) && !TASK_TYPES.contains(taskType)) {
+            throw new BusinessException("审核工单类型不合法");
+        }
         long current = page == null || page < 1 ? 1 : page;
         long pageSize = size == null || size < 1 ? 20 : Math.min(size, 100);
         Page<ModerationTask> result = taskMapper.selectPage(new Page<>(current, pageSize),
@@ -146,10 +159,10 @@ public class ModerationServiceImpl implements ModerationService {
     }
 
     @Override
-    public ModerationTaskDetailVO getDetail(Long taskId, Long viewerId) {
-        ModerationTask task = requireTask(taskId);
-        Map<Long, UserCardInternalVO> users = userMap(List.of(task.getSubjectUserId(), task.getReporterId(), task.getHandlerId())
-                .stream().filter(Objects::nonNull).toList());
+    public ModerationTaskDetailVO getDetail(String taskKey, Long viewerId) {
+        ModerationTask task = requireTask(taskKey);
+        Map<Long, UserCardInternalVO> users = userMap(Stream.of(task.getSubjectUserId(), task.getReporterId(), task.getHandlerId())
+                .filter(Objects::nonNull).toList());
         ModerationTaskDetailVO vo = toDetailVO(task, users);
         fillTargetDetail(vo, task, users.get(task.getSubjectUserId()));
         enrichReviewContext(vo, task);
@@ -167,11 +180,11 @@ public class ModerationServiceImpl implements ModerationService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public ModerationTaskClaimVO claim(Long taskId, Long handlerId) {
+    public ModerationTaskClaimVO claim(String taskKey, Long handlerId) {
         if (handlerId == null || handlerId <= 0) {
             throw new BusinessException("处理人身份无效");
         }
-        ModerationTask task = requireTask(taskId);
+        ModerationTask task = requireTask(taskKey);
         if (Objects.equals(task.getStatus(), ModerationConstants.TaskStatus.COMPLETED)) {
             throw new BusinessException("该工单已处理完成");
         }
@@ -196,12 +209,12 @@ public class ModerationServiceImpl implements ModerationService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void handle(Long taskId, Long handlerId, HandleModerationTaskDTO dto) {
+    public void handle(String taskKey, Long handlerId, HandleModerationTaskDTO dto) {
         if (dto == null) {
             throw new BusinessException("处理参数不能为空");
         }
         validateAction(dto.getHandleAction());
-        ModerationTask task = requireTask(taskId);
+        ModerationTask task = requireTask(taskKey);
         if (Objects.equals(task.getStatus(), ModerationConstants.TaskStatus.COMPLETED)) {
             if (Objects.equals(task.getActionRequestId(), dto.getRequestId())) {
                 return;
@@ -218,7 +231,7 @@ public class ModerationServiceImpl implements ModerationService {
         validateBeforeHandle(task, dto.getHandleAction());
         int expectedVersion = task.getVersion() == null ? 0 : task.getVersion();
         int started = taskMapper.update(null, new LambdaUpdateWrapper<ModerationTask>()
-                .eq(ModerationTask::getId, taskId)
+                .eq(ModerationTask::getId, task.getId())
                 .eq(ModerationTask::getStatus, ModerationConstants.TaskStatus.PROCESSING)
                 .eq(ModerationTask::getHandlerId, handlerId)
                 .eq(ModerationTask::getClaimToken, dto.getClaimToken())
@@ -228,7 +241,7 @@ public class ModerationServiceImpl implements ModerationService {
                 .setSql("version = version + 1")
                 .set(ModerationTask::getUpdateTime, LocalDateTime.now()));
         if (started == 0) {
-            ModerationTask latest = requireTask(taskId);
+            ModerationTask latest = requireTaskById(task.getId());
             if (Objects.equals(latest.getStatus(), ModerationConstants.TaskStatus.COMPLETED)
                     && Objects.equals(latest.getActionRequestId(), dto.getRequestId())) {
                 return;
@@ -238,7 +251,7 @@ public class ModerationServiceImpl implements ModerationService {
         try {
             applyAction(task, dto.getHandleAction(), dto.getHandleRemark(), handlerId);
             int finished = taskMapper.update(null, new LambdaUpdateWrapper<ModerationTask>()
-                    .eq(ModerationTask::getId, taskId)
+                    .eq(ModerationTask::getId, task.getId())
                     .eq(ModerationTask::getStatus, ModerationConstants.TaskStatus.PROCESSING)
                     .eq(ModerationTask::getHandlerId, handlerId)
                     .eq(ModerationTask::getClaimToken, dto.getClaimToken())
@@ -257,7 +270,7 @@ public class ModerationServiceImpl implements ModerationService {
             publishNotifications(task, dto.getHandleAction(), dto.getHandleRemark());
         } catch (RuntimeException e) {
             taskMapper.update(null, new LambdaUpdateWrapper<ModerationTask>()
-                    .eq(ModerationTask::getId, taskId)
+                    .eq(ModerationTask::getId, task.getId())
                     .eq(ModerationTask::getStatus, ModerationConstants.TaskStatus.PROCESSING)
                     .eq(ModerationTask::getClaimToken, dto.getClaimToken())
                     .eq(ModerationTask::getActionRequestId, dto.getRequestId())
@@ -293,7 +306,7 @@ public class ModerationServiceImpl implements ModerationService {
                 if (claim == null) {
                     continue;
                 }
-                ModerationTask processing = requireTask(task.getId());
+                ModerationTask processing = requireTaskById(task.getId());
                 if (!isReviewable(processing)) {
                     releaseClaim(processing, claim.getClaimToken(), "目标已变化，等待人工确认");
                     continue;
@@ -386,9 +399,9 @@ public class ModerationServiceImpl implements ModerationService {
             return null;
         }
         ModerationTaskClaimVO result = new ModerationTaskClaimVO();
-        result.setTaskId(task.getId());
+        result.setTaskKey(task.getPublicId());
         result.setClaimToken(token);
-        result.setHandlerId(handlerId);
+        result.setHandlerAccountId(accountIdOf(handlerId));
         result.setVersion(version + 1);
         result.setLeaseExpireTime(leaseExpireTime);
         return result;
@@ -396,9 +409,9 @@ public class ModerationServiceImpl implements ModerationService {
 
     private ModerationTaskClaimVO claimVO(ModerationTask task) {
         ModerationTaskClaimVO result = new ModerationTaskClaimVO();
-        result.setTaskId(task.getId());
+        result.setTaskKey(task.getPublicId());
         result.setClaimToken(task.getClaimToken());
-        result.setHandlerId(task.getHandlerId());
+        result.setHandlerAccountId(accountIdOf(task.getHandlerId()));
         result.setVersion(task.getVersion());
         result.setLeaseExpireTime(task.getLeaseExpireTime());
         return result;
@@ -540,6 +553,8 @@ public class ModerationServiceImpl implements ModerationService {
                     route.articleId(),
                     route.commentId(),
                     route.replyId(),
+                    route.danmakuId(),
+                    route.videoPublicId(),
                     route.targetUserId(),
                     task.getSourceId(),
                     upheld ? "你提交的举报已成立" : "你提交的举报未通过",
@@ -554,6 +569,8 @@ public class ModerationServiceImpl implements ModerationService {
                     route.articleId(),
                     route.commentId(),
                     route.replyId(),
+                    route.danmakuId(),
+                    route.videoPublicId(),
                     route.targetUserId(),
                     task.getSourceId(),
                     ModerationConstants.HandleAction.BAN_USER.equals(action)
@@ -567,7 +584,8 @@ public class ModerationServiceImpl implements ModerationService {
         if (task.getSubjectUserId() == null) {
             return;
         }
-        RouteContext route = new RouteContext(NotificationConstants.RouteType.ARTICLE, task.getTargetId(), null, null, null);
+        RouteContext route = new RouteContext(NotificationConstants.RouteType.ARTICLE, task.getTargetId(), null, null,
+                null, null, null);
         if (ModerationConstants.HandleAction.AUDIT_APPROVE.equals(action)) {
             notificationEventProducer.publishArticleAuditPassed(
                     task.getSubjectUserId(),
@@ -589,7 +607,6 @@ public class ModerationServiceImpl implements ModerationService {
             ArticleDetailVO detail = safeFetch
                     ? tryFetchArticle(task.getTargetId())
                     : unwrap(contentFeignClient.getArticleDetail(task.getTargetId()), "文章服务暂不可用");
-            vo.setTarget(detail);
             vo.setTargetPublicId(detail == null ? null : detail.getPublicId());
             vo.setTargetTitle(detail == null ? null : detail.getTitle());
             vo.setTargetContent(detail == null ? null
@@ -600,8 +617,9 @@ public class ModerationServiceImpl implements ModerationService {
             CommentVO comment = safeFetch
                     ? tryFetchComment(task.getTargetId())
                     : unwrap(socialFeignClient.getCommentDetail(task.getTargetId()), "社交服务暂不可用");
-            vo.setTarget(comment);
-            vo.setTargetTitle("评论 #" + task.getTargetId());
+            vo.setTargetPublicId(comment == null || comment.getArticleId() == null
+                    ? null : articlePublicId(comment.getArticleId()));
+            vo.setTargetTitle("评论");
             vo.setTargetContent(comment == null ? null : comment.getContent());
             return;
         }
@@ -609,8 +627,9 @@ public class ModerationServiceImpl implements ModerationService {
             ReplyVO reply = safeFetch
                     ? tryFetchReply(task.getTargetId())
                     : unwrap(socialFeignClient.getReplyDetail(task.getTargetId()), "社交服务暂不可用");
-            vo.setTarget(reply);
-            vo.setTargetTitle("回复 #" + task.getTargetId());
+            vo.setTargetPublicId(reply == null || reply.getArticleId() == null
+                    ? null : articlePublicId(reply.getArticleId()));
+            vo.setTargetTitle("回复");
             vo.setTargetContent(reply == null ? null : reply.getContent());
             return;
         }
@@ -618,17 +637,22 @@ public class ModerationServiceImpl implements ModerationService {
             var danmaku = safeFetch
                     ? tryFetchDanmaku(task.getTargetId())
                     : unwrap(danmakuFeignClient.getMessage(task.getTargetId()), "弹幕服务暂不可用");
-            vo.setTarget(danmaku);
-            vo.setTargetTitle("弹幕 #" + task.getTargetId());
+            vo.setTargetPublicId(danmaku == null ? null : danmaku.getVideoPublicId());
+            vo.setTargetTitle("弹幕");
             vo.setTargetContent(danmaku == null ? null : danmaku.getContent());
             return;
         }
         if (task.getTargetType() == SocialConstants.ReportTargetType.USER
                 || ModerationConstants.TaskType.PROFILE_AUDIT.equals(task.getTaskType())) {
-            vo.setTarget(subjectUser);
-            vo.setTargetTitle(subjectUser == null ? "用户 #" + task.getTargetId() : subjectUser.getUsername());
+            vo.setTargetAccountId(subjectUser == null ? null : subjectUser.getAccountId());
+            vo.setTargetTitle(subjectUser == null ? "用户" : subjectUser.getUsername());
             vo.setTargetContent(subjectUser == null ? null : subjectUser.getSignature());
         }
+    }
+
+    private String articlePublicId(Long articleId) {
+        ArticleDetailVO article = tryFetchArticle(articleId);
+        return article == null ? null : article.getPublicId();
     }
 
     private void enrichReviewContext(ModerationTaskDetailVO vo, ModerationTask task) {
@@ -870,7 +894,20 @@ public class ModerationServiceImpl implements ModerationService {
         };
     }
 
-    private ModerationTask requireTask(Long taskId) {
+    private ModerationTask requireTask(String taskKey) {
+        if (!StringUtils.hasText(taskKey) || taskKey.length() > 64) {
+            throw new BusinessException("审核工单标识不合法");
+        }
+        ModerationTask task = taskMapper.selectOne(new LambdaQueryWrapper<ModerationTask>()
+                .eq(ModerationTask::getPublicId, taskKey.trim())
+                .last("LIMIT 1"));
+        if (task == null) {
+            throw new BusinessException("审核工单不存在");
+        }
+        return task;
+    }
+
+    private ModerationTask requireTaskById(Long taskId) {
         ModerationTask task = taskMapper.selectById(taskId);
         if (task == null) {
             throw new BusinessException("审核工单不存在");
@@ -887,6 +924,9 @@ public class ModerationServiceImpl implements ModerationService {
         vo.setSubjectUserName(subject == null ? null : subject.getUsername());
         vo.setReporterName(reporter == null ? null : reporter.getUsername());
         vo.setHandlerName(handler == null ? null : handler.getUsername());
+        vo.setSubjectAccountId(subject == null ? null : subject.getAccountId());
+        vo.setReporterAccountId(reporter == null ? null : reporter.getAccountId());
+        vo.setHandlerAccountId(handler == null ? null : handler.getAccountId());
         return vo;
     }
 
@@ -899,27 +939,33 @@ public class ModerationServiceImpl implements ModerationService {
         vo.setSubjectUserName(subject == null ? null : subject.getUsername());
         vo.setReporterName(reporter == null ? null : reporter.getUsername());
         vo.setHandlerName(handler == null ? null : handler.getUsername());
+        vo.setSubjectAccountId(subject == null ? null : subject.getAccountId());
+        vo.setReporterAccountId(reporter == null ? null : reporter.getAccountId());
+        vo.setHandlerAccountId(handler == null ? null : handler.getAccountId());
         return vo;
     }
 
     private void copyBase(ModerationTask task, ModerationTaskVO vo) {
-        vo.setId(task.getId());
+        vo.setTaskKey(task.getPublicId());
         vo.setTaskType(task.getTaskType());
-        vo.setSourceId(task.getSourceId());
         vo.setTargetType(task.getTargetType());
-        vo.setTargetId(task.getTargetId());
-        vo.setSubjectUserId(task.getSubjectUserId());
-        vo.setReporterId(task.getReporterId());
         vo.setReason(task.getReason());
         vo.setSummary(task.getSummary());
         vo.setExtraPayload(task.getExtraPayload());
         vo.setStatus(task.getStatus());
         vo.setHandleAction(task.getHandleAction());
-        vo.setHandlerId(task.getHandlerId());
         vo.setHandleRemark(task.getHandleRemark());
         vo.setClaimTime(task.getClaimTime());
         vo.setHandleTime(task.getHandleTime());
         vo.setCreateTime(task.getCreateTime());
+    }
+
+    private Long accountIdOf(Long userId) {
+        if (userId == null) {
+            return null;
+        }
+        UserCardInternalVO user = tryFetchUser(userId);
+        return user == null ? null : user.getAccountId();
     }
 
     private Map<Long, UserCardInternalVO> userMap(List<Long> ids) {
@@ -936,16 +982,18 @@ public class ModerationServiceImpl implements ModerationService {
 
     private RouteContext resolveRouteContext(ModerationTask task) {
         if (task.getTargetType() == null) {
-            return new RouteContext(NotificationConstants.RouteType.NONE, null, null, null, null);
+            return new RouteContext(NotificationConstants.RouteType.NONE, null, null, null, null, null, null);
         }
         if (task.getTargetType() == SocialConstants.ReportTargetType.ARTICLE) {
-            return new RouteContext(NotificationConstants.RouteType.ARTICLE, task.getTargetId(), null, null, null);
+            return new RouteContext(NotificationConstants.RouteType.ARTICLE, task.getTargetId(), null, null, null, null, null);
         }
         if (task.getTargetType() == SocialConstants.ReportTargetType.COMMENT) {
             CommentVO comment = unwrap(socialFeignClient.getCommentDetail(task.getTargetId()), "社交服务暂不可用");
             return new RouteContext(NotificationConstants.RouteType.COMMENT,
                     comment == null ? null : comment.getArticleId(),
                     task.getTargetId(),
+                    null,
+                    null,
                     null,
                     null);
         }
@@ -955,12 +1003,22 @@ public class ModerationServiceImpl implements ModerationService {
                     reply == null ? null : reply.getArticleId(),
                     reply == null ? null : reply.getCommentId(),
                     task.getTargetId(),
+                    null,
+                    null,
                     null);
         }
         if (task.getTargetType() == SocialConstants.ReportTargetType.USER) {
-            return new RouteContext(NotificationConstants.RouteType.USER, null, null, null, task.getTargetId());
+            return new RouteContext(NotificationConstants.RouteType.USER, null, null, null, task.getTargetId(), null, null);
         }
-        return new RouteContext(NotificationConstants.RouteType.NONE, null, null, null, null);
+        if (task.getTargetType() == SocialConstants.ReportTargetType.DANMAKU) {
+            DanmakuVO danmaku = unwrap(danmakuFeignClient.getMessage(task.getTargetId()), "弹幕服务暂不可用");
+            ArticleListVO article = danmaku == null ? null
+                    : unwrap(contentFeignClient.getArticleByPublicId(danmaku.getVideoPublicId()), "文章服务暂不可用");
+            return new RouteContext(NotificationConstants.RouteType.DANMAKU,
+                    article == null ? null : article.getId(), null, null, null,
+                    task.getTargetId(), danmaku == null ? null : danmaku.getVideoPublicId());
+        }
+        return new RouteContext(NotificationConstants.RouteType.NONE, null, null, null, null, null, null);
     }
 
     private <T> T unwrap(Result<T> result, String message) {
@@ -972,6 +1030,7 @@ public class ModerationServiceImpl implements ModerationService {
         return result.getData();
     }
 
-    private record RouteContext(Integer routeType, Long articleId, Long commentId, Long replyId, Long targetUserId) {
+    private record RouteContext(Integer routeType, Long articleId, Long commentId, Long replyId,
+                                Long targetUserId, Long danmakuId, String videoPublicId) {
     }
 }

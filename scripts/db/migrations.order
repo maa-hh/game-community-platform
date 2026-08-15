@@ -21,6 +21,7 @@ recommend-hot-rank-idempotency-migration.sql
 recommend-hot-rank-danmaku.sql
 notification.sql
 notification-v2-migration.sql
+notification-danmaku-migration.sql
 shop.sql
 shop-v3-migration.sql
 shop-v3-postfix-migration.sql
@@ -30,6 +31,7 @@ profile-bg-shop-seed.sql
 avatar-frame-shop-seed.sql
 moderation-task.sql
 moderation-task-hardening.sql
+moderation-task-public-id.sql
 search.sql
 search-history-hardening.sql
 search-suggest-term.sql
@@ -46,5 +48,6 @@ steam-catalog-metrics-backfill.sql
 steam-game-data-normalize.sql
 steam-library-incremental.sql
 steam-achievement-lazy-refresh.sql
+steam-achievement-icon-url-migration.sql
 steam-game-review-public-id.sql
 social-game-review.sql

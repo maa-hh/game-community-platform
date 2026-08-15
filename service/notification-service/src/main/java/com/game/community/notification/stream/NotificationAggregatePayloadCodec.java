@@ -18,9 +18,16 @@ public final class NotificationAggregatePayloadCodec {
     }
 
     public static String encode(List<NotificationActorVO> actors, int total) {
+        return encode(actors, total, false, false);
+    }
+
+    public static String encode(List<NotificationActorVO> actors, int total,
+                                boolean hasLike, boolean hasFavorite) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("actors", actors == null ? List.of() : actors);
         payload.put("total", total);
+        payload.put("hasLike", hasLike);
+        payload.put("hasFavorite", hasFavorite);
         try {
             return MAPPER.writeValueAsString(payload);
         } catch (JsonProcessingException e) {

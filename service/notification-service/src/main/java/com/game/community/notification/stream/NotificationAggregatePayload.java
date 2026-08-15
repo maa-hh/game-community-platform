@@ -12,4 +12,8 @@ public class NotificationAggregatePayload implements Serializable {
     private List<NotificationActorVO> actors;
 
     private Integer total;
+
+    private Boolean hasLike;
+
+    private Boolean hasFavorite;
 }

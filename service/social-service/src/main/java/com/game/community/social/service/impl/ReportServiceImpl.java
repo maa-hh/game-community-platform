@@ -13,6 +13,8 @@ import com.game.community.model.entity.social.SocialComment;
 import com.game.community.model.entity.social.SocialReport;
 import com.game.community.model.entity.social.SocialReply;
 import com.game.community.model.vo.social.ReportVO;
+import com.game.community.model.vo.danmaku.DanmakuVO;
+import com.game.community.model.vo.article.ArticleListVO;
 import com.game.community.model.vo.user.UserCardInternalVO;
 import com.game.community.feign.DanmakuFeignClient;
 import com.game.community.social.client.SocialRemoteClient;
@@ -51,6 +53,15 @@ public class ReportServiceImpl implements ReportService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createReport(Long userId, CreateReportDTO dto) {
+        if (userId == null || userId <= 0) {
+            throw new BusinessException("请先登录");
+        }
+        if (dto == null || dto.getReason() == null || dto.getReason().trim().isEmpty()) {
+            throw new BusinessException("举报原因不能为空");
+        }
+        if (dto.getReason().trim().length() > 255) {
+            throw new BusinessException("举报原因不能超过255字");
+        }
         validateTargetType(dto.getTargetType());
         Long targetId = resolveInternalTargetId(dto.getTargetType(), dto.getTargetId());
         dto.setInternalTargetId(targetId);
@@ -76,6 +87,8 @@ public class ReportServiceImpl implements ReportService {
         Long articleId = null;
         Long commentId = null;
         Long replyId = null;
+        Long danmakuId = null;
+        String videoPublicId = null;
         Long targetUserId = null;
         if (report.getTargetType() != null) {
             if (report.getTargetType() == SocialConstants.ReportTargetType.ARTICLE) {
@@ -93,6 +106,13 @@ public class ReportServiceImpl implements ReportService {
                 }
             } else if (report.getTargetType() == SocialConstants.ReportTargetType.USER) {
                 targetUserId = report.getReportedUserId();
+            } else if (report.getTargetType() == SocialConstants.ReportTargetType.DANMAKU) {
+                danmakuId = report.getTargetId();
+                var result = danmakuFeignClient.getMessage(danmakuId);
+                DanmakuVO danmaku = result == null ? null : result.getData();
+                videoPublicId = danmaku == null ? null : danmaku.getVideoPublicId();
+                ArticleListVO article = remoteClient.getArticleByPublicId(videoPublicId);
+                articleId = article == null ? null : article.getId();
             }
         }
         notificationEventProducer.publishReportSubmitted(
@@ -101,7 +121,10 @@ public class ReportServiceImpl implements ReportService {
                 articleId,
                 commentId,
                 replyId,
+                danmakuId,
+                videoPublicId,
                 targetUserId,
+                report.getId(),
                 report.getReason());
         return report.getId();
     }
@@ -144,19 +167,19 @@ public class ReportServiceImpl implements ReportService {
 
     private void validateTargetType(Integer targetType) {
         if (targetType == null
-                || targetType != SocialConstants.ReportTargetType.ARTICLE
-                && targetType != SocialConstants.ReportTargetType.COMMENT
-                && targetType != SocialConstants.ReportTargetType.REPLY
-                && targetType != SocialConstants.ReportTargetType.USER
-                && targetType != SocialConstants.ReportTargetType.DANMAKU) {
+                || !(targetType == SocialConstants.ReportTargetType.ARTICLE
+                || targetType == SocialConstants.ReportTargetType.COMMENT
+                || targetType == SocialConstants.ReportTargetType.REPLY
+                || targetType == SocialConstants.ReportTargetType.USER
+                || targetType == SocialConstants.ReportTargetType.DANMAKU)) {
             throw new BusinessException("举报目标类型不合法");
         }
     }
 
     private void validateHandleStatus(Integer status) {
         if (status == null
-                || status != SocialConstants.ReportStatus.ACCEPTED
-                && status != SocialConstants.ReportStatus.REJECTED) {
+                || !(status == SocialConstants.ReportStatus.ACCEPTED
+                || status == SocialConstants.ReportStatus.REJECTED)) {
             throw new BusinessException("处理状态不合法");
         }
     }
@@ -237,7 +260,11 @@ public class ReportServiceImpl implements ReportService {
 
     private Long parseTargetId(String targetId) {
         try {
-            return Long.valueOf(targetId);
+            long value = Long.parseLong(targetId);
+            if (value <= 0) {
+                throw new NumberFormatException("非正数");
+            }
+            return value;
         } catch (NumberFormatException e) {
             throw new BusinessException("举报目标不存在");
         }

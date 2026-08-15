@@ -26,4 +26,10 @@ public class DanmakuController {
                                            @RequestParam(value = "limit", required = false) Integer limit) {
         return Result.success(queryService.history(videoPublicId, fromMs, toMs, limit));
     }
+
+    @GetMapping("/{videoPublicId}/messages/{messageId}")
+    public Result<DanmakuVO> message(@PathVariable("videoPublicId") String videoPublicId,
+                                     @PathVariable("messageId") Long messageId) {
+        return Result.success(queryService.getVisible(videoPublicId, messageId));
+    }
 }

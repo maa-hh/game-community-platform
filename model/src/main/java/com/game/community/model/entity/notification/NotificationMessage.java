@@ -37,6 +37,10 @@ public class NotificationMessage implements Serializable {
 
     private Long replyId;
 
+    private Long danmakuId;
+
+    private String videoPublicId;
+
     private Long reportId;
 
     private Long targetUserId;

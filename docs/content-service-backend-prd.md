@@ -201,7 +201,7 @@
 当前方案：
 - `TaskServiceImpl` 使用 `afterCommit` 提交后入队
 - `ContentTaskRecoveryRunner` 启动时回灌 `queued=0` 的待执行任务
-- `TaskScheduler1` 每 30 秒从数据库补偿回 Redis
+- `ContentTaskScheduler` 每 30 秒从数据库补偿回 Redis
 - 异步边界统一收敛在 `TaskServiceImpl.executeTasks()`，审核发布业务方法本身保持同步事务执行，避免重复异步带来的事务和异常传播错位
 
 这是本轮重构里最重要的执行链优化点。

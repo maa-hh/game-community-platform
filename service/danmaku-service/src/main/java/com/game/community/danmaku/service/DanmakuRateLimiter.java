@@ -1,6 +1,7 @@
 package com.game.community.danmaku.service;
 
 import com.game.community.common.exception.BusinessException;
+import com.game.community.danmaku.common.constant.DanmakuCacheConstants;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -26,12 +27,14 @@ public class DanmakuRateLimiter {
     @Value("${danmaku.user-rate-window-seconds:3}")
     private int windowSeconds;
 
+    /** 按用户和视频执行原子发送频控，Redis 异常时拒绝本次发送。 */
     public void check(Long userId, String videoPublicId) {
-        String bucket = String.valueOf(System.currentTimeMillis() / (windowSeconds * 1000L));
-        String key = "danmaku:rate:" + videoPublicId + ":" + userId + ":" + bucket;
+        long safeWindowSeconds = Math.max(1, windowSeconds);
+        String bucket = String.valueOf(System.currentTimeMillis() / (safeWindowSeconds * 1000L));
+        String key = DanmakuCacheConstants.RATE_KEY_PREFIX + videoPublicId + ":" + userId + ":" + bucket;
         try {
-            Long current = redis.execute(SCRIPT, List.of(key), String.valueOf(windowSeconds));
-            if (current == null || current > limit) {
+            Long current = redis.execute(SCRIPT, List.of(key), String.valueOf(safeWindowSeconds));
+            if (current == null || current > Math.max(1, limit)) {
                 throw new BusinessException("弹幕发送过于频繁，请稍后再试");
             }
         } catch (BusinessException e) {

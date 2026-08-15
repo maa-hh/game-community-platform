@@ -649,7 +649,7 @@ public class SteamServiceImpl implements SteamService {
             vo.setApiName(definition.getApiName());
             vo.setName(definition.getName());
             vo.setDescription(definition.getDescription());
-            vo.setIconUrl(normalizeAchievementIconUrl(definition.getIconUrl()));
+            vo.setIconUrl(definition.getIconUrl());
             vo.setGlobalPercent(definition.getGlobalPercent());
             if (user != null) {
                 vo.setUnlocked(user.getUnlocked() != null && user.getUnlocked() == 1);
@@ -662,15 +662,6 @@ public class SteamServiceImpl implements SteamService {
                 .reversed()
                 .thenComparing(SteamUserAchievementVO::getName, Comparator.nullsLast(String::compareToIgnoreCase)));
         return result;
-    }
-
-    /** 将旧版 Steam 成就 CDN 地址转换为早期游戏库使用的图标 CDN。 */
-    private String normalizeAchievementIconUrl(String iconUrl) {
-        if (!StringUtils.hasText(iconUrl)) {
-            return iconUrl;
-        }
-        return iconUrl.replace("steamcdn-a.akamaihd.net", "media.steampowered.com")
-                .replace("cdn.akamai.steamstatic.com", "media.steampowered.com");
     }
 
     /** 将 Steam 的 Unix 秒级时间戳转换为本地时间。 */

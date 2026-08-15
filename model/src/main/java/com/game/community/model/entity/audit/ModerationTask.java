@@ -18,6 +18,9 @@ public class ModerationTask implements Serializable {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    /** 对外工单标识；数据库自增主键只用于服务内部关联。 */
+    private String publicId;
+
     private String taskType;
 
     private Long sourceId;

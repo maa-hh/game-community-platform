@@ -110,7 +110,7 @@ sequenceDiagram
 
 1. `POST /article` status=1 → 写 `t_article`（待审核）
 2. 写 `t_task` → 事务提交后推 Redis `task:queue:immediate`
-3. `TaskScheduler1` 弹出任务 → `ArticleAuditServiceImpl`
+3. `ContentTaskScheduler` 弹出任务 → `ArticleAuditServiceImpl`
 4. DFA → DashScope 文本 → DashScope 图片
 5. 通过：写 Mongo 正文、更新文章状态、Kafka 搜索同步
 6. Feign 调 social `POST /feign/social/feed/publish` 推 Feed
@@ -144,7 +144,7 @@ social/content 事件
 
 | 调度器 | 周期 | 动作 |
 |--------|------|------|
-| `TaskScheduler1` | 1s | Redis 队列 → 并发执行 content 任务 |
+| `ContentTaskScheduler` | 1s | Redis 队列 → 并发执行 content 任务 |
 | `AccountStatusScheduler` | 5min | 过期封禁自动解封 |
 | `AccountStatusScheduler` | 30min | 注销冷静期到期 → 彻底注销 |
 | `UserAuditTaskRecoveryRunner` | 启动时 | 卡住审核任务重置 |

@@ -10,12 +10,13 @@ public interface NotificationMessageMapper extends BaseMapper<NotificationMessag
     @Insert("""
             INSERT IGNORE INTO t_notification_message
             (event_id, aggregate_key, user_id, event_type, actor_user_id, actor_username, actor_avatar,
-             article_id, comment_id, reply_id, report_id, target_user_id, preview_text, result_text,
+             article_id, comment_id, reply_id, danmaku_id, video_public_id, report_id, target_user_id, preview_text, result_text,
              route_type, read_status, read_time, occurred_at, create_time)
             VALUES
             (#{message.eventId}, #{message.aggregateKey}, #{message.userId}, #{message.eventType},
              #{message.actorUserId}, #{message.actorUsername}, #{message.actorAvatar}, #{message.articleId},
-             #{message.commentId}, #{message.replyId}, #{message.reportId}, #{message.targetUserId},
+             #{message.commentId}, #{message.replyId}, #{message.danmakuId}, #{message.videoPublicId},
+             #{message.reportId}, #{message.targetUserId},
              #{message.previewText}, #{message.resultText}, #{message.routeType}, #{message.readStatus},
              #{message.readTime}, #{message.occurredAt}, #{message.createTime})
             """)

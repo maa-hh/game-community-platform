@@ -16,26 +16,31 @@ public class NotificationEventProducer {
     private final AuditNotificationOutboxService outboxService;
 
     public void publishReportResult(Long recipientUserId, Integer routeType, Long articleId, Long commentId,
-                                    Long replyId, Long targetUserId, Long reportId, String previewText, String resultText) {
+                                    Long replyId, Long danmakuId, String videoPublicId, Long targetUserId,
+                                    Long reportId, String previewText, String resultText) {
         publish(buildEvent(recipientUserId, NotificationConstants.EventType.REPORT_RESULT, routeType,
-                articleId, commentId, replyId, targetUserId, reportId, previewText, resultText));
+                articleId, commentId, replyId, danmakuId, videoPublicId, targetUserId, reportId,
+                previewText, resultText));
     }
 
     public void publishPenaltyResult(Long recipientUserId, Integer routeType, Long articleId, Long commentId,
-                                     Long replyId, Long targetUserId, Long reportId, String previewText, String resultText) {
+                                     Long replyId, Long danmakuId, String videoPublicId, Long targetUserId,
+                                     Long reportId, String previewText, String resultText) {
         publish(buildEvent(recipientUserId, NotificationConstants.EventType.PENALTY_RESULT, routeType,
-                articleId, commentId, replyId, targetUserId, reportId, previewText, resultText));
+                articleId, commentId, replyId, danmakuId, videoPublicId, targetUserId, reportId,
+                previewText, resultText));
     }
 
     public void publishArticleAuditPassed(Long recipientUserId, Long articleId, String previewText, String resultText) {
         publish(buildEvent(recipientUserId, NotificationConstants.EventType.ARTICLE_AUDIT_PASSED,
-                NotificationConstants.RouteType.ARTICLE, articleId, null, null, null, null,
+                NotificationConstants.RouteType.ARTICLE, articleId, null, null, null, null, null, null,
                 previewText, resultText));
     }
 
     private NotificationEventMessage buildEvent(Long recipientUserId, Integer eventType, Integer routeType,
-                                                Long articleId, Long commentId, Long replyId, Long targetUserId,
-                                                Long reportId, String previewText, String resultText) {
+                                                Long articleId, Long commentId, Long replyId, Long danmakuId,
+                                                String videoPublicId, Long targetUserId, Long reportId,
+                                                String previewText, String resultText) {
         NotificationEventMessage event = new NotificationEventMessage();
         event.setEventId(UUID.randomUUID().toString());
         event.setEventType(eventType);
@@ -45,6 +50,8 @@ public class NotificationEventProducer {
         event.setArticleId(articleId);
         event.setCommentId(commentId);
         event.setReplyId(replyId);
+        event.setDanmakuId(danmakuId);
+        event.setVideoPublicId(videoPublicId);
         event.setTargetUserId(targetUserId);
         event.setReportId(reportId);
         event.setRouteType(routeType == null ? NotificationConstants.RouteType.NONE : routeType);

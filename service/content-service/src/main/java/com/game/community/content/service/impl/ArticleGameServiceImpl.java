@@ -145,6 +145,31 @@ public class ArticleGameServiceImpl implements ArticleGameService {
         }
     }
 
+    /**
+     * 批量统计已发布文章关联的游戏讨论数，并为无结果的游戏补零。
+     */
+    @Override
+    public Map<Long, Integer> countPublishedDiscussByAppIds(List<Long> appIds) {
+        if (CollectionUtils.isEmpty(appIds)) {
+            return Map.of();
+        }
+        List<Long> normalizedAppIds = appIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (normalizedAppIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, Integer> result = new HashMap<>();
+        normalizedAppIds.forEach(appId -> result.put(appId, 0));
+        articleGameMapper.countPublishedGroupByAppIds(normalizedAppIds).forEach(row -> {
+            if (row.getAppId() != null) {
+                result.put(row.getAppId(), row.getDiscussCount() == null ? 0 : row.getDiscussCount().intValue());
+            }
+        });
+        return result;
+    }
+
     private List<GameTagVO> loadTags(List<Long> appIds) {
         if (CollectionUtils.isEmpty(appIds)) {
             return List.of();

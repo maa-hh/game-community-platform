@@ -2,6 +2,7 @@ package com.game.community.notification.service;
 
 import com.game.community.model.base.PageResult;
 import com.game.community.model.message.NotificationEventMessage;
+import com.game.community.model.message.DanmakuEvent;
 import com.game.community.model.vo.notification.NotificationCategorySummaryVO;
 import com.game.community.model.vo.notification.NotificationMessageVO;
 import com.game.community.model.vo.notification.NotificationSummaryVO;
@@ -27,4 +28,6 @@ public interface NotificationService {
     NotificationSummaryVO markFeedRead(Long userId);
 
     NotificationMessageVO consumeNotificationEvent(NotificationEventMessage event);
+
+    void consumeDanmakuEvent(DanmakuEvent event);
 }

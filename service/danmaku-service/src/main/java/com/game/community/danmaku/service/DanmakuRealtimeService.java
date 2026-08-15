@@ -2,6 +2,7 @@ package com.game.community.danmaku.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.game.community.danmaku.common.constant.DanmakuCacheConstants;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.connection.Message;
@@ -26,8 +27,6 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class DanmakuRealtimeService {
 
-    private static final String CHANNEL_PREFIX = "danmaku:realtime:";
-
     private final StringRedisTemplate redis;
     private final ObjectMapper objectMapper;
     private final RedisMessageListenerContainer container;
@@ -45,7 +44,9 @@ public class DanmakuRealtimeService {
         if (sessions == null) {
             return;
         }
-        sessions.remove(session);
+        if (session != null) {
+            sessions.remove(session);
+        }
         if (!sessions.isEmpty()) {
             return;
         }
@@ -80,6 +81,10 @@ public class DanmakuRealtimeService {
         }
         String body = new String(message.getBody(), java.nio.charset.StandardCharsets.UTF_8);
         sessions.removeIf(session -> !session.isOpen());
+        if (sessions.isEmpty()) {
+            unregister(videoPublicId, null);
+            return;
+        }
         for (WebSocketSession session : sessions) {
             try {
                 synchronized (session) {
@@ -92,11 +97,12 @@ public class DanmakuRealtimeService {
                 } catch (IOException ignored) {
                     // ignore close failure
                 }
+                unregister(videoPublicId, session);
             }
         }
     }
 
     private String channel(String videoPublicId) {
-        return CHANNEL_PREFIX + videoPublicId;
+        return DanmakuCacheConstants.REALTIME_CHANNEL_PREFIX + videoPublicId;
     }
 }

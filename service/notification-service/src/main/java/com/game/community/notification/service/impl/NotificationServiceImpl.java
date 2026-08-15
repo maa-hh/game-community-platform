@@ -9,6 +9,7 @@ import com.game.community.model.base.PageResult;
 import com.game.community.model.entity.notification.NotificationMessage;
 import com.game.community.model.entity.notification.NotificationUserState;
 import com.game.community.model.message.NotificationEventMessage;
+import com.game.community.model.message.DanmakuEvent;
 import com.game.community.feign.UserFeignClient;
 import com.game.community.feign.ContentFeignClient;
 import com.game.community.model.base.Result;
@@ -252,6 +253,8 @@ public class NotificationServiceImpl implements NotificationService {
         message.setArticleId(event.getArticleId());
         message.setCommentId(event.getCommentId());
         message.setReplyId(event.getReplyId());
+        message.setDanmakuId(event.getDanmakuId());
+        message.setVideoPublicId(event.getVideoPublicId());
         message.setReportId(event.getReportId());
         message.setTargetUserId(event.getTargetUserId());
         message.setPreviewText(defaultText(event.getPreviewText()));
@@ -290,6 +293,49 @@ public class NotificationServiceImpl implements NotificationService {
         return vo;
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void consumeDanmakuEvent(DanmakuEvent event) {
+        if (event == null || event.getEventId() == null || event.getArticleId() == null
+                || event.getAccountId() == null || event.getId() == null) {
+            return;
+        }
+        Result<ArticleDetailVO> articleResult = contentFeignClient.getArticleDetail(event.getArticleId());
+        if (articleResult == null || articleResult.getCode() == null || articleResult.getCode() != 200) {
+            throw new IllegalStateException("解析弹幕所属帖子失败，等待 Kafka 重试");
+        }
+        ArticleDetailVO article = articleResult.getData();
+        if (article == null || article.getAuthorAccountId() == null
+                || article.getAuthorAccountId().equals(event.getAccountId())) {
+            return;
+        }
+        Result<UserCardInternalVO> recipientResult =
+                userFeignClient.getUserByAccountId(article.getAuthorAccountId());
+        if (recipientResult == null || recipientResult.getCode() == null || recipientResult.getCode() != 200) {
+            throw new IllegalStateException("解析弹幕通知接收人失败，等待 Kafka 重试");
+        }
+        UserCardInternalVO recipient = recipientResult.getData();
+        if (recipient == null || recipient.getUserId() == null) {
+            return;
+        }
+
+        NotificationEventMessage notification = new NotificationEventMessage();
+        notification.setEventId("danmaku-notification:" + event.getEventId());
+        notification.setEventType(NotificationConstants.EventType.DANMAKU_COMMENT);
+        notification.setRecipientUserId(recipient.getUserId());
+        notification.setActorAccountId(event.getAccountId());
+        notification.setActorUsername(defaultText(event.getUsernameSnapshot()));
+        notification.setActorAvatar(defaultText(event.getAvatarSnapshot()));
+        notification.setArticleId(event.getArticleId());
+        notification.setDanmakuId(event.getId());
+        notification.setVideoPublicId(event.getVideoPublicId());
+        notification.setRouteType(NotificationConstants.RouteType.DANMAKU);
+        notification.setPreviewText(notification.getActorUsername() + " 发了弹幕");
+        notification.setResultText(defaultText(event.getContent()));
+        notification.setOccurredAt(defaultTime(event.getEventTime()));
+        consumeNotificationEvent(notification);
+    }
+
     private long countUnreadByCategory(Long userId, String category) {
         if (userId == null) {
             return 0L;
@@ -322,6 +368,8 @@ public class NotificationServiceImpl implements NotificationService {
                 String.valueOf(event.getArticleId()),
                 String.valueOf(event.getCommentId()),
                 String.valueOf(event.getReplyId()),
+                String.valueOf(event.getDanmakuId()),
+                String.valueOf(event.getVideoPublicId()),
                 String.valueOf(event.getReportId()),
                 String.valueOf(event.getOccurredAt()),
                 defaultText(event.getPreviewText()),
@@ -370,6 +418,8 @@ public class NotificationServiceImpl implements NotificationService {
         vo.setArticleId(message.getArticleId());
         vo.setCommentId(message.getCommentId());
         vo.setReplyId(message.getReplyId());
+        vo.setDanmakuId(message.getDanmakuId());
+        vo.setVideoPublicId(message.getVideoPublicId());
         vo.setReportId(message.getReportId());
         vo.setPreviewText(message.getPreviewText());
         vo.setResultText(message.getResultText());
@@ -384,6 +434,10 @@ public class NotificationServiceImpl implements NotificationService {
             vo.setAggregated(true);
             vo.setAggregateActors(payload.getActors());
             vo.setAggregateTotal(payload.getTotal() == null ? payload.getActors().size() : payload.getTotal());
+            vo.setAggregateHasLike(Boolean.TRUE.equals(payload.getHasLike())
+                    || payload.getActors().stream().anyMatch(actor -> "like".equals(actor.getAction())));
+            vo.setAggregateHasFavorite(Boolean.TRUE.equals(payload.getHasFavorite())
+                    || payload.getActors().stream().anyMatch(actor -> "favorite".equals(actor.getAction())));
         } else {
             vo.setAggregated(false);
         }

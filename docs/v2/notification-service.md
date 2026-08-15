@@ -9,6 +9,8 @@
 - SSE 长连接实时推送（通知到达、摘要更新、Feed 红点、心跳）
 - 通知消息分页查询、全部已读标记、Feed 红点清除
 - 用户通知状态（未读数、Feed 红点）自动初始化与并发安全
+- 点赞/收藏在 Kafka Streams 短窗口内按“接收人+内容目标”聚合，评论、关注、系统通知实时落库
+- 弹幕可靠事件由独立消费组转换为视频作者的弹幕互动通知；举报通知保留举报与弹幕定位信息
 
 **技术栈**：Spring Boot 3 + MyBatis-Plus + MySQL + Redis + Kafka + SSE + Nacos + Sentinel
 
@@ -33,11 +35,13 @@
 | article_id | BIGINT DEFAULT NULL | 关联文章ID |
 | comment_id | BIGINT DEFAULT NULL | 关联评论ID |
 | reply_id | BIGINT DEFAULT NULL | 关联回复ID |
+| danmaku_id | BIGINT DEFAULT NULL | 关联弹幕ID |
+| video_public_id | VARCHAR(128) DEFAULT NULL | 视频帖子公开ID |
 | report_id | BIGINT DEFAULT NULL | 关联举报ID |
 | target_user_id | BIGINT DEFAULT NULL | 跳转目标用户ID |
 | preview_text | VARCHAR(255) DEFAULT '' | 通知简要文案 |
 | result_text | VARCHAR(255) DEFAULT '' | 结果文案 |
-| route_type | TINYINT DEFAULT 0 | 跳转意图（0=无 1=文章 2=评论 3=回复 4=用户） |
+| route_type | TINYINT DEFAULT 0 | 跳转意图（0=无 1=文章 2=评论 3=回复 4=用户 5=弹幕） |
 | read_status | TINYINT DEFAULT 0 | 已读状态（0未读 1已读） |
 | read_time | DATETIME DEFAULT NULL | 已读时间 |
 | create_time | DATETIME DEFAULT CURRENT_TIMESTAMP | 创建时间 |
@@ -75,6 +79,21 @@
 | REPORT_RESULT | 8 | 举报结果 |
 | PENALTY_RESULT | 9 | 处罚结果 |
 | FEED_UNREAD | 10 | Feed未读红点 |
+| PROFILE_AUDIT_PASSED | 11 | 资料审核通过 |
+| PROFILE_AUDIT_REJECTED | 12 | 资料审核不通过 |
+| PROFILE_AUDIT_HUMAN_REVIEW | 13 | 资料进入人工复核 |
+| ARTICLE_FAVORITE | 14 | 文章收藏 |
+| ARTICLE_AUDIT_REJECTED | 15 | 帖子审核不通过 |
+| ARTICLE_AUDIT_PASSED | 16 | 帖子审核通过 |
+| ARTICLE_AUDIT_HUMAN_REVIEW | 17 | 帖子进入人工审核 |
+| DANMAKU_COMMENT | 18 | 视频弹幕互动 |
+
+### 2.4 分类与聚合
+
+- `like_favorite`：文章点赞、评论点赞、回复点赞、文章收藏；聚合窗口默认 1 秒，可通过 `notification.kafka.window-seconds` 调整。
+- `comment`：文章评论、评论回复、弹幕互动。
+- `system`：资料/帖子审核结果、举报提交、举报结果、被举报处理结果。
+- 聚合键为 `recipientUserId:articleId:commentId:replyId`，因此同一内容目标的点赞与收藏可以合并，不同评论/回复不会串通知。
 
 ### 2.3 SSE 事件类型常量（NotificationConstants.SseEventType）
 
@@ -224,12 +243,13 @@ public class NotificationSseEventVO implements Serializable {
 | Topic | Group ID | 消息类型 | 说明 |
 |-------|----------|----------|------|
 | `notification-events` | `notification-service-group` | `NotificationEventMessage` | 接收各业务服务发出的通知事件 |
+| `danmaku-events` | `notification-service-danmaku-group` | `DanmakuEvent` | 转换为视频作者的弹幕互动通知 |
 
 **NotificationEventMessage 结构**：
 
 ```java
 public class NotificationEventMessage implements Serializable {
-    private Integer eventType;         // 事件类型（1-10）
+    private Integer eventType;         // 事件类型（1-18）
     private Long recipientUserId;      // 接收人
     private Long actorUserId;          // 触发人
     private String actorUsername;      // 触发人用户名
@@ -237,6 +257,8 @@ public class NotificationEventMessage implements Serializable {
     private Long articleId;            // 关联文章
     private Long commentId;            // 关联评论
     private Long replyId;              // 关联回复
+    private Long danmakuId;            // 关联弹幕
+    private String videoPublicId;      // 视频帖子公开ID
     private Long reportId;             // 关联举报
     private Long targetUserId;         // 跳转目标用户
     private Integer routeType;         // 跳转意图
@@ -445,6 +467,8 @@ CREATE TABLE IF NOT EXISTS t_notification_message (
     article_id BIGINT DEFAULT NULL COMMENT '文章ID',
     comment_id BIGINT DEFAULT NULL COMMENT '评论ID',
     reply_id BIGINT DEFAULT NULL COMMENT '回复ID',
+    danmaku_id BIGINT DEFAULT NULL COMMENT '弹幕ID',
+    video_public_id VARCHAR(128) DEFAULT NULL COMMENT '视频帖子公开ID',
     report_id BIGINT DEFAULT NULL COMMENT '举报ID',
     target_user_id BIGINT DEFAULT NULL COMMENT '跳转目标用户ID',
     preview_text VARCHAR(255) NOT NULL DEFAULT '' COMMENT '通知简要文案',

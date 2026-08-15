@@ -12,6 +12,7 @@ import com.game.community.model.payload.steam.SteamPricePayload;
 import com.game.community.model.payload.steam.SteamScreenshotPayload;
 import com.game.community.model.payload.steam.SteamReviewSummaryPayload;
 import com.game.community.steam.config.SteamProperties;
+import com.game.community.steam.util.SteamAchievementIconUrl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -224,7 +225,8 @@ public class SteamStoreClient {
         if (total > 0) {
             target.setAchievementTotal(total);
         }
-        List<SteamAchievementDefinitionPayload> definitions = fetchAchievementSchema(target.getAppId());
+        List<SteamAchievementDefinitionPayload> definitions = fetchAchievementSchema(
+                target.getAppId(), achievements);
         if (definitions.isEmpty()) {
             return;
         }
@@ -236,40 +238,73 @@ public class SteamStoreClient {
     }
 
     /** 获取 Steam 官方成就 schema。 */
-    private List<SteamAchievementDefinitionPayload> fetchAchievementSchema(long appId) {
-        if (!StringUtils.hasText(steamProperties.getWebApiKey())) {
-            return List.of();
-        }
-        String url = UriComponentsBuilder.fromHttpUrl(SteamApiConstants.GAME_SCHEMA_URL)
-                .queryParam("key", steamProperties.getWebApiKey())
-                .queryParam("appid", appId)
-                .queryParam("l", steamProperties.getApiLang())
-                .toUriString();
-        try {
-            JsonNode achievements = objectMapper.readTree(restTemplate.getForObject(url, String.class))
-                    .path("game").path("availableGameStats").path("achievements");
-            if (!achievements.isArray()) {
-                return List.of();
-            }
-            List<SteamAchievementDefinitionPayload> result = new ArrayList<>();
-            for (JsonNode item : achievements) {
-                String apiName = item.path("name").asText(null);
-                String name = item.path("displayName").asText(null);
-                if (!StringUtils.hasText(apiName) || !StringUtils.hasText(name)) {
-                    continue;
+    private List<SteamAchievementDefinitionPayload> fetchAchievementSchema(
+            long appId, JsonNode storeAchievements) {
+        if (StringUtils.hasText(steamProperties.getWebApiKey())) {
+            String url = UriComponentsBuilder.fromHttpUrl(SteamApiConstants.GAME_SCHEMA_URL)
+                    .queryParam("key", steamProperties.getWebApiKey())
+                    .queryParam("appid", appId)
+                    .queryParam("l", steamProperties.getApiLang())
+                    .toUriString();
+            try {
+                JsonNode achievements = objectMapper.readTree(restTemplate.getForObject(url, String.class))
+                        .path("game").path("availableGameStats").path("achievements");
+                if (achievements.isArray()) {
+                    List<SteamAchievementDefinitionPayload> result = new ArrayList<>();
+                    for (JsonNode item : achievements) {
+                        String apiName = item.path("name").asText(null);
+                        String name = item.path("displayName").asText(null);
+                        if (!StringUtils.hasText(apiName) || !StringUtils.hasText(name)) {
+                            continue;
+                        }
+                        SteamAchievementDefinitionPayload definition = new SteamAchievementDefinitionPayload();
+                        definition.setApiName(apiName);
+                        definition.setName(name);
+                        definition.setDescription(item.path("description").asText(null));
+                        definition.setIconUrl(SteamAchievementIconUrl.fromSteamValue(
+                                appId, item.path("icon").asText(null)));
+                        result.add(definition);
+                    }
+                    if (!result.isEmpty()) {
+                        return result;
+                    }
                 }
-                SteamAchievementDefinitionPayload definition = new SteamAchievementDefinitionPayload();
-                definition.setApiName(apiName);
-                definition.setName(name);
-                definition.setDescription(item.path("description").asText(null));
-                definition.setIconUrl(item.path("icon").asText(null));
-                result.add(definition);
+            } catch (Exception e) {
+                log.warn("Steam 成就 schema 获取失败: appId={}", appId, e);
             }
-            return result;
-        } catch (Exception e) {
-            log.warn("Steam 成就 schema 获取失败: appId={}", appId, e);
+        }
+
+        return readStoreAchievementHighlights(appId, storeAchievements);
+    }
+
+    /** 无 Web API Key 或 schema 不可用时，使用商店详情中的高亮成就。 */
+    private List<SteamAchievementDefinitionPayload> readStoreAchievementHighlights(
+            long appId, JsonNode storeAchievements) {
+        JsonNode highlighted = storeAchievements.path("highlighted");
+        if (!highlighted.isArray()) {
             return List.of();
         }
+        List<SteamAchievementDefinitionPayload> result = new ArrayList<>();
+        for (JsonNode item : highlighted) {
+            String iconUrl = item.path("path").asText(null);
+            if (!StringUtils.hasText(iconUrl)) {
+                iconUrl = SteamAchievementIconUrl.fromSteamValue(
+                        appId, item.path("icon").asText(null));
+            }
+            String name = item.path("localized_name").asText(null);
+            if (!StringUtils.hasText(name)) {
+                name = item.path("name").asText(null);
+            }
+            if (!StringUtils.hasText(name) && !StringUtils.hasText(iconUrl)) {
+                continue;
+            }
+            SteamAchievementDefinitionPayload definition = new SteamAchievementDefinitionPayload();
+            definition.setApiName(item.path("name").asText(iconUrl));
+            definition.setName(StringUtils.hasText(name) ? name : "Steam 成就");
+            definition.setIconUrl(SteamAchievementIconUrl.toCurrent(iconUrl));
+            result.add(definition);
+        }
+        return result;
     }
 
     /** 解析 PC 最低和推荐配置。 */

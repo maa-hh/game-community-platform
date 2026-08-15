@@ -7,6 +7,10 @@ import com.game.community.common.constant.notification.NotificationConstants;
 import com.game.community.model.entity.notification.NotificationMessage;
 import com.game.community.model.entity.notification.NotificationUserState;
 import com.game.community.model.message.NotificationEventMessage;
+import com.game.community.model.message.DanmakuEvent;
+import com.game.community.model.base.Result;
+import com.game.community.model.vo.article.ArticleDetailVO;
+import com.game.community.model.vo.user.UserCardInternalVO;
 import com.game.community.model.vo.notification.NotificationMessageVO;
 import com.game.community.model.vo.notification.NotificationSummaryVO;
 import com.game.community.notification.mapper.NotificationMessageMapper;
@@ -115,6 +119,42 @@ class NotificationServiceImplTest {
         verify(notificationUserStateMapper).update(eq(null), any(LambdaUpdateWrapper.class));
         verify(sseService).sendFeedUnread(6L, new NotificationSummaryVO(2L, true));
         verify(sseService, never()).sendNotification(eq(6L), any(), any());
+    }
+
+    @Test
+    void consumeDanmakuEventShouldNotifyVideoAuthorAndKeepLocation() {
+        ArticleDetailVO article = new ArticleDetailVO();
+        article.setId(100L);
+        article.setAuthorAccountId(9001L);
+        UserCardInternalVO recipient = new UserCardInternalVO();
+        recipient.setUserId(9L);
+        recipient.setAccountId(9001L);
+        DanmakuEvent event = new DanmakuEvent();
+        event.setId(77L);
+        event.setEventId("danmaku-event-77");
+        event.setArticleId(100L);
+        event.setVideoPublicId("post-100");
+        event.setAccountId(8001L);
+        event.setUsernameSnapshot("alice");
+        event.setContent("这一幕太精彩了");
+        event.setEventTime(LocalDateTime.now());
+
+        when(contentFeignClient.getArticleDetail(100L)).thenReturn(Result.success(article));
+        when(userFeignClient.getUserByAccountId(9001L)).thenReturn(Result.success(recipient));
+        when(notificationUserStateMapper.selectByUserIdForUpdate(any())).thenReturn(buildState(9L, 0L, 0));
+        when(notificationMessageMapper.insertIgnore(any())).thenReturn(1);
+
+        notificationService.consumeDanmakuEvent(event);
+
+        ArgumentCaptor<NotificationMessage> messageCaptor = ArgumentCaptor.forClass(NotificationMessage.class);
+        verify(notificationMessageMapper).insertIgnore(messageCaptor.capture());
+        NotificationMessage inserted = messageCaptor.getValue();
+        assertThat(inserted.getEventType()).isEqualTo(NotificationConstants.EventType.DANMAKU_COMMENT);
+        assertThat(inserted.getDanmakuId()).isEqualTo(77L);
+        assertThat(inserted.getVideoPublicId()).isEqualTo("post-100");
+        assertThat(inserted.getArticleId()).isEqualTo(100L);
+        assertThat(inserted.getUserId()).isEqualTo(9L);
+        assertThat(inserted.getResultText()).isEqualTo("这一幕太精彩了");
     }
 
     @Test

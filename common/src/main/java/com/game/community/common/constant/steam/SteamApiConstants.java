@@ -29,6 +29,9 @@ public final class SteamApiConstants {
             "https://store.steampowered.com/search/results/";
     public static final String STEAM_ICON_URL_PREFIX =
             "https://media.steampowered.com/steamcommunity/public/images/apps/";
+    /** Steam 新版成就图标资源地址，旧版 steamcommunity 路径对部分新游戏已返回 404。 */
+    public static final String STEAM_ACHIEVEMENT_ICON_URL_PREFIX =
+            "https://shared.akamai.steamstatic.com/community_assets/images/apps/";
     public static final String STEAM_STORE_APP_URL_PREFIX = "https://store.steampowered.com/app/";
 
     public static final int ACHIEVEMENT_SYNC_LIMIT = 60;

@@ -16,4 +16,7 @@ public class LoginUserVO {
     private String avatar;
 
     private String email;
+
+    /** 账号类型：0普通用户，1管理员。 */
+    private Integer type;
 }
