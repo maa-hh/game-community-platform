@@ -40,7 +40,8 @@ public final class NotificationCategory {
             case FOLLOW -> List.of(NotificationConstants.EventType.FOLLOW);
             case COMMENT -> List.of(
                     NotificationConstants.EventType.ARTICLE_COMMENT,
-                    NotificationConstants.EventType.COMMENT_REPLY
+                    NotificationConstants.EventType.COMMENT_REPLY,
+                    NotificationConstants.EventType.DANMAKU_COMMENT
             );
             default -> List.of();
         };

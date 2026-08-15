@@ -193,17 +193,17 @@ public interface ArticleService extends IService<Article> {
 
     // ==================== HTTP API（Controller / Feign 原样转发）====================
 
-    Result<Long> saveArticleForCurrentUser(ArticleDTO dto);
+    Result<String> saveArticleForCurrentUser(ArticleDTO dto);
 
-    Result<Long> updateArticleForCurrentUser(Long id, ArticleDTO dto);
+    Result<String> updateArticleForCurrentUser(String publicId, ArticleDTO dto);
 
-    Result<Void> deleteArticleForCurrentUser(Long id);
+    Result<Void> deleteArticleForCurrentUser(String publicId);
 
-    Result<ArticleDetailVO> queryArticleDetail(Long id);
+    Result<ArticleDetailVO> queryArticleDetail(String publicId);
 
-    Result<ArticleDetailVO> queryArticleDetailForOwner(Long id);
+    Result<ArticleDetailVO> queryArticleDetailForOwner(String publicId);
 
-    Result<ArticleContentVO> queryArticleContent(Long id);
+    Result<ArticleContentVO> queryArticleContent(String publicId);
 
     PageResult<ArticleListVO> queryArticlePage(Integer page, Integer size, Long categoryId, Integer status);
 
@@ -213,13 +213,13 @@ public interface ArticleService extends IService<Article> {
 
     Result<List<ArticleListVO>> queryLatestArticles(Long categoryId, Integer size);
 
-    Result<List<ArticleListVO>> queryMoreArticles(Long categoryId, Long lastId, Integer size);
+    Result<List<ArticleListVO>> queryMoreArticles(Long categoryId, String lastPublicId, Integer size);
 
-    Result<ArticleProgressVO> queryArticleProgress(Long id);
+    Result<ArticleProgressVO> queryArticleProgress(String publicId);
 
-    Result<Void> submitPublish(Long id);
+    Result<Void> submitPublish(String publicId);
 
-    Result<Void> submitUnpublish(Long id);
+    Result<Void> submitUnpublish(String publicId);
 
     Result<List<ArticleListVO>> queryPublishedList();
 

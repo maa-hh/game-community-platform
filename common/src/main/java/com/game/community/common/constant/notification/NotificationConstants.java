@@ -30,12 +30,15 @@ public final class NotificationConstants {
         public static final int ARTICLE_AUDIT_PASSED = 16;
         /** 帖子进入人工审核 */
         public static final int ARTICLE_AUDIT_HUMAN_REVIEW = 17;
+        /** 视频弹幕互动 */
+        public static final int DANMAKU_COMMENT = 18;
 
         private EventType() {
         }
 
         public static boolean isSupported(Integer eventType) {
-            return eventType != null && eventType >= ARTICLE_LIKE && eventType <= ARTICLE_AUDIT_HUMAN_REVIEW;
+            return eventType != null && (eventType >= ARTICLE_LIKE && eventType <= ARTICLE_AUDIT_HUMAN_REVIEW
+                    || eventType == DANMAKU_COMMENT);
         }
     }
 
@@ -45,6 +48,7 @@ public final class NotificationConstants {
         public static final int COMMENT = 2;
         public static final int REPLY = 3;
         public static final int USER = 4;
+        public static final int DANMAKU = 5;
 
         private RouteType() {
         }

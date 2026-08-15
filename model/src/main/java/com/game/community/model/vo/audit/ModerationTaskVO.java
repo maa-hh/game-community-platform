@@ -8,21 +8,18 @@ import java.time.LocalDateTime;
 @Data
 public class ModerationTaskVO implements Serializable {
 
-    private Long id;
+    /** 对外工单标识，不是数据库主键。 */
+    private String taskKey;
 
     private String taskType;
 
-    private Long sourceId;
-
     private Integer targetType;
-
-    private Long targetId;
 
     private String targetPublicId;
 
-    private Long subjectUserId;
+    private Long subjectAccountId;
 
-    private Long reporterId;
+    private Long reporterAccountId;
 
     private String subjectUserName;
 
@@ -38,7 +35,7 @@ public class ModerationTaskVO implements Serializable {
 
     private String handleAction;
 
-    private Long handlerId;
+    private Long handlerAccountId;
 
     private String handlerName;
 

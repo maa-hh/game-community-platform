@@ -1,8 +1,8 @@
 package com.game.community.content.feign;
 
-import com.game.community.content.mapper.ArticleGameMapper;
 import com.game.community.content.service.ArticleAsyncService;
 import com.game.community.content.service.ArticleContentMigrationService;
+import com.game.community.content.service.ArticleGameService;
 import com.game.community.content.service.ArticleService;
 import com.game.community.content.service.CategoryService;
 import com.fasterxml.jackson.annotation.JsonView;
@@ -27,7 +27,7 @@ public class ContentFeignController {
     private final ArticleService articleService;
     private final CategoryService categoryService;
     private final ArticleAsyncService articleAsyncService;
-    private final ArticleGameMapper articleGameMapper;
+    private final ArticleGameService articleGameService;
     private final ArticleContentMigrationService articleContentMigrationService;
 
     @PostMapping("/games/discuss-counts")
@@ -35,18 +35,7 @@ public class ContentFeignController {
         if (appIds == null || appIds.isEmpty()) {
             return Result.success(Map.of());
         }
-        Map<Long, Integer> result = new java.util.HashMap<>();
-        for (Long appId : appIds) {
-            if (appId != null) {
-                result.put(appId, 0);
-            }
-        }
-        for (var row : articleGameMapper.countPublishedGroupByAppIds(appIds)) {
-            if (row.getAppId() != null) {
-                result.put(row.getAppId(), row.getDiscussCount() == null ? 0 : row.getDiscussCount().intValue());
-            }
-        }
-        return Result.success(result);
+        return Result.success(articleGameService.countPublishedDiscussByAppIds(appIds));
     }
 
     @PostMapping("/articles/listByIds")

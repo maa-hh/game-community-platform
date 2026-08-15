@@ -15,4 +15,9 @@ public interface ArticleGameService {
     Map<Long, List<GameTagVO>> listByArticles(List<Long> articleIds);
 
     void enrichListVOs(List<ArticleListVO> articles);
+
+    /**
+     * 批量统计已发布文章关联的游戏讨论数。
+     */
+    Map<Long, Integer> countPublishedDiscussByAppIds(List<Long> appIds);
 }

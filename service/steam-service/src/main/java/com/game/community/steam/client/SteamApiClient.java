@@ -10,6 +10,7 @@ import com.game.community.model.payload.steam.SteamOwnedGamesPayload;
 import com.game.community.model.payload.steam.SteamPlayerAchievementPayload;
 import com.game.community.model.payload.steam.SteamPlayerSummaryPayload;
 import com.game.community.steam.config.SteamProperties;
+import com.game.community.steam.util.SteamAchievementIconUrl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -304,7 +305,9 @@ public class SteamApiClient {
         if (fileName.endsWith(".jpg")) {
             fileName = fileName.substring(0, fileName.length() - 4);
         }
-        return StringUtils.hasText(fileName) ? buildIconUrl(appId, fileName) : null;
+        return StringUtils.hasText(fileName)
+                ? SteamAchievementIconUrl.fromSteamValue(appId, fileName)
+                : null;
     }
 
     /** 校验调用 Steam Web API 所需的 API Key。 */

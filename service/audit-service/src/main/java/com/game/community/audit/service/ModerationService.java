@@ -16,11 +16,11 @@ public interface ModerationService {
 
     PageResult<ModerationTaskVO> pageTasks(Long page, Long size, Integer status, String taskType);
 
-    ModerationTaskDetailVO getDetail(Long taskId, Long viewerId);
+    ModerationTaskDetailVO getDetail(String taskKey, Long viewerId);
 
-    ModerationTaskClaimVO claim(Long taskId, Long handlerId);
+    ModerationTaskClaimVO claim(String taskKey, Long handlerId);
 
-    void handle(Long taskId, Long handlerId, HandleModerationTaskDTO dto);
+    void handle(String taskKey, Long handlerId, HandleModerationTaskDTO dto);
 
     int autoPassExpiredTasks();
 

@@ -10,22 +10,17 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * 任务调度器
- *
- * 优化：
- * 1. 每秒钟批量获取任务并并发执行
- * 2. 每分钟更新ZSet到队列
- * 3. 每5分钟更新数据库到ZSet
+ * 内容任务调度器：负责 Redis 队列消费、延迟任务转移和数据库补偿。
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class TaskScheduler1 {
+public class ContentTaskScheduler {
 
     private final TaskService taskService;
 
     /**
-     * 每秒钟执行一次，批量获取任务并并发执行
+     * 扫描 Redis 中的待执行任务并批量执行。
      */
     @Scheduled(fixedDelay = 1000)
     public void executePendingTasks() {
@@ -40,26 +35,26 @@ public class TaskScheduler1 {
     }
 
     /**
-     * 每分钟执行一次，更新ZSet到队列
+     * 将到期的延迟任务从 Redis ZSet 转移到立即执行队列。
      */
     @Scheduled(cron = "0 * * * * ?")
     public void updateZSetToQueue() {
         try {
             taskService.updateZSetToQueue();
         } catch (Exception e) {
-            log.error("更新ZSet到队列异常", e);
+            log.error("更新 ZSet 到队列异常", e);
         }
     }
 
     /**
-     * 每30秒执行一次，回灌数据库中尚未入 Redis 的任务
+     * 将数据库中尚未入 Redis 的任务回灌到队列。
      */
     @Scheduled(fixedDelay = 30000)
     public void updateDatabaseToRedis() {
         try {
             taskService.updateDatabaseToRedis();
         } catch (Exception e) {
-            log.error("回灌数据库任务到Redis异常", e);
+            log.error("回灌数据库任务到 Redis 异常", e);
         }
     }
 }

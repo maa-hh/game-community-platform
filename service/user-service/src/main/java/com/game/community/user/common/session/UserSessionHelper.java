@@ -72,6 +72,7 @@ public class UserSessionHelper {
 
         LoginUserVO loginUser = new LoginUserVO();
         BeanUtils.copyProperties(user, loginUser);
+        loginUser.setType(account.getType().getCode());
         vo.setUser(loginUser);
         return vo;
     }

@@ -8,11 +8,12 @@ import java.time.LocalDateTime;
 @Data
 public class ModerationTaskClaimVO implements Serializable {
 
-    private Long taskId;
+    /** 对外工单标识，不是数据库主键。 */
+    private String taskKey;
 
     private String claimToken;
 
-    private Long handlerId;
+    private Long handlerAccountId;
 
     private Integer version;
 

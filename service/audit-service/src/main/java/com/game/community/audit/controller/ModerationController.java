@@ -37,22 +37,22 @@ public class ModerationController {
     }
 
     @AdminCheck
-    @GetMapping("/{taskId}")
-    public Result<ModerationTaskDetailVO> detail(@PathVariable("taskId") Long taskId) {
-        return Result.success(moderationService.getDetail(taskId, UserThreadLocal.getUserId()));
+    @GetMapping("/{taskKey}")
+    public Result<ModerationTaskDetailVO> detail(@PathVariable("taskKey") String taskKey) {
+        return Result.success(moderationService.getDetail(taskKey, UserThreadLocal.getUserId()));
     }
 
     @AdminCheck
-    @PostMapping("/{taskId}/claim")
-    public Result<ModerationTaskClaimVO> claim(@PathVariable("taskId") Long taskId) {
-        return Result.success(moderationService.claim(taskId, UserThreadLocal.getUserId()));
+    @PostMapping("/{taskKey}/claim")
+    public Result<ModerationTaskClaimVO> claim(@PathVariable("taskKey") String taskKey) {
+        return Result.success(moderationService.claim(taskKey, UserThreadLocal.getUserId()));
     }
 
     @AdminCheck
-    @PutMapping("/{taskId}")
-    public Result<Void> handle(@PathVariable("taskId") Long taskId,
+    @PutMapping("/{taskKey}")
+    public Result<Void> handle(@PathVariable("taskKey") String taskKey,
                                @Valid @RequestBody HandleModerationTaskDTO dto) {
-        moderationService.handle(taskId, UserThreadLocal.getUserId(), dto);
+        moderationService.handle(taskKey, UserThreadLocal.getUserId(), dto);
         return Result.success(null);
     }
 }

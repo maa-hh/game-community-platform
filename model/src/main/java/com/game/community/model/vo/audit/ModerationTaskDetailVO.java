@@ -13,9 +13,10 @@ public class ModerationTaskDetailVO extends ModerationTaskVO implements Serializ
 
     private String targetTitle;
 
-    private String targetContent;
+    /** 用户类目标的公开账号 ID。 */
+    private Long targetAccountId;
 
-    private Object target;
+    private String targetContent;
 
     /** 工单创建时记录的目标状态快照 */
     private String targetStatusSnapshot;

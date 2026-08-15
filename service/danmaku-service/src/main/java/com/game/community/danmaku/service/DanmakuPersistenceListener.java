@@ -1,6 +1,5 @@
 package com.game.community.danmaku.service;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.game.community.common.constant.KafkaTopicConstants;
 import com.game.community.danmaku.mapper.DanmakuMessageMapper;
 import com.game.community.feign.UserFeignClient;
@@ -22,13 +21,11 @@ public class DanmakuPersistenceListener {
     private final DanmakuMessageMapper mapper;
     private final UserFeignClient userFeignClient;
 
+    /** 消费可靠弹幕事件并按数据库唯一键完成至少一次投递下的幂等落库。 */
     @KafkaListener(topics = KafkaTopicConstants.DANMAKU_TOPIC, groupId = "${spring.kafka.consumer.group-id:danmaku-persistence}")
     public void persist(DanmakuEvent event) {
-        if (event == null || event.getId() == null || event.getEventId() == null) {
-            return;
-        }
-        if (mapper.selectCount(new LambdaQueryWrapper<DanmakuMessage>()
-                .eq(DanmakuMessage::getEventId, event.getEventId())) > 0) {
+        if (event == null || event.getId() == null || event.getEventId() == null
+                || event.getEventId().isBlank() || event.getAccountId() == null) {
             return;
         }
         DanmakuMessage entity = new DanmakuMessage();
@@ -56,7 +53,7 @@ public class DanmakuPersistenceListener {
         try {
             mapper.insert(entity);
         } catch (DuplicateKeyException ignored) {
-            // Kafka 至少一次消费，eventId/clientMessageId 唯一键保证幂等。
+            // Kafka 至少一次消费，eventId/clientMessageId 唯一键保证幂等；直接插入也避免查后插竞态。
         } catch (RuntimeException e) {
             log.error("弹幕持久化失败，等待 Kafka 重投: id={}, eventId={}", event.getId(), event.getEventId(), e);
             throw e;

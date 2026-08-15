@@ -40,7 +40,12 @@ public class DanmakuWebSocketHandler extends TextWebSocketHandler {
         articleValidator.requireVideo(videoPublicId);
         session.getAttributes().put(VIDEO_ATTRIBUTE, videoPublicId);
         realtimeService.register(videoPublicId, session);
-        send(session, connected(videoPublicId));
+        try {
+            send(session, connected(videoPublicId));
+        } catch (Exception e) {
+            realtimeService.unregister(videoPublicId, session);
+            throw e;
+        }
     }
 
     @Override
@@ -107,7 +112,7 @@ public class DanmakuWebSocketHandler extends TextWebSocketHandler {
 
     private String videoPublicId(WebSocketSession session) {
         Object value = session.getAttributes().get(VIDEO_ATTRIBUTE);
-        return value == null ? resolveVideoPublicId(session) : String.valueOf(value);
+        return value == null ? null : String.valueOf(value);
     }
 
     private String resolveVideoPublicId(WebSocketSession session) {

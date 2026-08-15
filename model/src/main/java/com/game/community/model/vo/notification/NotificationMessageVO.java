@@ -28,6 +28,10 @@ public class NotificationMessageVO implements Serializable {
 
     private Long replyId;
 
+    private Long danmakuId;
+
+    private String videoPublicId;
+
     private Long reportId;
 
     /** 跳转目标用户对外账号 ID */
@@ -52,4 +56,8 @@ public class NotificationMessageVO implements Serializable {
     private Integer aggregateTotal;
 
     private Boolean aggregated;
+
+    private Boolean aggregateHasLike;
+
+    private Boolean aggregateHasFavorite;
 }

@@ -793,7 +793,7 @@ private void addToDelayZSet(Long taskId, LocalDateTime executeTime) {
 
 #### 3.4.4 调度器触发
 
-`TaskScheduler1` 每分钟执行 `updateZSetToQueue()`，将到期的延迟任务从 ZSet 移入 List 队列：
+`ContentTaskScheduler` 每分钟执行 `updateZSetToQueue()`，将到期的延迟任务从 ZSet 移入 List 队列：
 
 ```java
 @Scheduled(cron = "0 * * * * ?")

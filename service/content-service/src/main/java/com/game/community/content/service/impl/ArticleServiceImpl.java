@@ -13,6 +13,7 @@ import com.game.community.content.util.ArticleCategoryHelper;
 import com.game.community.content.util.ArticleContentCompat;
 import com.game.community.content.service.ArticleCategoryService;
 import com.game.community.content.service.ArticleGameService;
+import com.game.community.content.service.ArticleAuthorEnricher;
 import com.game.community.content.service.ArticleContentService;
 import com.game.community.content.service.ArticleService;
 import com.game.community.content.service.ChunkUploadService;
@@ -83,6 +84,8 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
     private final ArticleGameService articleGameService;
 
+    private final ArticleAuthorEnricher articleAuthorEnricher;
+
     private final ArticleDeletionPersistenceService articleDeletionPersistenceService;
 
     private static final int MAX_CONTENT_LENGTH = 8000;
@@ -92,7 +95,6 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     public Long saveArticle(ArticleDTO dto, Long userId) {
         validatePublishTime(dto.getScheduledPublishTime());
         int postType = normalizePostType(dto.getPostType());
-        validateByPostType(dto, postType);
         Article refArticle = resolveRefArticleIfRepost(postType, dto.getRefArticleId());
         List<Long> categoryIds = resolveCategoryIds(dto, postType, refArticle);
         List<String> articleImages = normalizeArticleImages(dto.getImageUrls(), dto.getCoverUrl(), postType);
@@ -228,12 +230,6 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             throw new BusinessException("仅可转发已发布的帖子");
         }
         return refArticle;
-    }
-
-    private void validateByPostType(ArticleDTO dto, int postType) {
-        if (postType == ContentConstants.PostType.REPOST) {
-            requirePublishedRefArticle(dto.getRefArticleId());
-        }
     }
 
     private List<Long> resolveCategoryIds(ArticleDTO dto, int postType, Article refArticle) {
@@ -919,58 +915,28 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
     private List<ArticleListVO> toEnrichedListVOs(List<Article> articles) {
         List<ArticleListVO> records = ArticleConverter.toListVOs(articles);
-        enrichAuthorAccountIds(articles, records);
+        articleAuthorEnricher.enrich(articles, records);
         articleCategoryService.enrichListVOs(records);
         articleGameService.enrichListVOs(records);
         return records;
     }
 
-    private void enrichAuthorAccountIds(List<Article> articles, List<ArticleListVO> records) {
-        if (articles == null || records == null || articles.isEmpty() || records.isEmpty()) {
-            return;
-        }
-        List<Long> userIds = articles.stream()
-                .map(Article::getUserId)
-                .filter(Objects::nonNull)
-                .distinct()
-                .toList();
-        if (userIds.isEmpty()) {
-            return;
-        }
-        try {
-            var result = userFeignClient.getUsersByUserIds(userIds);
-            if (result == null || result.getCode() == null || result.getCode() != 200 || result.getData() == null) {
-                return;
-            }
-            Map<Long, UserCardInternalVO> userMap = result.getData().stream()
-                    .filter(item -> item.getUserId() != null)
-                    .collect(Collectors.toMap(UserCardInternalVO::getUserId, item -> item, (a, b) -> a));
-            int size = Math.min(articles.size(), records.size());
-            for (int i = 0; i < size; i++) {
-                UserCardInternalVO author = userMap.get(articles.get(i).getUserId());
-                if (author != null) {
-                    records.get(i).setAuthorAccountId(author.getAccountId());
-                }
-            }
-        } catch (Exception e) {
-            log.warn("批量填充作者 accountId 失败", e);
-        }
+    @Override
+    public Result<String> saveArticleForCurrentUser(ArticleDTO dto) {
+        return Result.success(getPublicId(saveArticle(dto, requireCurrentUserId())));
     }
 
     @Override
-    public Result<Long> saveArticleForCurrentUser(ArticleDTO dto) {
-        return Result.success(saveArticle(dto, requireCurrentUserId()));
-    }
-
-    @Override
-    public Result<Long> updateArticleForCurrentUser(Long id, ArticleDTO dto) {
-        dto.setId(id);
-        return Result.success(saveArticle(dto, requireCurrentUserId()));
-    }
-
-    @Override
-    public Result<Void> deleteArticleForCurrentUser(Long id) {
+    public Result<String> updateArticleForCurrentUser(String publicId, ArticleDTO dto) {
         Long userId = requireCurrentUserId();
+        dto.setId(resolvePublicId(publicId));
+        return Result.success(getPublicId(saveArticle(dto, userId)));
+    }
+
+    @Override
+    public Result<Void> deleteArticleForCurrentUser(String publicId) {
+        Long userId = requireCurrentUserId();
+        Long id = resolvePublicId(publicId);
         Article article = getById(id);
         if (article == null || !Objects.equals(article.getUserId(), userId)) {
             return Result.error("文章不存在或无权删除");
@@ -980,17 +946,19 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     }
 
     @Override
-    public Result<ArticleDetailVO> queryArticleDetail(Long id) {
-        return Result.success(getArticleDetail(id));
+    public Result<ArticleDetailVO> queryArticleDetail(String publicId) {
+        return Result.success(getArticleDetail(resolvePublicId(publicId)));
     }
 
     @Override
-    public Result<ArticleDetailVO> queryArticleDetailForOwner(Long id) {
-        return Result.success(getArticleDetailForOwner(id, requireCurrentUserId()));
+    public Result<ArticleDetailVO> queryArticleDetailForOwner(String publicId) {
+        Long userId = requireCurrentUserId();
+        return Result.success(getArticleDetailForOwner(resolvePublicId(publicId), userId));
     }
 
     @Override
-    public Result<ArticleContentVO> queryArticleContent(Long id) {
+    public Result<ArticleContentVO> queryArticleContent(String publicId) {
+        Long id = resolvePublicId(publicId);
         assertContentReadable(id);
         return Result.success(ArticleConverter.toContentVO(articleContentService.getByArticleId(id)));
     }
@@ -1016,24 +984,28 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     }
 
     @Override
-    public Result<List<ArticleListVO>> queryMoreArticles(Long categoryId, Long lastId, Integer size) {
-        return Result.success(toEnrichedListVOs(getMoreArticles(categoryId, lastId, size)));
+    public Result<List<ArticleListVO>> queryMoreArticles(Long categoryId, String lastPublicId, Integer size) {
+        return Result.success(toEnrichedListVOs(
+                getMoreArticles(categoryId, resolvePublicId(lastPublicId), size)));
     }
 
     @Override
-    public Result<ArticleProgressVO> queryArticleProgress(Long id) {
-        return Result.success(getArticleProgress(id, requireCurrentUserId()));
+    public Result<ArticleProgressVO> queryArticleProgress(String publicId) {
+        Long userId = requireCurrentUserId();
+        return Result.success(getArticleProgress(resolvePublicId(publicId), userId));
     }
 
     @Override
-    public Result<Void> submitPublish(Long id) {
-        submitForAudit(id, requireCurrentUserId());
+    public Result<Void> submitPublish(String publicId) {
+        Long userId = requireCurrentUserId();
+        submitForAudit(resolvePublicId(publicId), userId);
         return Result.success(null);
     }
 
     @Override
-    public Result<Void> submitUnpublish(Long id) {
-        unpublishByAuthor(id, requireCurrentUserId());
+    public Result<Void> submitUnpublish(String publicId) {
+        Long userId = requireCurrentUserId();
+        unpublishByAuthor(resolvePublicId(publicId), userId);
         return Result.success(null);
     }
 

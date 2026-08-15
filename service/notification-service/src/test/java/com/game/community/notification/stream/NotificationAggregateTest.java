@@ -29,6 +29,8 @@ class NotificationAggregateTest {
         assertThat(payload).isNotNull();
         assertThat(payload.getActors()).hasSize(2);
         assertThat(payload.getTotal()).isEqualTo(2);
+        assertThat(payload.getHasLike()).isTrue();
+        assertThat(payload.getHasFavorite()).isFalse();
     }
 
     @Test
@@ -41,6 +43,10 @@ class NotificationAggregateTest {
 
         assertThat(event.getPreviewText()).isEqualTo("bob 等 2 人赞和收藏了");
         assertThat(event.getEventType()).isEqualTo(NotificationConstants.EventType.ARTICLE_LIKE);
+        NotificationAggregatePayload payload = NotificationAggregatePayloadCodec.decode(event.getResultText());
+        assertThat(payload).isNotNull();
+        assertThat(payload.getHasLike()).isTrue();
+        assertThat(payload.getHasFavorite()).isTrue();
     }
 
     @Test

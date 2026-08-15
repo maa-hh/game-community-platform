@@ -78,9 +78,9 @@ danmaku:
   max-content-length: ${DANMAKU_MAX_CONTENT_LENGTH:200}
   history-window-ms: ${DANMAKU_HISTORY_WINDOW_MS:30000}
   recent-ttl-seconds: ${DANMAKU_RECENT_TTL_SECONDS:604800}
+  dedupe-processing-ttl-seconds: ${DANMAKU_DEDUPE_PROCESSING_TTL_SECONDS:60}
   user-rate-limit: ${DANMAKU_USER_RATE_LIMIT:6}
   user-rate-window-seconds: ${DANMAKU_USER_RATE_WINDOW_SECONDS:3}
-  max-video-time-drift-ms: ${DANMAKU_MAX_VIDEO_TIME_DRIFT_MS:10000}
 
 logging:
   level:

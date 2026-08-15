@@ -1,6 +1,7 @@
 package com.game.community.content.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.game.community.model.dto.game.ArticleGameDiscussCountDTO;
 import com.game.community.model.entity.game.ArticleGame;
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
@@ -46,5 +47,5 @@ public interface ArticleGameMapper extends BaseMapper<ArticleGame> {
             + "AND a.status = 1 AND a.deleted = 0 "
             + "GROUP BY ag.game_app_id"
             + "</script>")
-    List<ArticleGameDiscussCount> countPublishedGroupByAppIds(@Param("appIds") List<Long> appIds);
+    List<ArticleGameDiscussCountDTO> countPublishedGroupByAppIds(@Param("appIds") List<Long> appIds);
 }

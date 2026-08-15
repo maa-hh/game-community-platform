@@ -97,7 +97,7 @@
 | 1 | `ArticleController.createArticle` |
 | 2 | `ArticleServiceImpl.createArticle` |
 | 3 | `TaskServiceImpl.addImmediateTask` / `addDelayTask` |
-| 4 | `TaskScheduler1.scanAndExecute` |
+| 4 | `ContentTaskScheduler.executePendingTasks` |
 | 5 | `TaskServiceImpl.executeTask` → `doExecuteTask` |
 | 6 | `ArticleAsyncServiceImpl.publishArticleAsync` |
 | 7 | `ArticleAuditServiceImpl.auditArticle` |
