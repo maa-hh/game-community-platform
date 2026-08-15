@@ -36,6 +36,7 @@ import com.game.community.model.vo.game.GameScreenshotVO;
 import com.game.community.model.vo.game.GameTagVO;
 import com.game.community.steam.service.GameCatalogService;
 import com.game.community.steam.service.SteamGameDetailService;
+import com.game.community.steam.util.SteamAchievementIconUrl;
 import com.game.community.utils.RedisUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -777,7 +778,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         }
     }
 
-    /** 输出当前可用的 Steam 成就 CDN，兼容 Mongo、Redis 中的旧地址。 */
+    /** 输出已统一到新版资源路径的 Steam 成就图标地址。 */
     private List<GameAchievementVO> normalizeAchievementIcons(List<GameAchievementVO> achievements) {
         if (achievements == null || achievements.isEmpty()) {
             return achievements;
@@ -786,9 +787,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
             if (item == null || !StringUtils.hasText(item.getIconUrl())) {
                 return item;
             }
-            item.setIconUrl(item.getIconUrl()
-                    .replace("steamcdn-a.akamaihd.net", "media.steampowered.com")
-                    .replace("cdn.akamai.steamstatic.com", "media.steampowered.com"));
+            item.setIconUrl(SteamAchievementIconUrl.toCurrent(item.getIconUrl()));
             return item;
         }).toList();
     }
