@@ -91,7 +91,8 @@ public class ArticleAsyncServiceImpl implements ArticleAsyncService {
             }
 
             boolean updated = articlePublishPersistenceService.publish(articleId, userId,
-                    joinParagraphs(paragraphs), paragraphs, publicImages, publicCover, publicVideo,
+                    joinParagraphs(paragraphs), articleDTO.getContentHtml(), paragraphs,
+                    publicImages, publicCover, publicVideo,
                     publishedTime, "审核通过");
             if (!updated) {
                 log.info("文章状态已变更，未写入发布: articleId={}", articleId);
@@ -129,6 +130,7 @@ public class ArticleAsyncServiceImpl implements ArticleAsyncService {
         articleDTO.setVideoUrl(article.getVideoUrl());
         if (content != null) {
             articleDTO.setContent(content.getContent());
+            articleDTO.setContentHtml(content.getContentHtml());
             articleDTO.setContentParagraphs(content.getContentParagraphs());
         }
         List<String> imageUrls = content == null || content.getImageUrls() == null ? List.of() : content.getImageUrls();
@@ -173,7 +175,8 @@ public class ArticleAsyncServiceImpl implements ArticleAsyncService {
         List<String> publicImages = gallery.imageUrls();
         String publicVideo = articleMediaHelper.promoteToPublic(articleDTO.getVideoUrl(), "video");
         boolean updated = articlePublishPersistenceService.publish(articleId, userId,
-                joinParagraphs(paragraphs), paragraphs, publicImages, publicCover, publicVideo,
+                joinParagraphs(paragraphs), articleDTO.getContentHtml(), paragraphs,
+                publicImages, publicCover, publicVideo,
                 publishedTime, "人工审核通过");
         if (!updated) {
             throw new BusinessException("文章状态已变更，发布失败");

@@ -69,6 +69,8 @@ public class ArticleDetailVO implements Serializable {
     @JsonView(ApiJsonViews.Public.class)
     private String content;
     @JsonView(ApiJsonViews.Public.class)
+    private String contentHtml;
+    @JsonView(ApiJsonViews.Public.class)
     private Map<String, String> contentParagraphs;
     @JsonView(ApiJsonViews.Public.class)
     private List<String> imageUrls;

@@ -19,6 +19,7 @@ import com.game.community.content.service.ArticleService;
 import com.game.community.content.service.ChunkUploadService;
 import com.game.community.content.service.TaskService;
 import com.game.community.content.util.ArticleMediaHelper;
+import com.game.community.content.util.ArticleRichTextSanitizer;
 import com.game.community.content.mapper.ArticleAuditMapper;
 import com.game.community.feign.UserFeignClient;
 import com.game.community.model.base.PageResult;
@@ -88,7 +89,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
     private final ArticleDeletionPersistenceService articleDeletionPersistenceService;
 
-    private static final int MAX_CONTENT_LENGTH = 8000;
+    private static final int MAX_CONTENT_LENGTH = 3000;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -100,6 +101,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         List<String> articleImages = normalizeArticleImages(dto.getImageUrls(), dto.getCoverUrl(), postType);
         String coverUrl = resolveCoverUrl(dto.getCoverUrl(), articleImages, postType, refArticle);
         String videoUrl = StringUtils.hasText(dto.getVideoUrl()) ? dto.getVideoUrl().trim() : null;
+        String contentHtml = (postType == ContentConstants.PostType.IMAGE_TEXT
+                || postType == ContentConstants.PostType.VIDEO)
+                ? ArticleRichTextSanitizer.sanitize(dto.getContentHtml()) : null;
         Map<String, String> contentParagraphs = normalizeParagraphs(dto);
         String contentText = joinParagraphs(contentParagraphs);
         if (postType == ContentConstants.PostType.IMAGE_TEXT) {
@@ -151,7 +155,8 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             article.setPublishedTime(null);
             saveOrUpdate(article);
             articleCategoryService.replaceCategoryRelations(article.getId(), categoryIds);
-            articleContentService.saveContent(article.getId(), contentText, contentParagraphs, articleImages, userId);
+            articleContentService.saveContent(article.getId(), contentText, contentHtml,
+                    contentParagraphs, articleImages, userId);
             articleGameService.saveArticleGames(article.getId(), dto.getGameAppIds());
             articleSearchSyncProducer.delete(article.getId());
             log.info("文章草稿保存成功: articleId={}, userId={}", article.getId(), userId);
@@ -168,7 +173,8 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         saveOrUpdate(article);
         Long articleId = article.getId();
         articleCategoryService.replaceCategoryRelations(articleId, categoryIds);
-        articleContentService.saveContent(articleId, contentText, contentParagraphs, articleImages, userId);
+        articleContentService.saveContent(articleId, contentText, contentHtml,
+                contentParagraphs, articleImages, userId);
         articleGameService.saveArticleGames(articleId, dto.getGameAppIds());
 
         Map<String, Object> taskParam = new HashMap<>();
@@ -177,6 +183,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         taskParam.put("title", dto.getTitle());
         taskParam.put("summary", article.getSummary());
         taskParam.put("content", contentText);
+        taskParam.put("contentHtml", contentHtml);
         taskParam.put("contentParagraphs", contentParagraphs);
         taskParam.put("coverUrl", coverUrl);
         taskParam.put("videoUrl", videoUrl);
@@ -360,6 +367,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         if (content == null || !StringUtils.hasText(content.getContent())) {
             throw new BusinessException("请先完善正文再提交审核");
         }
+        validateContent(content.getContent(), article.getPostType());
         if (Objects.equals(article.getPostType(), ContentConstants.PostType.VIDEO)
                 && !StringUtils.hasText(article.getVideoUrl())) {
             throw new BusinessException("视频模式下请先完成视频上传");
@@ -377,6 +385,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         taskParam.put("title", article.getTitle());
         taskParam.put("summary", article.getSummary());
         taskParam.put("content", content.getContent());
+        taskParam.put("contentHtml", content.getContentHtml());
         taskParam.put("contentParagraphs", content.getContentParagraphs());
         taskParam.put("coverUrl", article.getCoverUrl());
         taskParam.put("videoUrl", article.getVideoUrl());
@@ -529,6 +538,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         var content = articleContentService.getByArticleId(article.getId());
         if (content != null) {
             vo.setContent(content.getContent());
+            vo.setContentHtml(content.getContentHtml());
             vo.setContentParagraphs(content.getContentParagraphs());
             if (needPreview && content.getImageUrls() != null) {
                 List<String> previews = new ArrayList<>();

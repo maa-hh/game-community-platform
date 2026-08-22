@@ -39,6 +39,11 @@ public class ArticleDTO implements Serializable {
     private String content;
 
     /**
+     * 图文/视频介绍的富文本 HTML；content 仍为纯文本，用于摘要、搜索和审核。
+     */
+    private String contentHtml;
+
+    /**
      * 文章段落内容，按前端编辑顺序保存，例如 {"p1":"第一段","p2":"第二段"}。
      */
     private Map<String, String> contentParagraphs;

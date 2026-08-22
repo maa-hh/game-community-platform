@@ -355,6 +355,7 @@ public class TaskServiceImpl implements TaskService {
         dto.setTitle((String) param.get("title"));
         dto.setSummary((String) param.get("summary"));
         dto.setContent((String) param.get("content"));
+        dto.setContentHtml((String) param.get("contentHtml"));
         dto.setContentParagraphs(param.get("contentParagraphs") == null
                 ? java.util.Map.of()
                 : JSON.parseObject(JSON.toJSONString(param.get("contentParagraphs")), new TypeReference<java.util.LinkedHashMap<String, String>>() {

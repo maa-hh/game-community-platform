@@ -12,12 +12,14 @@ public interface ArticleContentService {
      *
      * @param articleId 文章ID
      * @param content   正文纯文本
-     * @param contentParagraphs 正文段落
+     * @param contentHtml 富文本 HTML（图文正文或视频介绍）
+     * @param contentParagraphs 正文纯文本段落
      * @param imageUrls 图片URL列表
      * @param userId    用户ID
      * @return ArticleContent
      */
-    ArticleContent saveContent(Long articleId, String content, java.util.Map<String, String> contentParagraphs,
+    ArticleContent saveContent(Long articleId, String content, String contentHtml,
+                               java.util.Map<String, String> contentParagraphs,
                                java.util.List<String> imageUrls, Long userId);
 
     /**

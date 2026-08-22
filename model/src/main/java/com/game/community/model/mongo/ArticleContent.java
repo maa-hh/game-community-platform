@@ -26,6 +26,11 @@ public class ArticleContent {
     private String content;
 
     /**
+     * 图文正文或视频介绍的富文本 HTML，服务端保存前已按允许标签清洗。
+     */
+    private String contentHtml;
+
+    /**
      * 结构化段落正文，保持前端编辑顺序。
      */
     private Map<String, String> contentParagraphs;
@@ -48,6 +53,8 @@ public class ArticleContent {
     public void setArticleId(Long articleId) { this.articleId = articleId; }
     public String getContent() { return content; }
     public void setContent(String content) { this.content = content; }
+    public String getContentHtml() { return contentHtml; }
+    public void setContentHtml(String contentHtml) { this.contentHtml = contentHtml; }
     public Map<String, String> getContentParagraphs() { return contentParagraphs; }
     public void setContentParagraphs(Map<String, String> contentParagraphs) { this.contentParagraphs = contentParagraphs; }
     public List<String> getImageUrls() { return imageUrls; }
