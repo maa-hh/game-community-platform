@@ -797,6 +797,8 @@ if (ENABLE_MOCK) {
     };
   });
 
+  // Mock 仅在开发环境输出刷新链路，生产构建忽略该调试日志。
+  // eslint-disable-next-line no-console
   console.info(
     '[Mock] refresh 走 Cookie（模拟 HttpOnly）；access≈30s，过期后自动刷新',
   );

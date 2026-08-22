@@ -72,6 +72,8 @@ export interface IArticleSavePayload {
   title: string;
   summary?: string;
   content?: string;
+  /** 图文正文或视频介绍的 Quill HTML；content 仍保留纯文本用于摘要、搜索和审核。 */
+  contentHtml?: string;
   contentParagraphs?: Record<string, string>;
   coverUrl?: string | null;
   videoUrl?: string | null;
@@ -286,6 +288,7 @@ export function getArticleDetailApi(id: string) {
         username?: string;
         avatar?: string;
         content?: string;
+        contentHtml?: string;
         contentParagraphs?: Record<string, string>;
         imageUrls?: string[];
         refArticleId?: string;
@@ -312,6 +315,7 @@ export type IArticleEditDetail = IArticleItem & {
   username?: string;
   avatar?: string;
   content?: string;
+  contentHtml?: string;
   contentParagraphs?: Record<string, string>;
   imageUrls?: string[];
   refArticleId?: string;

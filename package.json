@@ -21,6 +21,7 @@
     "react-dom": "^19.2.7",
     "react-easy-crop": "^6.2.2",
     "react-image-crop": "^11.1.2",
+    "react-quill-new": "^3.8.3",
     "react-redux": "^9.3.0",
     "react-router-dom": "^7.18.1",
     "react-scripts": "5.0.1",

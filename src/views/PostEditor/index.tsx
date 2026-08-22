@@ -1,4 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { FC } from 'react';
 import {
   Button,
@@ -16,6 +22,8 @@ import {
 } from 'antd';
 import { DeleteOutlined, VideoCameraOutlined } from '@ant-design/icons';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
 
 import VideoPlayer from '@/base-ui/VideoPlayer';
 import PageLoading from '@/base-ui/PageLoading';
@@ -40,9 +48,9 @@ import { useGoBack } from '@/hooks/useGoBack';
 import { getArticleProgressResultMessage } from '@/utils/articleProgressMessage';
 import { useAppSelector } from '@/store';
 import { formatApiError } from '@/utils/apiError';
-import { stripBodyImageMarkers } from '@/utils/bodyImageMarker';
 import { mapGameTagsFromRaw, mergeGameTagOptions } from '@/utils/mapGameTag';
 import { resolveGameCoverUrl } from '@/utils/steamImage';
+import { richHtmlToParagraphs, richHtmlToPlainText } from '@/utils/richText';
 import type { IGameListItem, IGameTag } from '@/types/game';
 import type { EditorImage } from '@/views/PostEditor/types';
 import CoverImageManager from '@/views/PostEditor/components/CoverImageManager';
@@ -55,27 +63,53 @@ import {
 
 import './style.less';
 
-const { TextArea } = Input;
-
 const MODE_OPTIONS = [
   { label: '图文', value: POST_TYPE.IMAGE_TEXT },
   { label: '视频', value: POST_TYPE.VIDEO },
 ];
 
+const RICH_TEXT_TOOLBAR = [
+  [{ header: [1, 2, 3, false] }],
+  ['bold', 'italic', 'underline', 'strike'],
+  [{ list: 'ordered' }, { list: 'bullet' }],
+  ['blockquote', 'link'],
+  ['clean'],
+];
+
+const RICH_TEXT_FORMATS = [
+  'header',
+  'bold',
+  'italic',
+  'underline',
+  'strike',
+  'list',
+  'blockquote',
+  'link',
+];
+
 const VIDEO_MAX = 500 * 1024 * 1024;
 const COVER_MAX = 9;
+const CONTENT_MAX_LENGTH = 3000;
 
 const BODY_SPACE_RE = /[ \u00a0\u3000]/g;
 
-function compactBodyContent(value: string): string {
-  return value
-    .replace(BODY_SPACE_RE, '\n')
-    .replace(/^\n+/, '')
-    .replace(/\n{2,}/g, '\n');
-}
-
 function stripSpaces(value: string): string {
   return value.replace(BODY_SPACE_RE, '');
+}
+
+function plainTextToRichHtml(value: string): string {
+  return value
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map(
+      (line) =>
+        `<p>${line
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')}</p>`,
+    )
+    .join('');
 }
 
 function createSkipComposingNormalize(
@@ -89,67 +123,15 @@ function createSkipComposingNormalize(
   };
 }
 
-function canInsertBodyNewline(
-  value: string,
-  start: number,
-  end: number,
-): boolean {
-  const before = value.slice(0, start);
-  const after = value.slice(end);
-
-  if (!value.replace(/\n/g, '')) return false;
-  if (before.endsWith('\n') || after.startsWith('\n')) return false;
-
-  return true;
-}
-
-function insertBodyNewlineAt(
-  el: HTMLTextAreaElement,
-  setContent: (value: string) => void,
-  start: number,
-  end: number,
-) {
-  const value = el.value;
-  const next = compactBodyContent(
-    `${value.slice(0, start)}\n${value.slice(end)}`,
-  );
-  setContent(next);
-
-  const pos = Math.min(start + 1, next.length);
-  requestAnimationFrame(() => {
-    el.focus();
-    el.setSelectionRange(pos, pos);
-  });
-}
-
 function handleTitleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
   if (e.nativeEvent.isComposing) return;
   if (e.key !== ' ' && e.code !== 'Space') return;
   e.preventDefault();
 }
 
-function handleBodyContentKeyDown(
-  e: React.KeyboardEvent<HTMLTextAreaElement>,
-  setContent: (value: string) => void,
-) {
-  if (e.nativeEvent.isComposing) return;
-
-  const isNewlineKey = e.key === 'Enter' || e.key === ' ' || e.code === 'Space';
-  if (!isNewlineKey) return;
-
-  e.preventDefault();
-  const el = e.currentTarget;
-  const start = el.selectionStart ?? 0;
-  const end = el.selectionEnd ?? 0;
-
-  if (!canInsertBodyNewline(el.value, start, end)) return;
-
-  insertBodyNewlineAt(el, setContent, start, end);
-}
-
 function scheduleFieldNormalize(
   form: ReturnType<typeof Form.useForm>[0],
-  field: 'title' | 'content',
+  field: 'title',
   normalize: (value: string) => string,
 ) {
   requestAnimationFrame(() => {
@@ -181,31 +163,6 @@ function createTitleFieldHandlers(
     onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (composingRef.current) return;
       handleTitleKeyDown(e);
-    },
-  };
-}
-
-function createContentFieldHandlers(
-  form: ReturnType<typeof Form.useForm>[0],
-  composingRef: React.MutableRefObject<boolean>,
-) {
-  return {
-    onCompositionStart: () => {
-      composingRef.current = true;
-    },
-    onCompositionEnd: () => {
-      composingRef.current = false;
-      scheduleFieldNormalize(form, 'content', compactBodyContent);
-    },
-    onBlur: () => {
-      if (composingRef.current) return;
-      scheduleFieldNormalize(form, 'content', compactBodyContent);
-    },
-    onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (composingRef.current) return;
-      handleBodyContentKeyDown(e, (value) =>
-        form.setFieldValue('content', value),
-      );
     },
   };
 }
@@ -266,11 +223,16 @@ const PostEditor: FC = () => {
   const [gameSearchLoading, setGameSearchLoading] = useState(false);
   const [categorySelectOpen, setCategorySelectOpen] = useState(false);
   const [gameSelectOpen, setGameSelectOpen] = useState(false);
+  const [linkModalOpen, setLinkModalOpen] = useState(false);
+  const [linkUrl, setLinkUrl] = useState('');
   const abortRef = useRef<AbortController | null>(null);
   const uploadIdRef = useRef<string | null>(null);
   const gameSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const titleComposingRef = useRef(false);
-  const contentComposingRef = useRef(false);
+  const richQuillRef = useRef<ReactQuill | null>(null);
+  const linkSelectionRef = useRef<{ index: number; length: number } | null>(
+    null,
+  );
 
   const handleCategoryEnterKeyDown = createMultiSelectEnterKeyDown(
     setCategorySelectOpen,
@@ -279,6 +241,83 @@ const PostEditor: FC = () => {
     createMultiSelectEnterKeyDown(setGameSelectOpen);
 
   const gameAppIds = Form.useWatch<number[]>('gameAppIds', form) ?? [];
+  const richContentHtml = Form.useWatch<string>('contentHtml', form) ?? '';
+  const richContentLength = richHtmlToPlainText(richContentHtml).length;
+
+  const handleLinkToolbar = useCallback((value: boolean) => {
+    const editor = richQuillRef.current?.getEditor();
+    if (!editor) return;
+
+    const range = editor.getSelection();
+    if (!value) {
+      if (range) editor.format('link', false, 'user');
+      return;
+    }
+    if (!range) {
+      message.info('请先点击编辑区，再添加链接');
+      return;
+    }
+
+    linkSelectionRef.current = range;
+    const selectedText =
+      range.length > 0 ? editor.getText(range.index, range.length) : '';
+    setLinkUrl(/^https?:\/\//i.test(selectedText) ? selectedText : '');
+    setLinkModalOpen(true);
+  }, []);
+
+  const handleCleanToolbar = useCallback(() => {
+    const editor = richQuillRef.current?.getEditor();
+    const range = editor?.getSelection();
+    if (!editor || !range || range.length === 0) {
+      message.info('请先选中要清除格式的文字');
+      return;
+    }
+    editor.removeFormat(range.index, range.length, 'user');
+  }, []);
+
+  const richTextModules = useMemo(
+    () => ({
+      toolbar: {
+        container: RICH_TEXT_TOOLBAR,
+        handlers: {
+          link: handleLinkToolbar,
+          clean: handleCleanToolbar,
+        },
+      },
+    }),
+    [handleCleanToolbar, handleLinkToolbar],
+  );
+
+  const handleLinkModalOk = () => {
+    const rawUrl = linkUrl.trim();
+    if (!rawUrl) {
+      message.error('请输入链接地址');
+      return;
+    }
+    if (/\s/.test(rawUrl)) {
+      message.error('链接地址不能包含空格');
+      return;
+    }
+
+    const url = /^(?:https?:\/\/|mailto:)/i.test(rawUrl)
+      ? rawUrl
+      : `https://${rawUrl}`;
+    const editor = richQuillRef.current?.getEditor();
+    const range = linkSelectionRef.current;
+    if (!editor || !range) {
+      setLinkModalOpen(false);
+      return;
+    }
+
+    editor.focus();
+    if (range.length > 0) {
+      editor.formatText(range.index, range.length, 'link', url, 'user');
+    } else {
+      editor.insertText(range.index, rawUrl, { link: url }, 'user');
+      editor.setSelection(range.index + rawUrl.length, 0, 'silent');
+    }
+    setLinkModalOpen(false);
+  };
 
   useEffect(
     () => () => {
@@ -387,9 +426,9 @@ const PostEditor: FC = () => {
         const rawType = data.postType || POST_TYPE.IMAGE_TEXT;
         const type =
           rawType === POST_TYPE.VIDEO ? POST_TYPE.VIDEO : POST_TYPE.IMAGE_TEXT;
-        const content = compactBodyContent(
-          stripBodyImageMarkers(data.content || ''),
-        );
+        const legacyPlainContent =
+          data.content?.trim() ||
+          Object.values(data.contentParagraphs || {}).join('\n');
         const allUrls = dedupeUrls([
           ...(data.coverUrl ? [data.coverUrl] : []),
           ...(data.imageUrls || []),
@@ -401,7 +440,8 @@ const PostEditor: FC = () => {
         form.setFieldsValue({
           title: stripSpaces(data.title || ''),
           summary: data.summary,
-          content,
+          contentHtml:
+            data.contentHtml || plainTextToRichHtml(legacyPlainContent),
           categoryIds:
             data.categoryIds && data.categoryIds.length > 0
               ? data.categoryIds
@@ -494,14 +534,16 @@ const PostEditor: FC = () => {
     const coverUrl = media?.coverUrl ?? imageUrls[0] ?? null;
     const savePostType =
       postType === POST_TYPE.VIDEO ? POST_TYPE.VIDEO : POST_TYPE.IMAGE_TEXT;
+    const contentHtml = values.contentHtml?.trim() || '';
+    const plainContent = richHtmlToPlainText(contentHtml);
 
     return {
       id: articleId,
       title: values.title?.trim(),
       summary: values.summary?.trim(),
-      content: compactBodyContent(
-        stripBodyImageMarkers(values.content?.trim() || ''),
-      ),
+      content: plainContent,
+      contentHtml,
+      contentParagraphs: richHtmlToParagraphs(contentHtml),
       categoryIds: values.categoryIds,
       categoryId: values.categoryIds?.[0],
       postType: savePostType,
@@ -636,7 +678,7 @@ const PostEditor: FC = () => {
       await form.validateFields(
         asDraft || postType === POST_TYPE.VIDEO
           ? ['title', 'categoryIds']
-          : ['title', 'categoryIds', 'content'],
+          : ['title', 'categoryIds', 'contentHtml'],
       );
       if (postType === POST_TYPE.VIDEO && !hasVideoSource) {
         message.warning('请选择视频');
@@ -734,7 +776,7 @@ const PostEditor: FC = () => {
   const isEditing = Boolean(articleId);
   const isPublished = articleStatus === ARTICLE_STATUS.PUBLISHED;
   const isPending = articleStatus === ARTICLE_STATUS.PENDING;
-  const isImageTextMode = postType !== POST_TYPE.VIDEO;
+  const isImageTextMode = postType === POST_TYPE.IMAGE_TEXT;
   const pageTitle = isEditing ? '编辑内容' : '创作中心';
 
   const modeSwitcher = (
@@ -768,6 +810,23 @@ const PostEditor: FC = () => {
   return (
     <div className="post-editor">
       {topBarDock}
+
+      <Modal
+        title="添加链接"
+        open={linkModalOpen}
+        okText="插入链接"
+        cancelText="取消"
+        onOk={handleLinkModalOk}
+        onCancel={() => setLinkModalOpen(false)}
+      >
+        <Input
+          autoFocus
+          value={linkUrl}
+          placeholder="https://example.com"
+          onChange={(event) => setLinkUrl(event.target.value)}
+          onPressEnter={handleLinkModalOk}
+        />
+      </Modal>
 
       <Form
         form={form}
@@ -967,30 +1026,48 @@ const PostEditor: FC = () => {
         )}
 
         <Form.Item
-          name="content"
+          name="contentHtml"
           label={isImageTextMode ? '正文' : '视频介绍'}
-          normalize={createSkipComposingNormalize(
-            contentComposingRef,
-            compactBodyContent,
-          )}
-          rules={
-            isImageTextMode
-              ? [
-                  { required: true, whitespace: true, message: '请输入正文' },
-                  { max: 8000, message: '正文最多 8000 字' },
-                ]
-              : [{ max: 8000, message: '介绍最多 8000 字' }]
+          extra={
+            <div
+              className={`post-editor__rich-count${
+                richContentLength > CONTENT_MAX_LENGTH
+                  ? ' post-editor__rich-count--over'
+                  : ''
+              }`}
+            >
+              已输入 {richContentLength} / {CONTENT_MAX_LENGTH} 字
+            </div>
           }
+          rules={[
+            {
+              validator: (_, value: string | undefined) => {
+                const plainText = richHtmlToPlainText(value || '');
+                if (!plainText) {
+                  return Promise.reject(
+                    new Error(
+                      isImageTextMode ? '请输入正文' : '请输入视频介绍',
+                    ),
+                  );
+                }
+                if (plainText.length > CONTENT_MAX_LENGTH) {
+                  return Promise.reject(
+                    new Error(`最多 ${CONTENT_MAX_LENGTH} 字`),
+                  );
+                }
+                return Promise.resolve();
+              },
+            },
+          ]}
         >
-          <TextArea
-            rows={isImageTextMode ? 12 : 8}
-            placeholder={
-              isImageTextMode ? '写下你想分享的内容' : '介绍一下你的视频'
-            }
-            maxLength={8000}
-            showCount
-            allowClear
-            {...createContentFieldHandlers(form, contentComposingRef)}
+          <ReactQuill
+            ref={richQuillRef}
+            className="post-editor__rich-editor"
+            theme="snow"
+            modules={richTextModules}
+            formats={RICH_TEXT_FORMATS}
+            readOnly={isPending}
+            placeholder={isImageTextMode ? '输入文章正文' : '介绍一下你的视频'}
           />
         </Form.Item>
 

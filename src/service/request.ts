@@ -281,6 +281,8 @@ const hyRequest: HYRequest = new HYRequest({
       ) {
         return Promise.reject(error.response.data);
       }
+      // 保留开发环境网络诊断；生产构建不应因调试输出触发 no-console 检查。
+      // eslint-disable-next-line no-console
       console.error('[Network Error]', error);
       return Promise.reject(error);
     },

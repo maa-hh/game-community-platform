@@ -233,6 +233,46 @@
   margin-top: 8px;
 }
 
+.post-editor__rich-editor {
+  .ql-toolbar.ql-snow,
+  .ql-container.ql-snow {
+    border-color: var(--color-border);
+  }
+
+  .ql-toolbar.ql-snow {
+    border-radius: 8px 8px 0 0;
+    background: var(--color-bg-secondary);
+  }
+
+  .ql-container.ql-snow {
+    min-height: 300px;
+    border-radius: 0 0 8px 8px;
+    font-family: inherit;
+    font-size: 15px;
+  }
+
+  .ql-editor {
+    min-height: 300px;
+    line-height: 1.75;
+  }
+
+  .ql-editor.ql-blank::before {
+    color: var(--color-text-secondary);
+    font-style: normal;
+  }
+}
+
+.post-editor__rich-count {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: right;
+}
+
+.post-editor__rich-count--over {
+  color: var(--color-danger, #ff4d4f);
+}
+
 .post-editor__tip {
   margin: 12px 0 0;
   color: var(--color-text-secondary);

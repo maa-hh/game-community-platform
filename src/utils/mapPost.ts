@@ -50,6 +50,7 @@ export interface IArticleDetailRaw {
   gameTags?: IGameTagRaw[];
   status?: number;
   content?: string;
+  contentHtml?: string;
   contentParagraphs?: Record<string, string>;
   imageUrls?: string[];
   publishedTime?: string;
@@ -272,10 +273,9 @@ export function mapArticleDetail(
     contentText,
   );
 
-  const contentHtml = isLegacyArticle
-    ? paragraphsToHtml(raw.contentParagraphs) ||
-      (raw.content ? undefined : undefined)
-    : undefined;
+  const contentHtml =
+    raw.contentHtml ||
+    (isLegacyArticle ? paragraphsToHtml(raw.contentParagraphs) : undefined);
 
   let html = contentHtml;
   if (isLegacyArticle && !html && raw.content) {
