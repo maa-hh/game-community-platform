@@ -35,10 +35,11 @@ public class ArticlePublishPersistenceService {
      * 在事务内保存正文、切换发布状态，并写入发布后的同步事件。
      */
     @Transactional(rollbackFor = Exception.class)
-    public boolean publish(Long articleId, Long userId, String content, Map<String, String> paragraphs,
+    public boolean publish(Long articleId, Long userId, String content, String contentHtml,
+                           Map<String, String> paragraphs,
                            List<String> publicImages, String publicCover, String publicVideo,
                            LocalDateTime publishedTime, String auditMessage) {
-        articleContentService.saveContent(articleId, content, paragraphs, publicImages, userId);
+        articleContentService.saveContent(articleId, content, contentHtml, paragraphs, publicImages, userId);
         int updated = articleMapper.update(null, new LambdaUpdateWrapper<Article>()
                 .eq(Article::getId, articleId)
                 .eq(Article::getStatus, ContentConstants.ArticleStatus.PENDING)

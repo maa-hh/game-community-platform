@@ -15,6 +15,7 @@ public class ArticleContentVO implements Serializable {
 
     private Long articleId;
     private String content;
+    private String contentHtml;
     private Map<String, String> contentParagraphs;
     private List<String> imageUrls;
     private LocalDateTime createTime;

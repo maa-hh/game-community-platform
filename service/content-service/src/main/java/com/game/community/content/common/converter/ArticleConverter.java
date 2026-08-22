@@ -56,6 +56,7 @@ public final class ArticleConverter {
         ArticleContentVO vo = new ArticleContentVO();
         vo.setArticleId(content.getArticleId());
         vo.setContent(content.getContent());
+        vo.setContentHtml(content.getContentHtml());
         vo.setContentParagraphs(content.getContentParagraphs());
         vo.setImageUrls(content.getImageUrls());
         vo.setCreateTime(content.getCreateTime());

@@ -28,12 +28,14 @@ public class ArticleContentServiceImpl implements ArticleContentService {
     private final MongoTemplate mongoTemplate;
 
     @Override
-    public ArticleContent saveContent(Long articleId, String content, Map<String, String> contentParagraphs,
+    public ArticleContent saveContent(Long articleId, String content, String contentHtml,
+                                      Map<String, String> contentParagraphs,
                                       List<String> imageUrls, Long userId) {
         LocalDateTime now = LocalDateTime.now();
         Query query = Query.query(Criteria.where("articleId").is(articleId));
         Update update = new Update()
                 .set("content", content)
+                .set("contentHtml", contentHtml)
                 .set("contentParagraphs", contentParagraphs)
                 .set("imageUrls", imageUrls)
                 .set("updateTime", now)
