@@ -2,21 +2,192 @@
   width: 100%;
 
   &__controls {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 10px 12px;
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-top: 0;
-    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
-    color: var(--color-text-secondary);
-    font-size: 12px;
+    display: contents;
+    color: rgba(255, 255, 255, 0.86);
+    font-size: calc(12px * var(--vp-control-scale, 1));
+  }
+
+  &__toggle {
+    flex-shrink: 0;
+    min-width: max-content;
+    column-gap: calc(6px * var(--vp-control-scale, 1)) !important;
   }
 
   &__composer {
-    min-width: min(360px, 100%);
+    display: inline-flex;
+    align-items: center;
+    width: 100%;
+    height: calc(38px * var(--vp-control-scale, 1));
+    min-width: 0;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+
+    .ant-input,
+    .ant-input-outlined {
+      box-sizing: border-box;
+      flex: 1 1 auto;
+      height: calc(20px * var(--vp-control-scale, 1));
+      min-width: 0;
+      padding: calc(2px * var(--vp-control-scale, 1))
+        calc(12px * var(--vp-control-scale, 1));
+      color: #fff;
+      text-align: center;
+      background: transparent !important;
+      background-color: transparent !important;
+      background-image: none !important;
+      border: 1px solid rgba(255, 255, 255, 0.82) !important;
+      border-radius: calc(12px * var(--vp-control-scale, 1)) !important;
+      box-shadow: none !important;
+      transform: none;
+      width: 100%;
+
+      &::placeholder {
+        color: rgba(255, 255, 255, 0.82);
+        text-align: center;
+      }
+
+      &:hover,
+      &:focus {
+        background: transparent !important;
+        border-color: #ff6600 !important;
+        box-shadow: none !important;
+      }
+
+      &:hover::placeholder {
+        color: #ff6600;
+      }
+    }
+
+    .ant-space-compact-item,
+    .ant-space-compact-item::before,
+    .ant-space-compact-item::after {
+      background: transparent !important;
+      border: 0 !important;
+      box-shadow: none !important;
+    }
+
+    .ant-btn {
+      width: calc(40px * var(--vp-control-scale, 1));
+      background: transparent !important;
+      background-color: transparent !important;
+      color: rgba(255, 255, 255, 0.86) !important;
+      border: 0 !important;
+      border-color: transparent !important;
+      outline: 0 !important;
+      box-shadow: none !important;
+
+      &:hover,
+      &:focus-visible,
+      &:active {
+        color: #ff6600 !important;
+        background: transparent !important;
+        background-color: transparent !important;
+      }
+    }
+  }
+
+  &__settings-trigger,
+  &__send-trigger {
+    color: rgba(255, 255, 255, 0.86) !important;
+    background: transparent !important;
+    background-color: transparent !important;
+
+    &:hover,
+    &:focus-visible,
+    &:active {
+      color: #ff6600 !important;
+      background: transparent !important;
+      background-color: transparent !important;
+    }
+
+    &:hover .anticon,
+    &:focus-visible .anticon,
+    &:active .anticon {
+      color: #ff6600 !important;
+    }
+
+    &:hover .anticon svg,
+    &:focus-visible .anticon svg,
+    &:active .anticon svg,
+    &:hover .anticon path,
+    &:focus-visible .anticon path,
+    &:active .anticon path {
+      color: #ff6600 !important;
+      fill: #ff6600 !important;
+    }
+  }
+
+  .ant-wave {
+    display: none !important;
+  }
+}
+
+.danmaku-player__settings-popover {
+  z-index: 100100 !important;
+
+  .ant-select {
+    width: 76px;
+  }
+
+  .ant-popover-container {
+    padding: 10px 12px;
+    color: #fff;
+    background: rgba(28, 28, 28, 0.95);
+    border-radius: 2px;
+    box-shadow: 0 0 25px rgba(0, 0, 0, 0.3);
+  }
+
+  .ant-popover-content {
+    color: #fff;
+  }
+
+  .ant-popover-arrow-content {
+    background: rgba(28, 28, 28, 0.95);
+    color: #fff;
+  }
+
+  .ant-select-selector {
+    color: #fff !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+    border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  }
+}
+
+.danmaku-player__settings-select-popup {
+  z-index: 100200 !important;
+  min-width: 96px !important;
+  padding: 7px 0;
+  color: #fff;
+  background: rgba(28, 28, 28, 0.95);
+  border-radius: 2px;
+  box-shadow: 0 0 25px rgba(0, 0, 0, 0.3);
+
+  .ant-select-item {
+    color: #fff !important;
+
+    &.ant-select-item-option-active:not(.ant-select-item-option-selected) {
+      color: #ff6600 !important;
+      background: transparent !important;
+    }
+
+    &.ant-select-item-option-selected {
+      color: #ff6600 !important;
+      font-weight: 600;
+      background: transparent !important;
+    }
+
+    &.ant-select-item-option-selected.ant-select-item-option-active {
+      color: #ff6600 !important;
+      background: transparent !important;
+    }
+  }
+
+  .ant-select-item-option-content {
+    color: inherit !important;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
   }
 }
 
@@ -27,11 +198,23 @@
   pointer-events: none;
   user-select: none;
 
-  &__item {
+  &__track {
     position: absolute;
     left: 100%;
     z-index: 2;
-    max-width: 45%;
+    display: flex;
+    align-items: center;
+    max-width: 50%;
+    pointer-events: none;
+    animation: danmaku-slide linear forwards;
+
+    &.is-selected {
+      z-index: 3;
+    }
+  }
+
+  &__item {
+    max-width: 100%;
     padding: 2px 8px;
     overflow: hidden;
     color: #fff;
@@ -44,8 +227,6 @@
     border: 0;
     cursor: pointer;
     pointer-events: auto;
-    transform: translateX(0);
-    animation: danmaku-slide linear forwards;
 
     &.is-mine {
       color: #ffe2b8;
@@ -57,6 +238,23 @@
 
     &:hover {
       background: rgba(0, 0, 0, 0.45);
+    }
+  }
+
+  &__report {
+    flex: 0 0 auto;
+    width: 26px;
+    height: 26px;
+    margin-left: 3px;
+    padding: 0;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.52);
+    border-radius: 50%;
+    pointer-events: auto;
+
+    &:hover {
+      color: #fff;
+      background: var(--color-primary);
     }
   }
 
@@ -90,13 +288,25 @@
   }
 }
 
-@media (max-width: 640px) {
-  .danmaku-player__controls {
-    align-items: stretch;
-    flex-direction: column;
+@container video-player (max-width: 720px) {
+  .danmaku-player__composer {
+    min-width: 0;
   }
 
+  .danmaku-player__composer .ant-input,
+  .danmaku-player__composer .ant-input-outlined {
+    min-width: 0;
+    padding-right: 6px;
+    padding-left: 6px;
+  }
+
+  .danmaku-player__composer .ant-btn {
+    width: calc(28px * var(--vp-control-scale, 1));
+  }
+}
+
+@container video-player (max-width: 440px) {
   .danmaku-player__composer {
-    width: 100%;
+    min-width: 0;
   }
 }

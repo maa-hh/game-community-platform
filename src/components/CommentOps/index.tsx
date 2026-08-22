@@ -32,14 +32,16 @@ const CommentOps: FC<CommentOpsProps> = ({
         onClick={onLike}
       />
       <StatAction kind="reply" size={size} onClick={onReply} />
-      <button
-        type="button"
-        className="comment-ops__icon"
-        aria-label="举报"
-        onClick={onReport}
-      >
-        <FlagOutlined />
-      </button>
+      {!isMine && (
+        <button
+          type="button"
+          className="comment-ops__icon"
+          aria-label="举报"
+          onClick={onReport}
+        >
+          <FlagOutlined />
+        </button>
+      )}
       {isMine && (
         <button
           type="button"

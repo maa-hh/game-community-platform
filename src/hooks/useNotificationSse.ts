@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { message } from 'antd';
+import { App } from 'antd';
 
 import { useAppDispatch, useAppSelector } from '@/store';
 import { fetchCurrentUserAction } from '@/store/modules/auth';
@@ -24,6 +24,7 @@ import type { NotificationCategoryKey } from '@/types/notification';
  */
 export function useNotificationSse() {
   const dispatch = useAppDispatch();
+  const { message } = App.useApp();
   const accessToken = useAppSelector((state) => state.auth.accessToken);
   const activeCategory = useAppSelector(
     (state) => state.notification.activeCategory,
@@ -140,5 +141,5 @@ export function useNotificationSse() {
 
     connect();
     return disconnect;
-  }, [accessToken, dispatch]);
+  }, [accessToken, dispatch, message]);
 }

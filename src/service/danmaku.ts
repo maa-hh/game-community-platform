@@ -39,6 +39,15 @@ export function fetchDanmakuHistoryApi(
   });
 }
 
+export function fetchDanmakuMessageApi(
+  videoPublicId: string,
+  messageId: number,
+) {
+  return hyRequest.get<IDataType<DanmakuMessage | null>>({
+    url: `/danmaku/${encodeURIComponent(videoPublicId)}/messages/${messageId}`,
+  });
+}
+
 export function buildDanmakuWebSocketUrl(videoPublicId: string): string {
   const base = new URL(
     BASE_URL || window.location.origin,

@@ -56,6 +56,14 @@ const STATUS_COLOR: Record<ModerationTaskStatus, string> = {
   2: 'success',
 };
 
+const TARGET_TYPE_LABEL: Record<number, string> = {
+  1: '帖子',
+  2: '评论',
+  3: '回复',
+  4: '用户',
+  5: '弹幕',
+};
+
 function actionOptions(
   taskType?: ModerationTaskType,
   availableReportActions?: ModerationHandleAction[],
@@ -76,6 +84,7 @@ function actionOptions(
     { label: '下架帖子', value: 'OFFLINE_ARTICLE' },
     { label: '删除评论', value: 'HIDE_COMMENT' },
     { label: '删除回复', value: 'HIDE_REPLY' },
+    { label: '隐藏弹幕', value: 'HIDE_DANMAKU' },
     { label: '封禁用户', value: 'BAN_USER' },
   ];
   const filtered = availableReportActions
@@ -134,7 +143,7 @@ function ModerationPage() {
 
   const openDetail = async (record: IModerationTask) => {
     try {
-      const res = await fetchModerationTaskDetailApi(record.id);
+      const res = await fetchModerationTaskDetailApi(record.taskKey);
       if (res.code !== 200) {
         throw new Error(res.message || '加载详情失败');
       }
@@ -147,9 +156,9 @@ function ModerationPage() {
 
   const prepareHandle = async (record: IModerationTask) => {
     try {
-      let taskDetail = detail?.id === record.id ? detail : null;
+      let taskDetail = detail?.taskKey === record.taskKey ? detail : null;
       if (!taskDetail) {
-        const res = await fetchModerationTaskDetailApi(record.id);
+        const res = await fetchModerationTaskDetailApi(record.taskKey);
         if (res.code !== 200) {
           throw new Error(res.message || '加载详情失败');
         }
@@ -164,7 +173,7 @@ function ModerationPage() {
         setDetailOpen(true);
         return;
       }
-      const claimRes = await claimModerationTaskApi(record.id);
+      const claimRes = await claimModerationTaskApi(record.taskKey);
       if (claimRes.code !== 200) {
         throw new Error(claimRes.message || '认领失败');
       }
@@ -175,7 +184,7 @@ function ModerationPage() {
       const claimedDetail: IModerationTaskDetail = {
         ...taskDetail,
         status: 1,
-        handlerId: claim.handlerId,
+        handlerAccountId: claim.handlerAccountId,
         claimToken: claim.claimToken,
         leaseExpireTime: claim.leaseExpireTime,
       };
@@ -202,7 +211,7 @@ function ModerationPage() {
         throw new Error('认领已失效，请重新认领后处理');
       }
       setSubmitting(true);
-      const res = await handleModerationTaskApi(detail.id, {
+      const res = await handleModerationTaskApi(detail.taskKey, {
         ...values,
         claimToken: detail.claimToken,
         requestId: handleRequestIdRef.current,
@@ -228,7 +237,14 @@ function ModerationPage() {
 
   const targetLink = useMemo(() => {
     if (!detail) return null;
-    if (detail.taskType === 'ARTICLE_AUDIT' || detail.targetType === 1) {
+    if (
+      detail.targetPublicId &&
+      (detail.taskType === 'ARTICLE_AUDIT' ||
+        detail.targetType === 1 ||
+        detail.targetType === 2 ||
+        detail.targetType === 3 ||
+        detail.targetType === 5)
+    ) {
       return (
         <Button
           type="link"
@@ -240,11 +256,15 @@ function ModerationPage() {
         </Button>
       );
     }
-    if (detail.taskType === 'PROFILE_AUDIT' || detail.targetType === 4) {
+    const targetAccountId = detail.targetAccountId || detail.subjectAccountId;
+    if (
+      targetAccountId &&
+      (detail.taskType === 'PROFILE_AUDIT' || detail.targetType === 4)
+    ) {
       return (
         <Button
           type="link"
-          onClick={() => navigate(`/profile?accountId=${detail.subjectUserId}`)}
+          onClick={() => navigate(`/profile?accountId=${targetAccountId}`)}
         >
           查看用户主页
         </Button>
@@ -351,7 +371,7 @@ function ModerationPage() {
       </div>
 
       <Table
-        rowKey="id"
+        rowKey="taskKey"
         loading={loading}
         columns={columns}
         dataSource={items}
@@ -395,6 +415,21 @@ function ModerationPage() {
               <Descriptions.Item label="类型">
                 {TASK_TYPE_LABEL[detail.taskType]}
               </Descriptions.Item>
+              {detail.targetType ? (
+                <Descriptions.Item label="举报目标">
+                  {TARGET_TYPE_LABEL[detail.targetType] || '其他'}
+                </Descriptions.Item>
+              ) : null}
+              {detail.subjectUserName ? (
+                <Descriptions.Item label="目标用户">
+                  {detail.subjectUserName}
+                </Descriptions.Item>
+              ) : null}
+              {detail.reporterName ? (
+                <Descriptions.Item label="举报人">
+                  {detail.reporterName}
+                </Descriptions.Item>
+              ) : null}
               <Descriptions.Item label="状态">
                 <Tag color={STATUS_COLOR[detail.status]}>
                   {STATUS_LABEL[detail.status]}

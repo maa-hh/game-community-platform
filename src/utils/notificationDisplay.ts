@@ -21,9 +21,10 @@ export function resolveNotificationItemVariant(
 export function getNotificationActionText(
   eventType?: number,
   aggregated?: boolean,
-  aggregateAction?: 'like' | 'favorite',
+  aggregateAction?: 'like' | 'favorite' | 'mixed',
 ): string {
   if (aggregated) {
+    if (aggregateAction === 'mixed') return '赞和收藏了你的帖子';
     return aggregateAction === 'favorite' ? '收藏了你的帖子' : '赞了你的帖子';
   }
 
@@ -42,6 +43,8 @@ export function getNotificationActionText(
       return '评论了你的帖子';
     case NOTIFICATION_EVENT.COMMENT_REPLY:
       return '回复了你';
+    case NOTIFICATION_EVENT.DANMAKU_COMMENT:
+      return '发了弹幕';
     default:
       return '';
   }
@@ -79,7 +82,7 @@ function stripNotificationSummary(
   }
 
   if (
-    /^(评论了你的帖子|回复了你|赞了你的帖子|收藏了你的帖子|赞了你的评论|赞了你的回复)$/.test(
+    /^(评论了你的帖子|回复了你|发了弹幕|赞了你的帖子|收藏了你的帖子|赞了你的评论|赞了你的回复)$/.test(
       text,
     )
   ) {
@@ -91,7 +94,10 @@ function stripNotificationSummary(
       `^${nickname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*`,
     );
     const stripped = text.replace(prefix, '').trim();
-    if (stripped === action || /^(评论了你的帖子|回复了你)$/.test(stripped)) {
+    if (
+      stripped === action ||
+      /^(评论了你的帖子|回复了你|发了弹幕)$/.test(stripped)
+    ) {
       return '';
     }
   }
@@ -100,6 +106,9 @@ function stripNotificationSummary(
 }
 
 export function resolveNotificationContent(item: INotificationMessage): string {
+  if (item.eventType === NOTIFICATION_EVENT.DANMAKU_COMMENT) {
+    return item.resultText?.trim() || '';
+  }
   if (item.contentText?.trim()) return item.contentText.trim();
 
   const text = item.previewText?.trim() || '';

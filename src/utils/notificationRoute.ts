@@ -20,6 +20,7 @@ export function buildNotificationLink(
   const articleId = msg.articlePublicId;
   const commentId = msg.commentId;
   const replyId = msg.replyId;
+  const danmakuId = msg.danmakuId;
   const accountId = resolveProfileAccountId(msg);
 
   if (routeType === NOTIFICATION_ROUTE.ARTICLE && articleId) {
@@ -32,6 +33,12 @@ export function buildNotificationLink(
     const params = new URLSearchParams();
     if (commentId) params.set('commentId', String(commentId));
     if (replyId) params.set('replyId', String(replyId));
+    const qs = params.toString();
+    return qs ? `/post/${articleId}?${qs}` : `/post/${articleId}`;
+  }
+  if (routeType === NOTIFICATION_ROUTE.DANMAKU && articleId) {
+    const params = new URLSearchParams();
+    if (danmakuId) params.set('danmakuId', String(danmakuId));
     const qs = params.toString();
     return qs ? `/post/${articleId}?${qs}` : `/post/${articleId}`;
   }

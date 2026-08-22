@@ -391,7 +391,7 @@ function Profile() {
   };
 
   const handleReportUser = () => {
-    if (!requireLogin() || !viewUser?.accountId) return;
+    if (isSelf || !requireLogin() || !viewUser?.accountId) return;
     openReport('user', String(viewUser.accountId), '举报用户');
   };
 

@@ -9,12 +9,13 @@ import { useNavigate } from 'react-router-dom';
 import type { MenuProps } from 'antd';
 import {
   LogoutOutlined,
+  SafetyOutlined,
   ShoppingOutlined,
   UserOutlined,
 } from '@ant-design/icons';
 
 import { useAppDispatch, useAppSelector } from '@/store';
-import { logoutAction } from '@/store/modules/auth';
+import { fetchCurrentUserAction, logoutAction } from '@/store/modules/auth';
 import { fetchNotificationMetaAction } from '@/store/modules/notification';
 import { useAuthModal } from '@/hooks/useAuthModal';
 import { isAuthenticated } from '@/utils/storage';
@@ -26,6 +27,7 @@ import { isUserMenuDivider } from './types';
 const USER_MENU_ICONS = {
   profile: UserOutlined,
   shop: ShoppingOutlined,
+  admin: SafetyOutlined,
   logout: LogoutOutlined,
 } as const;
 
@@ -41,8 +43,9 @@ export function useHeaderActions() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   useEffect(() => {
-    if (!loggedIn) return;
+    if (!loggedIn || !user?.accountId) return;
     void dispatch(fetchNotificationMetaAction());
+    void dispatch(fetchCurrentUserAction());
   }, [dispatch, loggedIn, user?.accountId]);
 
   const goSearch = useCallback(
@@ -79,46 +82,63 @@ export function useHeaderActions() {
     navigate('/notifications');
   }, [loggedIn, navigate, openAuth]);
 
-  const userMenu = useMemo<MenuProps['items']>(
-    () =>
-      userMenuSchema.map((item) => {
-        if (isUserMenuDivider(item)) {
-          return { type: 'divider' as const };
-        }
+  const userMenu = useMemo<MenuProps['items']>(() => {
+    const schema =
+      user?.type === 1
+        ? [
+            userMenuSchema[0],
+            { key: 'admin', label: '审核中心', icon: 'admin' as const },
+            userMenuSchema[1],
+            userMenuSchema[2],
+            userMenuSchema[3],
+          ]
+        : userMenuSchema;
+    return schema.map((item) => {
+      if (isUserMenuDivider(item)) {
+        return { type: 'divider' as const };
+      }
 
-        const Icon = USER_MENU_ICONS[item.icon];
-        const iconNode = createElement(Icon);
+      const Icon = USER_MENU_ICONS[item.icon];
+      const iconNode = createElement(Icon);
 
-        if (item.key === 'profile') {
-          return {
-            key: item.key,
-            icon: iconNode,
-            label: item.label,
-            onClick: () => navigate('/profile'),
-          };
-        }
-
-        if (item.key === 'shop') {
-          return {
-            key: item.key,
-            icon: iconNode,
-            label: item.label,
-            onClick: () => navigate('/shop'),
-          };
-        }
-
+      if (item.key === 'profile') {
         return {
           key: item.key,
           icon: iconNode,
           label: item.label,
-          onClick: async () => {
-            await dispatch(logoutAction());
-            navigate('/login', { replace: true });
-          },
+          onClick: () => navigate('/profile'),
         };
-      }),
-    [dispatch, navigate],
-  );
+      }
+
+      if (item.key === 'shop') {
+        return {
+          key: item.key,
+          icon: iconNode,
+          label: item.label,
+          onClick: () => navigate('/shop'),
+        };
+      }
+
+      if (item.key === 'admin') {
+        return {
+          key: item.key,
+          icon: iconNode,
+          label: item.label,
+          onClick: () => navigate('/admin/moderation'),
+        };
+      }
+
+      return {
+        key: item.key,
+        icon: iconNode,
+        label: item.label,
+        onClick: async () => {
+          await dispatch(logoutAction());
+          navigate('/login', { replace: true });
+        },
+      };
+    });
+  }, [dispatch, navigate, user?.type]);
 
   return {
     user,

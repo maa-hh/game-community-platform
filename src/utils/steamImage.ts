@@ -65,40 +65,12 @@ export function steamCoverCandidates(
   return result;
 }
 
-/** 返回 Steam 成就图标候选地址，兼容旧版 CDN 域名。 */
+/** 返回已经迁移到 Steam 新版资源路径的成就图标地址。 */
 export function steamAchievementImageCandidates(
   iconUrl?: string | null,
 ): string[] {
-  const result: string[] = [];
-  const push = (url?: string | null) => {
-    const value = url?.trim();
-    if (value && !result.includes(value)) {
-      result.push(value);
-    }
-  };
-
-  const original = iconUrl?.trim();
-  if (original) {
-    const normalized = original
-      .replace('steamcdn-a.akamaihd.net', 'media.steampowered.com')
-      .replace('cdn.akamai.steamstatic.com', 'media.steampowered.com');
-    push(normalized);
-    push(
-      normalized.replace(
-        'media.steampowered.com',
-        'cdn.akamai.steamstatic.com',
-      ),
-    );
-    push(
-      normalized.replace(
-        'media.steampowered.com',
-        'cdn.cloudflare.steamstatic.com',
-      ),
-    );
-    // 旧地址最后尝试，避免旧 CDN 的慢连接阻塞页面首屏。
-    push(original);
-  }
-  return result;
+  const value = iconUrl?.trim();
+  return value ? [value] : [];
 }
 
 /** 列表/卡片封面：优先百科头图，否则用 Steam 标准头图，最后才用小图标 */

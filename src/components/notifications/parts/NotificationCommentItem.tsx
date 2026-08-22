@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { FC, MouseEvent } from 'react';
-import { message } from 'antd';
+import { App } from 'antd';
 
 import ProfileUserLink from '@/components/ProfileUserLink';
 import StatAction from '@/base-ui/StatAction';
@@ -32,6 +32,7 @@ const NotificationCommentItem: FC<NotificationCommentItemProps> = ({
   item,
   onCoverClick,
 }) => {
+  const { message } = App.useApp();
   const { user } = useAppSelector((state) => state.auth);
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
@@ -42,6 +43,8 @@ const NotificationCommentItem: FC<NotificationCommentItemProps> = ({
   const timeText = item.createTime ? formatCardTime(item.createTime) : '';
   const contentText = resolveNotificationContent(item);
   const quoteText = resolveNotificationQuote(item);
+  const isDanmakuNotification =
+    item.eventType === NOTIFICATION_EVENT.DANMAKU_COMMENT;
 
   const handleCoverClick = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
@@ -142,25 +145,27 @@ const NotificationCommentItem: FC<NotificationCommentItemProps> = ({
                 <p className="notification-item-card__quote">{quoteText}</p>
               ) : null}
 
-              <footer className="notification-item-card__actions">
-                <StatAction
-                  kind="reply"
-                  size="sm"
-                  stopPropagation
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setReplyOpen(true);
-                  }}
-                />
-                <StatAction
-                  kind="like"
-                  count={likeCount}
-                  active={liked}
-                  size="sm"
-                  stopPropagation
-                  onClick={handleLike}
-                />
-              </footer>
+              {!isDanmakuNotification ? (
+                <footer className="notification-item-card__actions">
+                  <StatAction
+                    kind="reply"
+                    size="sm"
+                    stopPropagation
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setReplyOpen(true);
+                    }}
+                  />
+                  <StatAction
+                    kind="like"
+                    count={likeCount}
+                    active={liked}
+                    size="sm"
+                    stopPropagation
+                    onClick={handleLike}
+                  />
+                </footer>
+              ) : null}
             </div>
 
             <NotificationPostCover
@@ -173,13 +178,15 @@ const NotificationCommentItem: FC<NotificationCommentItemProps> = ({
         </div>
       </div>
 
-      <ReplyPopup
-        open={replyOpen}
-        nickname={item.actorUsername || '用户'}
-        loading={replyLoading}
-        onClose={() => setReplyOpen(false)}
-        onSubmit={handleReplySubmit}
-      />
+      {!isDanmakuNotification ? (
+        <ReplyPopup
+          open={replyOpen}
+          nickname={item.actorUsername || '用户'}
+          loading={replyLoading}
+          onClose={() => setReplyOpen(false)}
+          onSubmit={handleReplySubmit}
+        />
+      ) : null}
     </>
   );
 };

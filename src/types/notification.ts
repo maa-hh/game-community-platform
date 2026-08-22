@@ -19,6 +19,7 @@ export const NOTIFICATION_EVENT = {
   ARTICLE_AUDIT_REJECTED: 15,
   ARTICLE_AUDIT_PASSED: 16,
   ARTICLE_AUDIT_HUMAN_REVIEW: 17,
+  DANMAKU_COMMENT: 18,
 } as const;
 
 export const NOTIFICATION_ROUTE = {
@@ -27,6 +28,7 @@ export const NOTIFICATION_ROUTE = {
   COMMENT: 2,
   REPLY: 3,
   USER: 4,
+  DANMAKU: 5,
 } as const;
 
 export type NotificationCategoryKey =
@@ -49,6 +51,8 @@ export interface INotificationMessage {
   articlePublicId?: string;
   commentId?: number;
   replyId?: number;
+  danmakuId?: number;
+  videoPublicId?: string;
   reportId?: number;
   targetAccountId?: number;
   previewText?: string;
@@ -70,6 +74,8 @@ export interface INotificationMessage {
   aggregated?: boolean;
   aggregateActors?: INotificationActor[];
   aggregateTotal?: number;
+  aggregateHasLike?: boolean;
+  aggregateHasFavorite?: boolean;
 }
 
 export interface INotificationCategorySummary {

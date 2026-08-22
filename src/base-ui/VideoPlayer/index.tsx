@@ -1,15 +1,13 @@
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import type { FC, PointerEvent as ReactPointerEvent } from 'react';
+import { createPortal } from 'react-dom';
 import DPlayer from 'dplayer';
 import {
   CloseOutlined,
   CompressOutlined,
   ExpandOutlined,
-  FastBackwardOutlined,
-  FastForwardOutlined,
-  FullscreenOutlined,
 } from '@ant-design/icons';
-import { Button, Dropdown, Space, Tooltip } from 'antd';
+import { Button, Dropdown, Space, Switch, Tooltip } from 'antd';
 import type { MenuProps } from 'antd';
 
 import {
@@ -20,7 +18,11 @@ import {
 
 import './style.less';
 
-const SPEED_OPTIONS = [0.75, 1, 1.25, 1.5, 2];
+const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+const DEFAULT_CONTROL_AVAILABLE_WIDTH = 581;
+
+const getPlayerPopupContainer = (triggerNode: HTMLElement) =>
+  triggerNode.closest<HTMLElement>('.video-player__dplayer') ?? document.body;
 
 const VideoPlayer: FC<VideoPlayerProps> = ({
   url,
@@ -36,11 +38,14 @@ const VideoPlayer: FC<VideoPlayerProps> = ({
   onEnded,
   onError,
   overlay,
+  controlContent,
+  controlTrailingContent,
   onVideoReady,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const playerRef = useRef<DPlayer | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
+  const loopEnabledRef = useRef(loop);
   const dragState = useRef<{
     active: boolean;
     startX: number;
@@ -51,7 +56,10 @@ const VideoPlayer: FC<VideoPlayerProps> = ({
 
   const [size, setSize] = useState<VideoPlayerSize>(defaultSize);
   const [speed, setSpeed] = useState(1);
+  const [loopEnabled, setLoopEnabled] = useState(loop);
   const [offset, setOffset] = useState({ left: 24, top: 96 });
+  const [controlHost, setControlHost] = useState<HTMLElement | null>(null);
+  const [overlayHost, setOverlayHost] = useState<HTMLElement | null>(null);
 
   const seekBy = useCallback((delta: number) => {
     const dp = playerRef.current;
@@ -73,12 +81,16 @@ const VideoPlayer: FC<VideoPlayerProps> = ({
     dp.notice(`${rate}x`, 1000, 0.85);
   }, []);
 
-  const requestFullscreen = useCallback(() => {
-    playerRef.current?.fullScreen.request('browser');
-  }, []);
-
   const toggleSize = useCallback(() => {
     setSize((prev) => (prev === 'mini' ? 'normal' : 'mini'));
+  }, []);
+
+  const setLoopPlayback = useCallback((enabled: boolean) => {
+    loopEnabledRef.current = enabled;
+    setLoopEnabled(enabled);
+    if (playerRef.current?.video) {
+      playerRef.current.video.loop = false;
+    }
   }, []);
 
   const onEndedRef = useRef(onEnded);
@@ -94,7 +106,7 @@ const VideoPlayer: FC<VideoPlayerProps> = ({
     const dp = new DPlayer({
       container: containerRef.current,
       autoplay,
-      loop,
+      loop: false,
       theme: '#ff6600',
       lang: 'zh-cn',
       hotkey: true,
@@ -110,23 +122,94 @@ const VideoPlayer: FC<VideoPlayerProps> = ({
     });
 
     playerRef.current = dp;
+    const controller = containerRef.current.querySelector<HTMLElement>(
+      '.dplayer-controller',
+    );
+    const host = document.createElement('div');
+    host.className = 'video-player__control-host';
+    controller?.appendChild(host);
+    const nextOverlayHost = document.createElement('div');
+    nextOverlayHost.className = 'video-player__overlay-host';
+    containerRef.current.appendChild(nextOverlayHost);
+
+    const leftIcons = controller?.querySelector<HTMLElement>(
+      '.dplayer-icons-left',
+    );
+    const rightIcons = controller?.querySelector<HTMLElement>(
+      '.dplayer-icons-right',
+    );
+    const updateControlHostBounds = () => {
+      if (!controller || !leftIcons || !rightIcons) return;
+      const controllerRect = controller.getBoundingClientRect();
+      const leftRect = leftIcons.getBoundingClientRect();
+      const rightRect = rightIcons.getBoundingClientRect();
+      const edgeGap = 16;
+      const leftReserved = leftRect.right - controllerRect.left;
+      const rightReserved = controllerRect.right - rightRect.left;
+      const left = Math.max(edgeGap, leftReserved + edgeGap);
+      const right = Math.max(edgeGap, rightReserved + edgeGap);
+      const availableWidth = Math.max(
+        0,
+        controllerRect.width - leftReserved - rightReserved - edgeGap * 2,
+      );
+      const widthScale = availableWidth / DEFAULT_CONTROL_AVAILABLE_WIDTH;
+      const nativeIcon = controller.querySelector<HTMLElement>(
+        '.dplayer-play-icon, .dplayer-full-icon',
+      );
+      const nativeIconHeight = nativeIcon?.getBoundingClientRect().height || 38;
+      const nativeScale = nativeIconHeight / 38;
+      const controlScale = Math.max(0.72, Math.min(1, widthScale, nativeScale));
+      host.style.setProperty('--vp-control-left', `${left}px`);
+      host.style.setProperty('--vp-control-right', `${right}px`);
+      host.style.setProperty('--vp-control-scale', String(controlScale));
+    };
+    updateControlHostBounds();
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined' &&
+      controller &&
+      leftIcons &&
+      rightIcons
+        ? new ResizeObserver(updateControlHostBounds)
+        : null;
+    if (resizeObserver && controller && leftIcons && rightIcons) {
+      resizeObserver.observe(controller);
+      resizeObserver.observe(leftIcons);
+      resizeObserver.observe(rightIcons);
+    }
+    setControlHost(controller ? host : null);
+    setOverlayHost(nextOverlayHost);
     if (muted && dp.video) {
       dp.video.muted = true;
     }
-    if (loop && dp.video) {
-      dp.video.loop = true;
+    if (dp.video) {
+      dp.video.loop = false;
     }
     onVideoReadyRef.current?.(dp.video);
 
-    dp.on('ended', () => onEndedRef.current?.());
+    dp.on('ended', () => {
+      onEndedRef.current?.();
+      if (!loopEnabledRef.current || !dp.video) return;
+      dp.video.currentTime = 0;
+      dp.play();
+    });
     dp.on('error', () => onErrorRef.current?.());
 
     return () => {
+      setControlHost(null);
+      setOverlayHost(null);
+      resizeObserver?.disconnect();
+      host.remove();
+      nextOverlayHost.remove();
       onVideoReadyRef.current?.(null);
       playerRef.current = null;
       dp.destroy();
     };
   }, [url, pic, autoplay, muted, loop]);
+
+  useEffect(() => {
+    loopEnabledRef.current = loop;
+    setLoopEnabled(loop);
+  }, [loop]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -212,6 +295,41 @@ const VideoPlayer: FC<VideoPlayerProps> = ({
   const shellStyle =
     mode === 'floating' ? { left: offset.left, top: offset.top } : undefined;
 
+  const controls = (
+    <div
+      className="video-player__control-row"
+      onClick={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      {controlContent ? (
+        <div className="video-player__control-custom">{controlContent}</div>
+      ) : null}
+      {controlTrailingContent ? (
+        <div className="video-player__control-trailing">
+          {controlTrailingContent}
+        </div>
+      ) : null}
+      <Dropdown
+        menu={{ items: speedMenu, selectedKeys: [String(speed)] }}
+        trigger={['click']}
+        classNames={{ root: 'video-player__speed-dropdown' }}
+        getPopupContainer={getPlayerPopupContainer}
+        placement="topRight"
+      >
+        <Button
+          size="small"
+          className="video-player__control-speed video-player__control-trigger"
+        >
+          {speed}x
+        </Button>
+      </Dropdown>
+      <Space size={4} className="video-player__loop-control">
+        <Switch size="small" checked={loopEnabled} onChange={setLoopPlayback} />
+        <span>循环</span>
+      </Space>
+    </div>
+  );
+
   return (
     <div ref={shellRef} className={shellClass} style={shellStyle}>
       {mode === 'floating' && (
@@ -236,14 +354,6 @@ const VideoPlayer: FC<VideoPlayerProps> = ({
                 onClick={toggleSize}
               />
             </Tooltip>
-            <Tooltip title="全屏">
-              <Button
-                type="text"
-                size="small"
-                icon={<FullscreenOutlined />}
-                onClick={requestFullscreen}
-              />
-            </Tooltip>
             {onClose && (
               <Tooltip title="关闭">
                 <Button
@@ -260,44 +370,9 @@ const VideoPlayer: FC<VideoPlayerProps> = ({
 
       <div className="video-player__stage">
         <div ref={containerRef} className="video-player__dplayer" />
-        {overlay}
       </div>
-
-      <div className="video-player__toolbar">
-        <Space size={8} wrap>
-          <Tooltip title={`后退 ${SEEK_STEP_SECONDS} 秒（←）`}>
-            <Button
-              size="small"
-              icon={<FastBackwardOutlined />}
-              onClick={() => seekBy(-SEEK_STEP_SECONDS)}
-            >
-              -{SEEK_STEP_SECONDS}s
-            </Button>
-          </Tooltip>
-          <Tooltip title={`前进 ${SEEK_STEP_SECONDS} 秒（→）`}>
-            <Button
-              size="small"
-              icon={<FastForwardOutlined />}
-              onClick={() => seekBy(SEEK_STEP_SECONDS)}
-            >
-              +{SEEK_STEP_SECONDS}s
-            </Button>
-          </Tooltip>
-          <Dropdown menu={{ items: speedMenu, selectedKeys: [String(speed)] }}>
-            <Button size="small">{speed}x</Button>
-          </Dropdown>
-          {mode === 'inline' && (
-            <Button
-              size="small"
-              icon={<FullscreenOutlined />}
-              onClick={requestFullscreen}
-            >
-              全屏
-            </Button>
-          )}
-        </Space>
-        <span className="video-player__hint">进度条可拖拽 · 空格播放/暂停</span>
-      </div>
+      {overlayHost && overlay ? createPortal(overlay, overlayHost) : null}
+      {controlHost ? createPortal(controls, controlHost) : null}
     </div>
   );
 };

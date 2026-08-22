@@ -1,5 +1,4 @@
 import type { IGameDetail } from '@/types/game';
-import { steamCoverCandidates } from '@/utils/steamImage';
 
 export interface IGameCoverOption {
   appId: number;
@@ -27,9 +26,10 @@ export function collectGameCoverOptions(
     });
   };
 
-  steamCoverCandidates(detail.appId, detail.coverUrl).forEach((url, index) => {
-    push(url, index === 0 ? '头图' : `头图备选 ${index}`);
-  });
+  // 这里只展示详情接口实际返回的封面。
+  // steamCoverCandidates() 还包含加载失败时的 CDN 兜底地址，不能把这些
+  // 推测地址当成候选项展示，否则新格式的 Steam 资源会出现 404 空白卡片。
+  push(detail.coverUrl, '头图');
 
   detail.screenshots?.forEach((shot, index) => {
     push(shot.fullUrl || shot.thumbnailUrl, `截图 ${index + 1}`);

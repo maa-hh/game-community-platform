@@ -4,10 +4,8 @@ import { Button, Dropdown } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   ArrowLeftOutlined,
-  AudioMutedOutlined,
   MoreOutlined,
   ShareAltOutlined,
-  SoundOutlined,
 } from '@ant-design/icons';
 
 import ProfileUserLink from '@/components/ProfileUserLink';
@@ -22,13 +20,10 @@ export interface PostDetailTopBarProps {
   createdAt?: string;
   followed: boolean;
   isOwner: boolean;
-  isVideo?: boolean;
-  muted?: boolean;
   moreMenu?: MenuProps['items'];
   onBack: () => void;
   onFollow: () => void;
   onShare: () => void;
-  onToggleMute?: () => void;
 }
 
 const PostDetailTopBar: FC<PostDetailTopBarProps> = ({
@@ -37,13 +32,10 @@ const PostDetailTopBar: FC<PostDetailTopBarProps> = ({
   createdAt,
   followed,
   isOwner,
-  isVideo = false,
-  muted = true,
   moreMenu,
   onBack,
   onFollow,
   onShare,
-  onToggleMute,
 }) => {
   const hasMore = Boolean(moreMenu && moreMenu.length > 0);
 
@@ -90,15 +82,6 @@ const PostDetailTopBar: FC<PostDetailTopBarProps> = ({
       ) : null}
 
       <div className="post-detail-top-bar__actions">
-        {isVideo && onToggleMute ? (
-          <Button
-            type="text"
-            size="small"
-            icon={muted ? <AudioMutedOutlined /> : <SoundOutlined />}
-            aria-label={muted ? '取消静音' : '静音'}
-            onClick={onToggleMute}
-          />
-        ) : null}
         <Button
           type="text"
           size="small"

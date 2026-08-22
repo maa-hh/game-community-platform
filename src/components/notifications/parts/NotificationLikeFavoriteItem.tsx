@@ -21,9 +21,10 @@ const NotificationLikeFavoriteItem: FC<NotificationLikeFavoriteItemProps> = ({
   onCoverClick,
 }) => {
   const isAggregated = Boolean(item.aggregated && item.aggregateActors?.length);
-  const aggregateAction = item.aggregateActors?.find(
-    (actor) => actor.action,
-  )?.action;
+  const aggregateAction =
+    item.aggregateHasLike && item.aggregateHasFavorite
+      ? 'mixed'
+      : item.aggregateActors?.find((actor) => actor.action)?.action;
   const actionText = getNotificationActionText(
     item.eventType,
     isAggregated,

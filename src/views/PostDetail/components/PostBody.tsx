@@ -18,7 +18,9 @@ import './PostBody.less';
 interface IProps {
   post: PostDetailData;
   muted?: boolean;
+  targetDanmakuId?: number;
   onReportDanmaku?: (messageId: string) => void;
+  danmakuReportResetKey?: number;
 }
 
 function extractHtmlImages(html: string): string[] {
@@ -63,7 +65,13 @@ function renderTextWithBodyImages(
 }
 
 /** 正文区：真实封面图 → 标题 → 正文 → 标签（不展示标题生成海报） */
-const PostBody: FC<IProps> = ({ post, muted = true, onReportDanmaku }) => {
+const PostBody: FC<IProps> = ({
+  post,
+  muted = true,
+  targetDanmakuId,
+  onReportDanmaku,
+  danmakuReportResetKey,
+}) => {
   const htmlRef = useRef<HTMLDivElement>(null);
   const [preview, setPreview] = useState<{
     open: boolean;
@@ -116,7 +124,9 @@ const PostBody: FC<IProps> = ({ post, muted = true, onReportDanmaku }) => {
             title={post.title}
             muted={muted}
             videoPublicId={post.id}
+            targetDanmakuId={targetDanmakuId}
             onReport={onReportDanmaku}
+            reportResetKey={danmakuReportResetKey}
           />
         </div>
       );

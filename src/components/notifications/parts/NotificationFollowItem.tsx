@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import type { FC, MouseEvent } from 'react';
-import { message } from 'antd';
+import { App } from 'antd';
 
 import ProfileUserLink from '@/components/ProfileUserLink';
 import {
@@ -17,6 +17,7 @@ interface NotificationFollowItemProps {
 }
 
 const NotificationFollowItem: FC<NotificationFollowItemProps> = ({ item }) => {
+  const { message } = App.useApp();
   const [followed, setFollowed] = useState(Boolean(item.actorFollowed));
   const [submitting, setSubmitting] = useState(false);
   const actionText = getNotificationActionText(item.eventType);

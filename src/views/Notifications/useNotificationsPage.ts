@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { message } from 'antd';
+import { App } from 'antd';
 
 import { useAppDispatch, useAppSelector } from '@/store';
 import {
@@ -27,6 +27,7 @@ const emptyMessages = {
 
 export function useNotificationsPage() {
   const dispatch = useAppDispatch();
+  const { message } = App.useApp();
   const navigate = useNavigate();
   const { openAuth } = useAuthModal();
   const { summary, categories, categoryMessages } = useAppSelector(
@@ -93,7 +94,7 @@ export function useNotificationsPage() {
         message.error(formatApiError('加载通知失败', err));
       }
     },
-    [dispatch, expandedKey, openAuth],
+    [dispatch, expandedKey, message, openAuth],
   );
 
   const loadMore = useCallback(

@@ -10,6 +10,7 @@ export type ModerationHandleAction =
   | 'OFFLINE_ARTICLE'
   | 'HIDE_COMMENT'
   | 'HIDE_REPLY'
+  | 'HIDE_DANMAKU'
   | 'BAN_USER'
   | 'AUDIT_APPROVE'
   | 'AUDIT_REJECT'
@@ -17,14 +18,13 @@ export type ModerationHandleAction =
   | 'PROFILE_REJECT';
 
 export interface IModerationTask {
-  id: number;
+  taskKey: string;
   taskType: ModerationTaskType;
-  sourceId?: number;
   targetType?: number;
-  targetId?: number;
   targetPublicId?: string;
-  subjectUserId?: number;
-  reporterId?: number;
+  targetAccountId?: number;
+  subjectAccountId?: number;
+  reporterAccountId?: number;
   subjectUserName?: string;
   reporterName?: string;
   reason?: string;
@@ -32,7 +32,7 @@ export interface IModerationTask {
   extraPayload?: string;
   status: ModerationTaskStatus;
   handleAction?: string;
-  handlerId?: number;
+  handlerAccountId?: number;
   handlerName?: string;
   handleRemark?: string;
   claimTime?: string;
@@ -45,7 +45,6 @@ export interface IModerationTaskDetail extends IModerationTask {
   leaseExpireTime?: string;
   targetTitle?: string;
   targetContent?: string;
-  target?: unknown;
   targetStatusSnapshot?: string;
   targetUpdatedAt?: string;
   currentTargetStatus?: string;
@@ -68,34 +67,34 @@ export function fetchModerationTasksApi(params: {
   });
 }
 
-export function fetchModerationTaskDetailApi(taskId: number) {
+export function fetchModerationTaskDetailApi(taskKey: string) {
   return hyRequest.get<{
     code: number;
     data: IModerationTaskDetail;
     message: string;
   }>({
-    url: `/audit/moderation/${taskId}`,
+    url: `/audit/moderation/${taskKey}`,
   });
 }
 
-export function claimModerationTaskApi(taskId: number) {
+export function claimModerationTaskApi(taskKey: string) {
   return hyRequest.post<{
     code: number;
     data: {
-      taskId: number;
+      taskKey: string;
       claimToken: string;
-      handlerId: number;
+      handlerAccountId?: number;
       version: number;
       leaseExpireTime: string;
     };
     message: string;
   }>({
-    url: `/audit/moderation/${taskId}/claim`,
+    url: `/audit/moderation/${taskKey}/claim`,
   });
 }
 
 export function handleModerationTaskApi(
-  taskId: number,
+  taskKey: string,
   payload: {
     handleAction: ModerationHandleAction;
     handleRemark?: string;
@@ -104,7 +103,7 @@ export function handleModerationTaskApi(
   },
 ) {
   return hyRequest.put<{ code: number; data: null; message: string }>({
-    url: `/audit/moderation/${taskId}`,
+    url: `/audit/moderation/${taskKey}`,
     data: payload,
   });
 }

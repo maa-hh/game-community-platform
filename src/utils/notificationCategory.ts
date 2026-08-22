@@ -19,6 +19,7 @@ export function resolveNotificationCategory(
       return 'follow';
     case NOTIFICATION_EVENT.ARTICLE_COMMENT:
     case NOTIFICATION_EVENT.COMMENT_REPLY:
+    case NOTIFICATION_EVENT.DANMAKU_COMMENT:
       return 'comment';
     case NOTIFICATION_EVENT.REPORT_SUBMITTED:
     case NOTIFICATION_EVENT.REPORT_RESULT:

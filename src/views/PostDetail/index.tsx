@@ -61,7 +61,7 @@ function PostDetail() {
   const comments = commentPager.items;
   const setComments = commentPager.setItems;
   const [shareOpen, setShareOpen] = useState(false);
-  const [muted, setMuted] = useState(true);
+  const [danmakuReportResetKey, setDanmakuReportResetKey] = useState(0);
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const { reportOpen, reportTarget, openReport, closeReport } =
     useReportModal();
@@ -143,6 +143,11 @@ function PostDetail() {
     [searchParams],
   );
 
+  const targetDanmakuId = useMemo(() => {
+    const value = Number(searchParams.get('danmakuId') || '');
+    return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+  }, [searchParams]);
+
   const reloadDetail = useCallback(async () => {
     const detailRes = await fetchPostDetailApi(id);
     if (!detailRes.data) {
@@ -206,11 +211,21 @@ function PostDetail() {
 
   const handleReportDanmaku = useCallback(
     (messageId: string) => {
-      if (!requireLogin()) return;
+      if (!requireLogin()) {
+        setDanmakuReportResetKey((current) => current + 1);
+        return;
+      }
       openReport('danmaku', messageId, '举报弹幕');
     },
     [openReport, requireLogin],
   );
+
+  const handleReportClose = useCallback(() => {
+    if (reportTarget?.type === 'danmaku') {
+      setDanmakuReportResetKey((current) => current + 1);
+    }
+    closeReport();
+  }, [closeReport, reportTarget?.type]);
 
   if (loading) {
     return (
@@ -304,7 +319,7 @@ function PostDetail() {
   };
 
   const handleReport = () => {
-    if (!requireLogin() || !post) return;
+    if (isOwner || !requireLogin() || !post) return;
     openReport('article', post.id, '举报帖子');
   };
 
@@ -338,13 +353,10 @@ function PostDetail() {
             createdAt={post.createdAt}
             followed={Boolean(post.followedAuthor)}
             isOwner={isOwner}
-            isVideo={isVideo}
-            muted={muted}
             moreMenu={isOwner ? ownerMenu : guestMoreMenu}
             onBack={handleBack}
             onFollow={handleFollow}
             onShare={() => setShareOpen(true)}
-            onToggleMute={isVideo ? () => setMuted((v) => !v) : undefined}
           />
         </div>
       </div>
@@ -354,8 +366,10 @@ function PostDetail() {
           <SurfaceCard className="post-detail__main">
             <PostBody
               post={post}
-              muted={muted}
+              muted
+              targetDanmakuId={targetDanmakuId}
               onReportDanmaku={handleReportDanmaku}
+              danmakuReportResetKey={danmakuReportResetKey}
             />
 
             <PostActionBar
@@ -440,7 +454,7 @@ function PostDetail() {
           targetType={reportTarget.type}
           targetId={reportTarget.id}
           title={reportTarget.title}
-          onClose={closeReport}
+          onClose={handleReportClose}
         />
       ) : null}
     </div>

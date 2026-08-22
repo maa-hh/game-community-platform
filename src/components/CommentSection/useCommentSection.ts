@@ -238,6 +238,21 @@ export function useCommentSection({
 
   const onReport = (targetType: 'comment' | 'reply', targetId: string) => {
     if (!requireLogin()) return;
+
+    const isMine =
+      targetType === 'comment'
+        ? comments.some(
+            (comment) =>
+              comment.id === targetId && comment.accountId === me?.accountId,
+          )
+        : comments.some((comment) =>
+            comment.replies.some(
+              (reply) =>
+                reply.id === targetId && reply.accountId === me?.accountId,
+            ),
+          );
+    if (isMine) return;
+
     openReport(targetType, targetId);
   };
 

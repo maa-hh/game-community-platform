@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import type { FC } from 'react';
-import { Form, Input, Modal, Select, message } from 'antd';
+import { App, Form, Input, Modal, Select } from 'antd';
 
 import { reportTargetApi } from '@/service/social';
 import { formatApiError } from '@/utils/apiError';
@@ -22,6 +22,24 @@ const TARGET_LABEL: Record<ReportModalProps['targetType'], string> = {
   danmaku: '弹幕',
 };
 
+const getDanmakuReportContainer = () => {
+  const fullscreenElement = document.fullscreenElement;
+  if (fullscreenElement instanceof HTMLElement) return fullscreenElement;
+
+  const player = document.querySelector<HTMLElement>('.video-player__dplayer');
+  if (!player) return document.body;
+  const rect = player.getBoundingClientRect();
+  const coversViewport =
+    Math.abs(rect.left) < 1 &&
+    Math.abs(rect.top) < 1 &&
+    Math.abs(rect.width - window.innerWidth) < 1 &&
+    Math.abs(rect.height - window.innerHeight) < 1;
+  return coversViewport ? player : document.body;
+};
+
+const getReportSelectPopupContainer = (triggerNode: HTMLElement) =>
+  triggerNode.closest<HTMLElement>('.ant-modal-root') ?? document.body;
+
 const ReportModal: FC<ReportModalProps> = ({
   open,
   targetType,
@@ -30,6 +48,7 @@ const ReportModal: FC<ReportModalProps> = ({
   onClose,
   onSuccess,
 }) => {
+  const { message } = App.useApp();
   const [form] = Form.useForm<{
     category: ReportCategoryValue;
     detail?: string;
@@ -71,7 +90,11 @@ const ReportModal: FC<ReportModalProps> = ({
       okText="提交举报"
       cancelText="取消"
       confirmLoading={submitting}
-      destroyOnClose
+      destroyOnHidden
+      getContainer={
+        targetType === 'danmaku' ? getDanmakuReportContainer : undefined
+      }
+      zIndex={targetType === 'danmaku' ? 100200 : undefined}
       onCancel={onClose}
       onOk={() => void handleSubmit()}
       className="report-modal"
@@ -84,6 +107,7 @@ const ReportModal: FC<ReportModalProps> = ({
         >
           <Select
             className="report-modal__category"
+            getPopupContainer={getReportSelectPopupContainer}
             options={REPORT_CATEGORIES.map((item) => ({
               value: item.value,
               label: item.label,

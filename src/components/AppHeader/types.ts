@@ -26,7 +26,7 @@ export interface HeaderActionsConfig {
   loginLabel: string;
 }
 
-export type UserMenuIconKey = 'profile' | 'shop' | 'logout';
+export type UserMenuIconKey = 'profile' | 'shop' | 'admin' | 'logout';
 
 export interface UserMenuActionItem {
   key: string;

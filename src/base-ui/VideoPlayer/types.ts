@@ -27,6 +27,10 @@ export interface VideoPlayerProps {
   className?: string;
   /** 叠加在视频画面上的业务层内容，例如弹幕轨道。 */
   overlay?: ReactNode;
+  /** 挂载到 DPlayer 底部控制区中的业务控件。 */
+  controlContent?: ReactNode;
+  /** 挂载到视频倍速按钮右侧的业务控件。 */
+  controlTrailingContent?: ReactNode;
   /** DPlayer 创建真实 video 元素后回调，便于同步播放时间轴。 */
   onVideoReady?: (video: HTMLVideoElement | null) => void;
   /** 关闭回调（浮动模式显示关闭按钮） */

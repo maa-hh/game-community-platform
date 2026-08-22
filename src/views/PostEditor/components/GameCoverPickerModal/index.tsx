@@ -33,6 +33,7 @@ export default function GameCoverPickerModal({
   const [loading, setLoading] = useState(false);
   const [candidates, setCandidates] = useState<IGameCoverOption[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
+  const [failedUrls, setFailedUrls] = useState<Set<string>>(new Set());
 
   const existingSet = useMemo(
     () => new Set(existingUrls.map((url) => url.trim())),
@@ -42,8 +43,11 @@ export default function GameCoverPickerModal({
   useEffect(() => {
     if (!open) {
       setSelected([]);
+      setFailedUrls(new Set());
       return;
     }
+
+    setFailedUrls(new Set());
 
     if (gameAppIds.length === 0) {
       setCandidates([]);
@@ -98,6 +102,19 @@ export default function GameCoverPickerModal({
     };
   }, [gameAppIds, gameOptions, open]);
 
+  const visibleCandidates = candidates.filter(
+    (item) => !failedUrls.has(item.url),
+  );
+
+  const handleImageError = (url: string) => {
+    setFailedUrls((prev) => {
+      const next = new Set(prev);
+      next.add(url);
+      return next;
+    });
+    setSelected((prev) => prev.filter((item) => item !== url));
+  };
+
   const toggleSelect = (url: string) => {
     if (existingSet.has(url)) return;
     setSelected((prev) => {
@@ -145,11 +162,11 @@ export default function GameCoverPickerModal({
         <div className="game-cover-picker-modal__loading">
           <Spin />
         </div>
-      ) : candidates.length === 0 ? (
+      ) : visibleCandidates.length === 0 ? (
         <Empty description="暂无可选封面，请先关联游戏" />
       ) : (
         <div className="game-cover-picker-modal__grid">
-          {candidates.map((item) => {
+          {visibleCandidates.map((item) => {
             const used = existingSet.has(item.url);
             const active = selected.includes(item.url);
             return (
@@ -162,7 +179,12 @@ export default function GameCoverPickerModal({
                 onClick={() => toggleSelect(item.url)}
                 disabled={used}
               >
-                <img src={item.url} alt={item.label} loading="lazy" />
+                <img
+                  src={item.url}
+                  alt={item.label}
+                  loading="lazy"
+                  onError={() => handleImageError(item.url)}
+                />
                 <span className="game-cover-picker-modal__label">
                   {item.gameName} · {item.label}
                 </span>

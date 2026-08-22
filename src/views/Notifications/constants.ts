@@ -35,7 +35,7 @@ export const NOTIFICATION_CATEGORY_LIST: NotificationCategoryConfig[] = [
   {
     key: 'comment',
     label: '评论与回复',
-    description: '帖子评论与回复互动',
+    description: '帖子评论、回复与弹幕互动',
     icon: CommentOutlined,
   },
 ];
