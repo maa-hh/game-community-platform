@@ -11,6 +11,10 @@ public final class SteamRedisConstants {
     public static final long GAME_DETAIL_TTL_SECONDS = 300L;
     public static final String GAME_BASIC_INFO_KEY_PREFIX = "steam:game:basic:";
     public static final long GAME_BASIC_INFO_TTL_SECONDS = 604800L;
+    /** Steam 商店不存在的 App 负缓存，避免启动预热反复请求失效 ID。 */
+    public static final String GAME_BASIC_INFO_UNAVAILABLE_KEY_PREFIX =
+            "steam:game:basic:unavailable:";
+    public static final long GAME_BASIC_INFO_UNAVAILABLE_TTL_SECONDS = 86400L;
     public static final String GAME_BASIC_INFO_LOCK_PREFIX = "steam:game:basic:lock:";
     public static final long GAME_BASIC_INFO_LOCK_SECONDS = 120L;
     public static final String GAME_CHART_KEY_PREFIX = "steam:game:chart:";

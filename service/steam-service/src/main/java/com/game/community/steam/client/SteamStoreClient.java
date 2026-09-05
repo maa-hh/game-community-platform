@@ -2,6 +2,7 @@ package com.game.community.steam.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.game.community.common.constant.ApiErrorCodes;
 import com.game.community.common.constant.steam.SteamApiConstants;
 import com.game.community.common.exception.BusinessException;
 import com.game.community.model.payload.steam.SteamAchievementDefinitionPayload;
@@ -140,7 +141,7 @@ public class SteamStoreClient {
             JsonNode app = objectMapper.readTree(restTemplate.getForObject(url, String.class))
                     .path(String.valueOf(appId));
             if (!app.path("success").asBoolean(false)) {
-                throw new BusinessException("Steam 商店未找到该游戏");
+                throw new BusinessException(ApiErrorCodes.NOT_FOUND, "Steam 商店未找到该游戏");
             }
             return app.path("data");
         } catch (BusinessException e) {
