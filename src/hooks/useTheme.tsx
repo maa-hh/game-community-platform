@@ -2,7 +2,7 @@ import React, {
   createContext,
   useCallback,
   useContext,
-  useEffect,
+  useLayoutEffect,
   useMemo,
   useState,
 } from 'react';
@@ -21,7 +21,7 @@ interface ThemeContextValue {
   isDark: boolean;
   setMode: (mode: ThemeMode) => void;
   toggleMode: () => void;
-  /** 路由级临时主题（如登录落地页），不写 localStorage；传 null 清除 */
+  /** 路由级临时主题（如官网首页），不写 localStorage；传 null 清除 */
   setRouteOverride: (mode: ThemeMode | null) => void;
   antdThemeConfig: ThemeConfig;
 }
@@ -66,8 +66,22 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setMode(next);
   }, [mode, setMode]);
 
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', mode);
+  // CSS variables power the layout while ConfigProvider updates antd tokens.
+  // Apply the DOM theme before the browser paints so the two surfaces cannot
+  // briefly render with different modes.
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    root.setAttribute('data-theme', mode);
+    root.setAttribute('data-theme-switching', 'true');
+
+    const frameId = window.requestAnimationFrame(() => {
+      root.removeAttribute('data-theme-switching');
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      root.removeAttribute('data-theme-switching');
+    };
   }, [mode]);
 
   const antdThemeConfig = useMemo<ThemeConfig>(

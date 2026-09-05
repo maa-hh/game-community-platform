@@ -3,15 +3,15 @@ import { createBrowserRouter, Navigate } from 'react-router-dom';
 
 import RootLayout from '@/layouts/Root';
 import MainLayout from '@/layouts/Main';
-import LoginLayout from '@/layouts/Login';
+import HomeLayout from '@/layouts/Home';
 import AuthGuard from '@/router/guards';
 import AdminGuard from '@/router/AdminGuard';
 
 // 同步引入首屏页面，保证首屏直出、无 loading 闪烁
 import Home from '@/views/Home';
+import Community from '@/views/Community';
 import Games from '@/views/Games';
 import Recommend from '@/views/Recommend';
-import Login from '@/views/Login';
 import Profile from '@/views/Profile';
 import Search from '@/views/Search';
 import PostEditor from '@/views/PostEditor';
@@ -30,18 +30,20 @@ const router = createBrowserRouter([
   {
     element: <RootLayout />,
     children: [
-      // 登录落地页：有顶栏，但无内容限宽盒，视频可全屏铺开
+      // 官网首页：有顶栏，但无内容限宽盒，视频可全屏铺开
       {
-        path: '/login',
-        element: <LoginLayout />,
-        children: [{ index: true, element: <Login /> }],
+        path: '/',
+        element: <HomeLayout />,
+        children: [{ index: true, element: <Home /> }],
       },
+      // 兼容历史登录入口；登录能力由官网首页的全局弹窗提供。
+      { path: '/login', element: <Navigate to="/" replace /> },
       {
         path: '/',
         element: <MainLayout />,
         children: [
-          // 游客可读：首页最新帖、帖子详情 index默认挂载子页面
-          { index: true, element: <Home /> },
+          // 游客可读：社区最新帖、帖子详情等站内页面
+          { path: 'community', element: <Community /> },
           {
             path: 'post/:id',
             element: <PostDetail />,

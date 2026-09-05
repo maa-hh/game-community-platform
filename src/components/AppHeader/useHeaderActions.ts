@@ -134,7 +134,7 @@ export function useHeaderActions() {
         label: item.label,
         onClick: async () => {
           await dispatch(logoutAction());
-          navigate('/login', { replace: true });
+          navigate('/', { replace: true });
         },
       };
     });

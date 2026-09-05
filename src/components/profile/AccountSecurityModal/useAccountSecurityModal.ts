@@ -68,7 +68,7 @@ export function useAccountSecurityModal(open: boolean, onClose: () => void) {
       setAuthTip(tip);
       dispatch(logout());
       onClose();
-      navigate('/login', { replace: true });
+      navigate('/', { replace: true });
       message.success(tip);
     },
     [dispatch, navigate, onClose],
@@ -226,7 +226,7 @@ export function useAccountSecurityModal(open: boolean, onClose: () => void) {
       setAuthTip('一周内登录将自动取消注销');
       dispatch(logout());
       onClose();
-      navigate('/login', { replace: true });
+      navigate('/', { replace: true });
       message.warning('已申请注销：一周内登录可自动取消注销');
     } catch (err) {
       message.error(formatApiError('注销失败', err));

@@ -4,30 +4,22 @@
   --page-sub-top-bar: 52px;
 
   box-sizing: border-box;
-  min-height: calc(100vh - var(--app-header-height));
-  padding-top: calc(var(--page-sub-top-bar) + 12px);
   padding-bottom: 32px;
   background: var(--color-bg-secondary);
 
   &__align-track {
     width: 100%;
-    max-width: var(--page-content-max-width);
-    margin: 0 auto;
-    padding: 0 var(--page-content-gutter);
+    // Profile 页面已经位于 MainLayout 的统一内容盒内，这里不能再次叠加
+    // max-width 和 gutter，否则顶部栏会比横幅/内容区窄一层。
+    max-width: none;
+    margin: 0;
+    padding: 0;
     box-sizing: border-box;
   }
 
-  &__top-dock {
-    position: fixed;
-    top: var(--app-header-height);
-    right: 0;
-    left: 0;
-    z-index: 90;
-    pointer-events: none;
-
-    .profile-page__align-track > * {
-      pointer-events: auto;
-    }
+  // 复用统一二级栏，但作为资料背景前的正常页面区块，不浮层覆盖横幅。
+  &__top-bar {
+    padding-bottom: 12px;
   }
 
   &__top-extra {
@@ -36,6 +28,7 @@
     flex-wrap: wrap;
     gap: 8px;
   }
+
 }
 
 @media (max-width: 640px) {
@@ -47,13 +40,17 @@
 .profile-hero {
   position: relative;
   overflow: hidden;
-  border-bottom: 1px solid var(--color-border);
+  // 与顶部栏、资料背景及下方内容共用 MainLayout 内容盒宽度。
+  margin: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
   background: var(--color-bg);
 
   &--decorated {
     min-height: 280px;
     background-color: #101418;
-    border-bottom-color: transparent;
+    border-color: transparent;
+    // 头像框本身带外扩装饰，不能被横幅容器裁切。
     overflow: visible;
   }
 
@@ -438,7 +435,9 @@
   overflow-anchor: none;
 
   &__feed-anchor {
-    scroll-margin-top: calc(var(--app-header-height) + var(--page-sub-top-bar) + 12px);
+    scroll-margin-top: calc(
+      var(--app-header-height) + 12px
+    );
   }
 
   &__other-empty {
@@ -478,6 +477,15 @@
 .profile-feed {
   margin-top: var(--card-stack-gap);
 
+  .feed-panel__empty {
+    box-sizing: border-box;
+    align-items: center;
+    padding: 24px 16px;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+  }
+
   &__item {
     display: block;
   }
@@ -496,6 +504,32 @@
 
     .profile-feed__item + .profile-feed__item {
       margin-top: 0;
+    }
+  }
+}
+
+.profile-feed-empty {
+  margin: 0;
+
+  &__content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+
+    strong {
+      color: var(--color-text);
+      font-size: var(--font-size-lg);
+      font-weight: 600;
+    }
+
+    span {
+      color: var(--color-text);
+      font-size: var(--font-size-md);
+    }
+
+    .ant-btn {
+      margin-top: 8px;
     }
   }
 }

@@ -29,7 +29,7 @@ export function useAuthModalContent() {
     (state) => state.auth,
   );
   const locationState = (location.state as ILoginLocationState | null) || null;
-  const redirectFromRef = useRef(locationState?.from || '/');
+  const redirectFromRef = useRef(locationState?.from || '/community');
   const lastAuthModeRef = useRef<'login' | 'register'>('login');
   const [authTip, setAuthTip] = useState('');
 
@@ -40,7 +40,7 @@ export function useAuthModalContent() {
       setAuthTip(tip);
       message.warning(tip);
     }
-    redirectFromRef.current = locationState?.from || '/';
+    redirectFromRef.current = locationState?.from || '/community';
   }, [open, locationState?.from, locationState?.tip]);
 
   useEffect(() => {
@@ -48,8 +48,7 @@ export function useAuthModalContent() {
 
     dispatch(setSuccessRedirecting(false));
     closeAuth();
-    const redirectTo = redirectFromRef.current;
-    navigate(redirectTo === '/login' ? '/' : redirectTo, { replace: true });
+    navigate(redirectFromRef.current, { replace: true });
     message.success(
       lastAuthModeRef.current === 'register' ? '注册成功' : '登录成功',
       3,

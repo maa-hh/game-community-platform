@@ -12,6 +12,8 @@ export interface ProfileUserLinkProps {
   avatar?: string;
   avatarFrameUrl?: string;
   size?: number;
+  /** 在顶栏等紧凑区域不让头像框扩大布局占位。 */
+  compactFrame?: boolean;
   showAvatar?: boolean;
   showNickname?: boolean;
   /** 昵称下方的辅助信息（如时间），不触发昵称 hover */
@@ -79,6 +81,7 @@ const ProfileUserLink: FC<ProfileUserLinkProps> = ({
   avatar,
   avatarFrameUrl,
   size = 32,
+  compactFrame = false,
   showAvatar = true,
   showNickname = true,
   subline,
@@ -100,6 +103,7 @@ const ProfileUserLink: FC<ProfileUserLinkProps> = ({
       name={nickname}
       src={avatar}
       size={size}
+      compactFrame={compactFrame}
       frameUrl={resolvedFrameUrl}
       resolveFrame={resolvedFrameUrl === undefined}
       className="profile-user-link__avatar"

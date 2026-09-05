@@ -54,7 +54,7 @@ const AccountSecurityModal: FC<IProps> = ({ open, onClose }) => {
       }}
       footer={null}
       destroyOnHidden
-      maskClosable={!submitting}
+      mask={{ closable: !submitting }}
       keyboard={!submitting}
       width={440}
       className="account-security-modal"

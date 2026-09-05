@@ -17,9 +17,26 @@
   }
 
   &__list {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: var(--card-stack-gap);
+  }
+
+  &__refreshing {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    pointer-events: none;
+    background: color-mix(in srgb, var(--surface-card) 85%, transparent);
+    border-radius: 50%;
+    box-shadow: var(--shadow-sm);
   }
 
   &--masonry {
@@ -42,5 +59,4 @@
     justify-content: center;
     padding: 48px 16px;
   }
-
 }

@@ -9,7 +9,7 @@
 
 - **定位**：游戏社区（偏「小黑盒」式信息站），不是 SaaS 仪表盘。
 - **主色**：橙色 `#ff6600`（强调、激活、CTA），不要改成紫系/靛蓝渐变主题。
-- **默认主题**：浅色为主；深色模式可用，登录落地页可临时强制深色。
+- **默认主题**：浅色为主；深色模式可用，官网首页可临时强制深色。
 - **避免**：默认 Inter/系统堆、大面积发光、全圆角 pill 堆砌、紫白渐变、奶油纸质报纸风。
 
 ---
@@ -18,12 +18,12 @@
 
 ### 2.1 布局分工
 
-| 布局 | 路径 | 用途 |
-|------|------|------|
-| `RootLayout` | `layouts/Root` | 挂全局 `AuthModal`（必须在 Router 内） |
-| `MainLayout` | `layouts/Main` | 站内页：顶栏 + **统一内容盒** |
-| `LoginLayout` | `layouts/Login` | 登录落地：顶栏 + **无限宽盒**，方便全屏视频 |
-| `AuthLayout` | `layouts/Auth` | 旧分栏认证壳（如仍用） |
+| 布局         | 路径           | 用途                                        |
+| ------------ | -------------- | ------------------------------------------- |
+| `RootLayout` | `layouts/Root` | 挂全局 `AuthModal`（必须在 Router 内）      |
+| `MainLayout` | `layouts/Main` | 站内页：顶栏 + **统一内容盒**               |
+| `HomeLayout` | `layouts/Home` | 官网首页：顶栏 + **无限宽盒**，方便全屏视频 |
+| `AuthLayout` | `layouts/Auth` | 旧分栏认证壳（如仍用）                      |
 
 ### 2.2 站内内容盒（核心）
 
@@ -35,9 +35,9 @@
 - **禁止**：站内各页面再各自写一套 `max-width: 960/1080`；宽度只在布局层控制。
 - **页面背景**：`MainLayout` / 内容区空背景用 `--color-bg-secondary`，与盒内无内容区一致，避免两侧突兀白边。
 
-### 2.3 登录落地页例外
+### 2.3 官网首页例外
 
-- 路由：`/login` → `LoginLayout` → `Login`
+- 路由：`/` → `HomeLayout` → `Home`
 - **保留顶栏**，**不套** `main-layout__container`
 - 背景视频全幅铺开（`object-fit: cover`），内容叠在视频上
 - `min-height: calc(100vh - 64px)`（扣除顶栏）
@@ -48,14 +48,14 @@
 
 浅色（默认）：
 
-| Token | 值 | 用途 |
-|-------|-----|------|
-| `--color-primary` | `#ff6600` | 主色、激活、CTA |
-| `--color-text` | `#14191e` | 主文案 |
-| `--color-text-secondary` | `#8c9196` | 次要文案、铅笔旁说明 |
-| `--color-bg` | `#ffffff` | 卡片/资料白底 |
-| `--color-bg-secondary` | `#f3f4f5` | 页面底、空区、搜索框底 |
-| `--color-border` | `#e8e8e8` | 分割线 |
+| Token                    | 值        | 用途                   |
+| ------------------------ | --------- | ---------------------- |
+| `--color-primary`        | `#ff6600` | 主色、激活、CTA        |
+| `--color-text`           | `#14191e` | 主文案                 |
+| `--color-text-secondary` | `#8c9196` | 次要文案、铅笔旁说明   |
+| `--color-bg`             | `#ffffff` | 卡片/资料白底          |
+| `--color-bg-secondary`   | `#f3f4f5` | 页面底、空区、搜索框底 |
+| `--color-border`         | `#e8e8e8` | 分割线                 |
 
 深色：见 `common.less` 的 `[data-theme='dark']`，主色仍为橙。
 
@@ -85,14 +85,14 @@
 
 凡是**列表/信息流里的帖子卡片**（首页 Feed、个人页帖子、浏览历史、赞过、收藏、搜索「帖子」、推荐流等），**必须**用 `base-ui/ContentCard` 展示，**禁止**在页面里手搓另一套标题/正文/图/标签/赞评布局。
 
-| 约定 | 说明 |
-|------|------|
-| 组件 | `src/base-ui/ContentCard/` |
-| 视觉 | 白底、浅边框、`border-radius: 12px`，轻 hover 阴影 |
-| 结构 | 作者 → 标题 → 正文（最多三行省略）→ 媒体区 → 分区标签 + 评论/赞 |
-| 类型 | `postType`: `image_text`（**封面图 + 纯文字正文**，小红书式）/ `article`（正文可插图）/ `video`（封面 + 播放）/ `repost`（转发） |
-| 多图 | 列表：单行限高 + 等比；放不下末张标「共 N 张」。详情图文：封面横滑在上，正文在下且无插图 |
-| 视频点播 | 列表只展示封面+播放标识；点击进详情再播；详情为 **16:9** 正常流播放（作者头像昵称在视频上方），不做 sticky 小窗 |
+| 约定     | 说明                                                                                                                             |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| 组件     | `src/base-ui/ContentCard/`                                                                                                       |
+| 视觉     | 白底、浅边框、`border-radius: 12px`，轻 hover 阴影                                                                               |
+| 结构     | 作者 → 标题 → 正文（最多三行省略）→ 媒体区 → 分区标签 + 评论/赞                                                                  |
+| 类型     | `postType`: `image_text`（**封面图 + 纯文字正文**，小红书式）/ `article`（正文可插图）/ `video`（封面 + 播放）/ `repost`（转发） |
+| 多图     | 列表：单行限高 + 等比；放不下末张标「共 N 张」。详情图文：封面横滑在上，正文在下且无插图                                         |
+| 视频点播 | 列表只展示封面+播放标识；点击进详情再播；详情为 **16:9** 正常流播放（作者头像昵称在视频上方），不做 sticky 小窗                  |
 
 调用方按类型填好 `images` / `coverUrl` / `postType`，组件只负责统一展示。详细 props 与示例见 `src/base-ui/ContentCard/README.md`。
 
@@ -112,12 +112,12 @@
 
 ### 6.2 可编辑命中区
 
-| 区域 | 行为 |
-|------|------|
-| 头像 | 悬停蒙层 +「点击修改头像」（可带相机图标） |
+| 区域     | 行为                                                        |
+| -------- | ----------------------------------------------------------- |
+| 头像     | 悬停蒙层 +「点击修改头像」（可带相机图标）                  |
 | 昵称文字 | 仅文字区域蒙层 +「点击修改昵称」；旁有铅笔+「修改昵称」文案 |
 | 签名文字 | 仅文字区域蒙层 +「点击修改个性签名」；旁有铅笔+「修改签名」 |
-| 铅笔按钮 | **不要**盖蒙层 |
+| 铅笔按钮 | **不要**盖蒙层                                              |
 
 ### 6.3 蒙层风格（水印感）
 
@@ -164,7 +164,7 @@
 
 1. 是否读过本文与 `common.less` Token？
 2. 站内页是否依赖 `MainLayout` 内容盒，而不是页面私自 `max-width`？
-3. 登录页是否走 `LoginLayout`（有顶栏、无限宽）？
+3. 官网首页是否走 `HomeLayout`（有顶栏、无限宽）？
 4. 主色是否仍为橙 `#ff6600`？
 5. 空背景是否用 `--color-bg-secondary`？
 6. 可编辑区蒙层是否「淡底 + 可读字」且不盖铅笔？
@@ -176,16 +176,16 @@
 
 ## 11. 相关文件
 
-| 主题 | 路径 |
-|------|------|
-| Token | `src/assets/css/common.less` |
-| 主布局 | `src/layouts/Main/` |
-| 登录布局 | `src/layouts/Login/` |
-| 顶栏 | `src/components/AppHeader/` |
-| 内容卡 | `src/base-ui/ContentCard/`（帖子列表强制；见同目录 `README.md`） |
+| 主题         | 路径                                                                               |
+| ------------ | ---------------------------------------------------------------------------------- |
+| Token        | `src/assets/css/common.less`                                                       |
+| 主布局       | `src/layouts/Main/`                                                                |
+| 官网首页布局 | `src/layouts/Home/`                                                                |
+| 顶栏         | `src/components/AppHeader/`                                                        |
+| 内容卡       | `src/base-ui/ContentCard/`（帖子列表强制；见同目录 `README.md`）                   |
 | 帖子详情设计 | `docs/post-detail-design.md`（完整方案在后端 `docs/post-detail-social-design.md`） |
-| 视频播放器 | `src/base-ui/VideoPlayer/`（DPlayer，16:9，主题色 `#ff6600`） |
-| 个人主页 | `src/views/Profile/` |
-| 搜索页 | `src/views/Search/` |
-| 目录规范 | `PROJECT_STRUCTURE.md` |
-| Agent 入口 | `AGENTS.md` |
+| 视频播放器   | `src/base-ui/VideoPlayer/`（DPlayer，16:9，主题色 `#ff6600`）                      |
+| 个人主页     | `src/views/Profile/`                                                               |
+| 搜索页       | `src/views/Search/`                                                                |
+| 目录规范     | `PROJECT_STRUCTURE.md`                                                             |
+| Agent 入口   | `AGENTS.md`                                                                        |

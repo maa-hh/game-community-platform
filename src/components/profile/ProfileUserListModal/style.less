@@ -6,8 +6,16 @@
   }
 
   &__item {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 12px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
     border-radius: 8px;
-    padding-inline: 8px !important;
+    padding: 12px 8px;
     transition: background 0.2s;
 
     &.is-clickable {
@@ -16,6 +24,20 @@
       &:hover {
         background: var(--header-link-hover-bg);
       }
+    }
+  }
+
+  &__list {
+    display: grid;
+  }
+
+  &__copy {
+    display: grid;
+    min-width: 0;
+    gap: 4px;
+
+    span {
+      color: var(--color-text-secondary);
     }
   }
 

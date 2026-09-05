@@ -47,7 +47,7 @@ function AuthModal() {
         onCancel={handleClose}
         footer={null}
         centered
-        destroyOnClose
+        destroyOnHidden
         width={AUTH_MODAL_WIDTH}
         className="auth-modal"
         rootClassName="auth-modal-root"

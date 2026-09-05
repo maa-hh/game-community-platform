@@ -11,7 +11,7 @@ alwaysApply: false
 ## 必须遵守
 
 1. **站内宽度**：只用 `MainLayout` 的 `main-layout__container`（`--page-content-max-width` / `--page-content-gutter`），页面内禁止再套一套 max-width。
-2. **登录落地**：`/login` 用 `LoginLayout`（有顶栏、**不**套内容盒），视频全幅；不要把登录塞进 Main 限宽盒。
+2. **官网首页**：`/` 用 `HomeLayout`（有顶栏、**不**套内容盒），视频全幅；不要把官网首页塞进 Main 限宽盒。
 3. **背景**：站内空区与盒外空白用 `--color-bg-secondary`，与盒内空区一致。
 4. **主色**：`#ff6600`，避免紫系/默认 AI 审美套装。
 5. **Token**：颜色/间距/圆角优先 `var(--*)`（见 `src/assets/css/common.less`）。

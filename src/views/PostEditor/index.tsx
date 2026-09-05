@@ -888,11 +888,12 @@ const PostEditor: FC = () => {
             mode="multiple"
             allowClear={!lockedGameAppId}
             placeholder="搜索游戏名称并添加（可选）"
-            showSearch
-            filterOption={false}
             open={gameSelectOpen}
             onOpenChange={setGameSelectOpen}
-            onSearch={handleGameSearch}
+            showSearch={{
+              filterOption: false,
+              onSearch: handleGameSearch,
+            }}
             onChange={handleGameChange}
             loading={gameSearchLoading}
             maxCount={5}
@@ -971,7 +972,7 @@ const PostEditor: FC = () => {
 
         {postType === POST_TYPE.VIDEO && (
           <Form.Item label="视频" required>
-            <Space direction="vertical" style={{ width: '100%' }}>
+            <Space orientation="vertical" style={{ width: '100%' }}>
               <Upload
                 accept="video/mp4,video/webm,.mp4,.webm"
                 maxCount={1}

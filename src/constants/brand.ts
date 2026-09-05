@@ -1,4 +1,4 @@
-/** 登录落地页 / Hero 宣传资源（可后续换成自有 CDN） */
+/** 官网首页 / Hero 宣传资源（可后续换成自有 CDN） */
 export const HERO_VIDEO_SRC =
   process.env.REACT_APP_HERO_VIDEO ||
   'https://cdn.max-c.com/static/video/xiaoheihe_video_s.mp4';

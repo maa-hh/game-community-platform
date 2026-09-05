@@ -105,7 +105,8 @@ const VideoPlayer: FC<VideoPlayerProps> = ({
 
     const dp = new DPlayer({
       container: containerRef.current,
-      autoplay,
+      // 先创建再设置 muted，避免 DPlayer 在构造阶段抢先触发未静音自动播放。
+      autoplay: false,
       loop: false,
       theme: '#ff6600',
       lang: 'zh-cn',
@@ -122,6 +123,20 @@ const VideoPlayer: FC<VideoPlayerProps> = ({
     });
 
     playerRef.current = dp;
+    const setPausedState = (paused: boolean) => {
+      containerRef.current?.classList.toggle(
+        'video-player__dplayer--paused',
+        paused,
+      );
+    };
+
+    if (!autoplay) {
+      setPausedState(true);
+    }
+    const handlePlay = () => setPausedState(false);
+    const handlePause = () => setPausedState(true);
+    dp.video.addEventListener('play', handlePlay);
+    dp.video.addEventListener('pause', handlePause);
     const controller = containerRef.current.querySelector<HTMLElement>(
       '.dplayer-controller',
     );
@@ -194,9 +209,15 @@ const VideoPlayer: FC<VideoPlayerProps> = ({
     });
     dp.on('error', () => onErrorRef.current?.());
 
+    if (autoplay) {
+      dp.play();
+    }
+
     return () => {
       setControlHost(null);
       setOverlayHost(null);
+      dp.video.removeEventListener('play', handlePlay);
+      dp.video.removeEventListener('pause', handlePause);
       resizeObserver?.disconnect();
       host.remove();
       nextOverlayHost.remove();

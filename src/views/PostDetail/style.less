@@ -1,7 +1,8 @@
 @import (reference) '@/assets/css/common.less';
 
 .post-detail {
-  --post-detail-top-bar: 52px;
+  // 34px 头像配完整挂件时的外圈约 51px；保留上下空间避免裁切。
+  --post-detail-top-bar: 68px;
   --post-detail-bottom-bar: 72px;
 
   display: flex;
@@ -92,6 +93,7 @@
       }
 
       &__empty {
+        flex: 1;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -151,6 +153,6 @@
 @media (max-width: 640px) {
   .post-detail {
     --post-detail-bottom-bar: 64px;
-    --post-detail-top-bar: 48px;
+    --post-detail-top-bar: 68px;
   }
 }

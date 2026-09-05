@@ -380,7 +380,7 @@ function Games() {
                 label: item.term,
               }))}
             open={gameSearchPopupOpen && gameSearchText.trim().length > 0}
-            filterOption={false}
+            showSearch={{ filterOption: false }}
             notFoundContent={
               gameSearchSuggestLoading
                 ? '正在搜索游戏…'
@@ -432,7 +432,7 @@ function Games() {
         onOrderChange={changeDiscoverOrder}
         onFiltersChange={changeDiscoverFilters}
       />
-      {displayDiscoverLoading ? (
+      {displayDiscoverLoading && displayDiscoverItems.length === 0 ? (
         <div className="games-page__loading">
           <Spin />
         </div>
@@ -443,7 +443,12 @@ function Games() {
           }
         />
       ) : (
-        <>
+        <div className="games-page__discover-results">
+          {displayDiscoverLoading ? (
+            <span className="games-page__discover-refreshing">
+              <Spin size="small" /> 正在更新
+            </span>
+          ) : null}
           <GameMasonryGrid>
             {displayDiscoverItems.map((game) => (
               <GameCard
@@ -467,7 +472,7 @@ function Games() {
               showSizeChanger={false}
             />
           ) : null}
-        </>
+        </div>
       )}
     </>
   );

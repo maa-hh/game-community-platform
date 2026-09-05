@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { FC } from 'react';
-import { Button, Input, List, Rate, Space, Typography, message } from 'antd';
+import { Button, Input, Rate, Space, Typography, message } from 'antd';
 import {
   LikeFilled,
   LikeOutlined,
@@ -136,17 +136,17 @@ const GameReviewItem: FC<GameReviewItemProps> = ({
   };
 
   return (
-    <List.Item className="game-detail__review-item">
-      <List.Item.Meta
-        avatar={
+    <article className="game-detail__review-item">
+      <div className="game-detail__review-meta">
+        <div className="game-detail__review-avatar">
           <ProfileUserLink
             accountId={review.accountId}
             nickname={review.username || `玩家${review.accountId}`}
             avatar={review.avatar}
             showNickname={false}
           />
-        }
-        title={
+        </div>
+        <div className="game-detail__review-main">
           <div className="game-detail__review-head">
             <ProfileUserLink
               accountId={review.accountId}
@@ -156,105 +156,97 @@ const GameReviewItem: FC<GameReviewItemProps> = ({
             />
             <Rate count={10} disabled value={review.score} />
           </div>
-        }
-        description={
-          <>
-            {review.content ? (
-              <Paragraph className="game-detail__review-content">
-                {review.content}
-              </Paragraph>
-            ) : null}
-            <Text type="secondary" className="game-detail__review-time">
-              {formatDateTime(review.createTime)}
-            </Text>
-            <Space className="game-detail__review-actions" size="small">
-              <Button
-                type="text"
-                size="small"
-                icon={liked ? <LikeFilled /> : <LikeOutlined />}
-                className={liked ? 'is-liked' : undefined}
-                onClick={() => void toggleLike()}
-              >
-                {likeCount > 0 ? likeCount : '点赞'}
-              </Button>
-              <Button
-                type="text"
-                size="small"
-                icon={<MessageOutlined />}
-                onClick={() => void loadReplies()}
-              >
-                {replyCount > 0 ? `${replyCount} 条回复` : '回复'}
-              </Button>
-            </Space>
-            {replyOpen ? (
-              <div className="game-detail__review-replies">
-                <List
-                  size="small"
-                  loading={repliesLoading}
-                  dataSource={replies}
-                  locale={{ emptyText: '暂无回复' }}
-                  renderItem={(reply) => (
-                    <List.Item
-                      actions={[
-                        <Button
-                          key="like"
-                          type="text"
-                          size="small"
-                          icon={reply.liked ? <LikeFilled /> : <LikeOutlined />}
-                          className={reply.liked ? 'is-liked' : undefined}
-                          onClick={() => void toggleReplyLike(reply)}
-                        >
-                          {reply.likeCount ?? 0}
-                        </Button>,
-                      ]}
+          {review.content ? (
+            <Paragraph className="game-detail__review-content">
+              {review.content}
+            </Paragraph>
+          ) : null}
+          <Text type="secondary" className="game-detail__review-time">
+            {formatDateTime(review.createTime)}
+          </Text>
+          <Space className="game-detail__review-actions" size="small">
+            <Button
+              type="text"
+              size="small"
+              icon={liked ? <LikeFilled /> : <LikeOutlined />}
+              className={liked ? 'is-liked' : undefined}
+              onClick={() => void toggleLike()}
+            >
+              {likeCount > 0 ? likeCount : '点赞'}
+            </Button>
+            <Button
+              type="text"
+              size="small"
+              icon={<MessageOutlined />}
+              onClick={() => void loadReplies()}
+            >
+              {replyCount > 0 ? `${replyCount} 条回复` : '回复'}
+            </Button>
+          </Space>
+          {replyOpen ? (
+            <div className="game-detail__review-replies">
+              {repliesLoading ? (
+                <div className="game-detail__review-reply-loading">
+                  <span>加载回复中…</span>
+                </div>
+              ) : replies.length > 0 ? (
+                <div className="game-detail__review-reply-list">
+                  {replies.map((reply) => (
+                    <div
+                      key={reply.replyId}
+                      className="game-detail__review-reply-item"
                     >
-                      <List.Item.Meta
-                        avatar={
-                          <ProfileUserLink
-                            accountId={reply.accountId}
-                            nickname={reply.username || '玩家'}
-                            avatar={reply.avatar}
-                            showNickname={false}
-                          />
-                        }
-                        title={reply.username || '玩家'}
-                        description={
-                          <>
-                            <span>{reply.content}</span>
-                            <br />
-                            <Text type="secondary">
-                              {formatDateTime(reply.createTime)}
-                            </Text>
-                          </>
-                        }
+                      <ProfileUserLink
+                        accountId={reply.accountId}
+                        nickname={reply.username || '玩家'}
+                        avatar={reply.avatar}
+                        showNickname={false}
                       />
-                    </List.Item>
-                  )}
+                      <div className="game-detail__review-reply-content">
+                        <strong>{reply.username || '玩家'}</strong>
+                        <span>{reply.content}</span>
+                        <Text type="secondary">
+                          {formatDateTime(reply.createTime)}
+                        </Text>
+                      </div>
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={reply.liked ? <LikeFilled /> : <LikeOutlined />}
+                        className={reply.liked ? 'is-liked' : undefined}
+                        onClick={() => void toggleReplyLike(reply)}
+                      >
+                        {reply.likeCount ?? 0}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="game-detail__review-reply-empty">暂无回复</div>
+              )}
+              <Space.Compact className="game-detail__review-reply-editor">
+                <TextArea
+                  autoSize={{ minRows: 1, maxRows: 4 }}
+                  value={replyContent}
+                  onChange={(event) => setReplyContent(event.target.value)}
+                  placeholder="写下回复…"
+                  maxLength={1000}
+                  disabled={replySubmitting}
                 />
-                <Space.Compact className="game-detail__review-reply-editor">
-                  <TextArea
-                    autoSize={{ minRows: 1, maxRows: 4 }}
-                    value={replyContent}
-                    onChange={(event) => setReplyContent(event.target.value)}
-                    placeholder="写下回复…"
-                    maxLength={1000}
-                    disabled={replySubmitting}
-                  />
-                  <Button
-                    type="primary"
-                    icon={<SendOutlined />}
-                    loading={replySubmitting}
-                    onClick={() => void submitReply()}
-                  >
-                    发送
-                  </Button>
-                </Space.Compact>
-              </div>
-            ) : null}
-          </>
-        }
-      />
-    </List.Item>
+                <Button
+                  type="primary"
+                  icon={<SendOutlined />}
+                  loading={replySubmitting}
+                  onClick={() => void submitReply()}
+                >
+                  发送
+                </Button>
+              </Space.Compact>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </article>
   );
 };
 

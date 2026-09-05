@@ -98,7 +98,7 @@ function GameSearchModal({ open, onClose, onAdded }: IGameSearchModalProps) {
       onCancel={onClose}
       footer={null}
       width={720}
-      destroyOnClose
+      destroyOnHidden
     >
       <Input.Search
         placeholder="输入游戏名搜索"

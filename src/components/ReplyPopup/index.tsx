@@ -28,7 +28,7 @@ const ReplyPopup: FC<IProps> = ({
       footer={null}
       centered
       width={420}
-      destroyOnClose
+      destroyOnHidden
       className="reply-popup"
     >
       <Input

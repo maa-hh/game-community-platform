@@ -1,5 +1,7 @@
-import React, { memo, useMemo } from 'react';
+import React, { memo, useCallback, useMemo } from 'react';
 import type { FC } from 'react';
+import { Masonry } from 'masonic';
+import type { RenderComponentProps } from 'masonic';
 
 import ContentCard from '@/base-ui/ContentCard';
 import FeedMasonryCard from '@/base-ui/FeedMasonryCard';
@@ -14,6 +16,11 @@ import { sortHotRankItems } from '@/utils/sortHotRankItems';
 import type { IPostFeedListProps } from './types';
 
 import './style.less';
+
+// MainLayout 会在进入详情时保留并隐藏列表页面。此处必须覆盖已加载卡片的
+// 整个高度，不能让虚拟窗口在详情页滚到顶部后卸载原位置的卡片；否则回退时
+// 路由恢复滚动位置与瀑布流补渲染会相隔一帧，形成可见跳动。
+const KEEP_ALIVE_MASONRY_OVERSCAN = 100;
 
 const PostFeedList: FC<IPostFeedListProps> = ({
   items,
@@ -45,31 +52,48 @@ const PostFeedList: FC<IPostFeedListProps> = ({
     return items;
   }, [items, isHotRank, isMasonry, showRank]);
 
-  const renderMasonryCard = (item: (typeof items)[number]) => (
-    <FeedMasonryCard
-      key={item.id}
-      item={item}
-      rank={showRank ? item.rank : undefined}
-      hotScore={showRank ? item.hotScore : undefined}
-      onClick={() => onItemClick(item.id)}
-      onLikeClick={
-        onLikeClick
-          ? (event) => {
-              event.stopPropagation();
-              void onLikeClick(item);
-            }
-          : undefined
-      }
-      onFavoriteClick={
-        onFavoriteClick
-          ? (event) => {
-              event.stopPropagation();
-              void onFavoriteClick(item);
-            }
-          : undefined
-      }
-    />
+  const renderMasonryItem = useCallback(
+    ({ data: item }: RenderComponentProps<(typeof items)[number]>) => (
+      <FeedMasonryCard
+        item={item}
+        rank={showRank ? item.rank : undefined}
+        hotScore={showRank ? item.hotScore : undefined}
+        onClick={() => onItemClick(item.id)}
+        onLikeClick={
+          onLikeClick
+            ? (event) => {
+                event.stopPropagation();
+                void onLikeClick(item);
+              }
+            : undefined
+        }
+        onFavoriteClick={
+          onFavoriteClick
+            ? (event) => {
+                event.stopPropagation();
+                void onFavoriteClick(item);
+              }
+            : undefined
+        }
+      />
+    ),
+    [onFavoriteClick, onItemClick, onLikeClick, showRank],
   );
+
+  const masonry =
+    isMasonry && listItems.length > 0 ? (
+      <Masonry
+        items={listItems}
+        render={renderMasonryItem}
+        itemKey={(item) => item.id}
+        columnWidth={280}
+        columnGutter={12}
+        rowGutter={12}
+        itemHeightEstimate={360}
+        overscanBy={KEEP_ALIVE_MASONRY_OVERSCAN}
+        className="post-feed-list__masonry"
+      />
+    ) : undefined;
 
   return (
     <FeedPanel
@@ -79,6 +103,7 @@ const PostFeedList: FC<IPostFeedListProps> = ({
       loading={loading}
       onRefresh={onRefresh}
       listLayout={isMasonry ? 'masonry' : 'stack'}
+      masonry={masonry}
       infinite={
         infinite
           ? { ...infinite, itemCount: infinite.itemCount ?? items.length }
@@ -109,7 +134,7 @@ const PostFeedList: FC<IPostFeedListProps> = ({
             />
           ))
         : isMasonry
-          ? listItems.map((item) => renderMasonryCard(item))
+          ? null
           : listItems.map((item) => (
               <ContentCard
                 key={item.id}

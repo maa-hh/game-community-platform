@@ -19,7 +19,7 @@ const PageLoading: FC<IProps> = ({ tip, className, full }) => {
         className ? ` ${className}` : ''
       }`}
     >
-      <Spin tip={tip} />
+      <Spin description={tip} />
     </div>
   );
 };

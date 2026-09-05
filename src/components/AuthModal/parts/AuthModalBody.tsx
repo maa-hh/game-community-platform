@@ -39,10 +39,9 @@ const AuthModalBody: FC<AuthModalBodyProps> = ({
     {authTip && (
       <Alert
         type="warning"
-        message={authTip}
+        title={authTip}
         showIcon
-        closable
-        onClose={onClearAuthTip}
+        closable={{ onClose: onClearAuthTip }}
         className="auth-modal__alert"
       />
     )}
@@ -50,10 +49,9 @@ const AuthModalBody: FC<AuthModalBodyProps> = ({
     {error && (
       <Alert
         type="error"
-        message={error}
+        title={error}
         showIcon
-        closable
-        onClose={onClearError}
+        closable={{ onClose: onClearError }}
         className="auth-modal__alert"
       />
     )}

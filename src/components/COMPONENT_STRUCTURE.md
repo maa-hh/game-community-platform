@@ -20,13 +20,13 @@ ComponentName/
 
 ### 各文件职责
 
-| 文件 | 写什么 | 不写什么 |
-|------|--------|----------|
-| `index.tsx` | `memo` 导出、`parts` 拼装、传 props | 长 `useEffect`、大段 JSX、静态配置表 |
-| `types.ts` | `IProps`、`XxxConfig`、type guard | 运行时代码 |
-| `config.ts` | 文案、路由、Segmented options、菜单 schema | `useState`、API |
-| `useXxx.ts` | 本组件专用状态与回调；可调 store/service | JSX |
-| `parts/*.tsx` | 单块 UI，接收 props | 跨 part 共享状态（放 hook） |
+| 文件          | 写什么                                     | 不写什么                             |
+| ------------- | ------------------------------------------ | ------------------------------------ |
+| `index.tsx`   | `memo` 导出、`parts` 拼装、传 props        | 长 `useEffect`、大段 JSX、静态配置表 |
+| `types.ts`    | `IProps`、`XxxConfig`、type guard          | 运行时代码                           |
+| `config.ts`   | 文案、路由、Segmented options、菜单 schema | `useState`、API                      |
+| `useXxx.ts`   | 本组件专用状态与回调；可调 store/service   | JSX                                  |
+| `parts/*.tsx` | 单块 UI，接收 props                        | 跨 part 共享状态（放 hook）          |
 
 ### 引用约定
 
@@ -38,11 +38,11 @@ ComponentName/
 
 ## 二、分级要求（避免过度拆分）
 
-| 级别 | 条件 | 最低结构 |
-|------|------|----------|
+| 级别       | 条件                                                  | 最低结构                                                       |
+| ---------- | ----------------------------------------------------- | -------------------------------------------------------------- |
 | **L 复杂** | `index.tsx` > **80 行**，或多块独立 UI / 多组 handler | `index` + `types` + `useXxx` + `parts/`；有静态表则加 `config` |
-| **M 中等** | 40–80 行，或有独立逻辑块 | `index` + `types`；逻辑抽 `useXxx` |
-| **S 简单** | < 40 行、单一 DOM 结构 | `index` + `types`（`IProps` 可单独文件） |
+| **M 中等** | 40–80 行，或有独立逻辑块                              | `index` + `types`；逻辑抽 `useXxx`                             |
+| **S 简单** | < 40 行、单一 DOM 结构                                | `index` + `types`（`IProps` 可单独文件）                       |
 
 **禁止**：为 S 级强行拆 `parts/`；**禁止**：L 级把逻辑全堆在 `index.tsx`。
 
@@ -68,10 +68,10 @@ AppHeader/
 
 ## 四、子目录约定
 
-| 目录 | 说明 |
-|------|------|
-| `auth/` | 登录注册表单；共享 `auth/constants.ts` |
-| `profile/` | 个人页相关弹窗与 Feed |
+| 目录       | 说明                                   |
+| ---------- | -------------------------------------- |
+| `auth/`    | 登录注册表单；共享 `auth/constants.ts` |
+| `profile/` | 个人页相关弹窗与 Feed                  |
 
 子目录内**每个组件文件夹**仍遵守本节结构，共享常量放父级 `constants.ts`（等同 `config`）。
 
@@ -79,11 +79,11 @@ AppHeader/
 
 ## 五、与页面（views）的边界
 
-| 场景 | 放哪 |
-|------|------|
-| ≥2 页复用 | `components/` |
-| 仅单页使用 | `views/Xxx/components/`（结构同本规范） |
-| 无业务原子 UI | `base-ui/` |
+| 场景          | 放哪                                    |
+| ------------- | --------------------------------------- |
+| ≥2 页复用     | `components/`                           |
+| 仅单页使用    | `views/Xxx/components/`（结构同本规范） |
+| 无业务原子 UI | `base-ui/`                              |
 
 ---
 
@@ -101,24 +101,24 @@ AppHeader/
 
 ## 七、组件清单与结构状态
 
-| 组件 | 级别 | 结构 |
-|------|------|------|
-| AppHeader | L | ✅ 标准模板 |
-| AuthModal | L | index + types + config + useAuthModalContent + parts |
-| CommentSection | L | index + types + useCommentSection + parts |
-| ShareSheet | L | index + types + config + useShareSheet + parts |
-| profile/AccountSecurityModal | L | index + types + config + useAccountSecurityModal + parts |
-| profile/ProfileFeed | L | index + types + useProfileFeed + parts |
-| auth/RegisterForm | M | index + types + useRegisterForm + parts |
-| auth/ResetPasswordForm | M | index + types + useResetPasswordForm + parts |
-| ArticleProgressBanner | M | index + config + useArticleProgressPoll |
-| FeedPanel | M | index + types + useFeedPanel + parts |
-| PostBottomBar | M | index + types + usePostBottomBar + parts |
-| CommentItem | M | index + types + config + parts |
-| ShareCard | M | index + types + useShareCard + parts |
-| profile/EditUsernameModal 等 4 个弹窗 | M | index + types + config + useXxx + parts |
-| auth/LoginForm | M | index + types |
-| EmptyState、FollowButton 等 S 级 | S | index + types |
+| 组件                                  | 级别 | 结构                                                     |
+| ------------------------------------- | ---- | -------------------------------------------------------- |
+| AppHeader                             | L    | ✅ 标准模板                                              |
+| AuthModal                             | L    | index + types + config + useAuthModalContent + parts     |
+| CommentSection                        | L    | index + types + useCommentSection + parts                |
+| ShareSheet                            | L    | index + types + config + useShareSheet + parts           |
+| profile/AccountSecurityModal          | L    | index + types + config + useAccountSecurityModal + parts |
+| profile/ProfileFeed                   | L    | index + types + useProfileFeed + parts                   |
+| auth/RegisterForm                     | M    | index + types + useRegisterForm + parts                  |
+| auth/ResetPasswordForm                | M    | index + types + useResetPasswordForm + parts             |
+| ArticleProgressBanner                 | M    | index + config + useArticleProgressPoll                  |
+| FeedPanel                             | M    | index + types + useFeedPanel + parts                     |
+| PostBottomBar                         | M    | index + types + usePostBottomBar + parts                 |
+| CommentItem                           | M    | index + types + config + parts                           |
+| ShareCard                             | M    | index + types + useShareCard + parts                     |
+| profile/EditUsernameModal 等 4 个弹窗 | M    | index + types + config + useXxx + parts                  |
+| auth/LoginForm                        | M    | index + types                                            |
+| EmptyState、FollowButton 等 S 级      | S    | index + types                                            |
 
 维护说明：新增或重构组件后更新上表。
 
@@ -126,8 +126,8 @@ AppHeader/
 
 ## 八、相关文档
 
-| 文档 | 说明 |
-|------|------|
+| 文档                       | 说明         |
+| -------------------------- | ------------ |
 | `src/components/README.md` | 组件职责索引 |
-| `PROJECT_STRUCTURE.md` | 全局目录规范 |
-| `DESIGN.md` | 视觉与 BEM |
+| `PROJECT_STRUCTURE.md`     | 全局目录规范 |
+| `DESIGN.md`                | 视觉与 BEM   |

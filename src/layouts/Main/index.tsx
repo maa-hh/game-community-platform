@@ -15,6 +15,8 @@ import {
 
 import { useAppSelector } from '@/store';
 import PageTools from '@/components/PageTools';
+import { clearPageDataCache } from '@/hooks/pageDataCache';
+import { isPrimaryNavigationState } from '@/utils/primaryNavigation';
 import { PAGE_REFRESH_EVENT } from '@/utils/pageRefresh';
 
 import './style.less';
@@ -47,6 +49,7 @@ function MainLayout() {
   const cachedViewsRef = useRef(new Map<string, CachedView>());
   const accessSequenceRef = useRef(0);
   const cacheAccountScopeRef = useRef(accountScope);
+  const primaryNavigationEntryRef = useRef<string | null>(null);
   const refreshTimerRef = useRef<number | undefined>(undefined);
   const [refreshing, setRefreshing] = useState(false);
   const [, setRenderRevision] = useState(0);
@@ -61,26 +64,46 @@ function MainLayout() {
     [],
   );
 
-  // 登录态变化后不能继续复用上一个账号的列表实例；统一清空布局缓存，
-  // 避免因为缓存键变化把当前页面当成新页面挂载，导致返回位置丢失。
+  // 登录态变化后不能继续复用上一个账号的列表实例。
   if (cacheAccountScopeRef.current !== accountScope) {
     cachedViewsRef.current.clear();
+    clearPageDataCache();
     accessSequenceRef.current = 0;
     cacheAccountScopeRef.current = accountScope;
   }
 
-  const routeCacheKey = location.pathname;
-  // 普通页面默认缓存；只有详情、编辑等明确标记的重页面不缓存。
-  // 后续新增普通页面无需再维护白名单。
+  // 一级导航只重置页面实例（筛选、局部展开等 UI 状态），不清空数据缓存。
+  // 因此重新进入页面会呈现初始 UI，但命中缓存的数据不会重复请求。
+  if (
+    isPrimaryNavigationState(location.state) &&
+    primaryNavigationEntryRef.current !== location.key
+  ) {
+    cachedViewsRef.current.clear();
+    accessSequenceRef.current = 0;
+    primaryNavigationEntryRef.current = location.key;
+  }
+
+  // 用户作用域属于页面实例身份的一部分：登录/退出后即使路径没变，也必须
+  // 销毁旧实例，不能让新账号短暂看到前一账号的本地状态。
+  // 个人主页的 tab/search 可以复用实例，但不同 accountId 是不同资料页；
+  // 否则切换或返回到另一位用户时会先绘制上一位用户的资料横幅。
+  const profileAccountId =
+    location.pathname === '/profile'
+      ? new URLSearchParams(location.search).get('accountId')
+      : null;
+  const routeCacheKey = `${accountScope}:${location.pathname}${
+    profileAccountId ? `?accountId=${profileAccountId}` : ''
+  }`;
+  // 普通页面在下钻到详情、编辑页时保留实例；顶栏一级导航会在点击时
+  // 同步清空本缓存，因此切换 tab 时一定重新以初始状态挂载，而不是复用旧页。
   const keepAlive = !matches.some(
     (match) =>
       (match.handle as RouteCacheHandle | undefined)?.disableKeepAlive === true,
   );
-
   if (keepAlive) {
     const cachedView = cachedViewsRef.current.get(routeCacheKey);
     if (cachedView) {
-      // query/hash 变化复用页面实例，只刷新路由上下文。
+      // 页面内部筛选使用 query/hash，复用当前实例并只更新路由上下文。
       cachedView.locationContext = locationContext;
       cachedView.routeContext = routeContext;
       cachedView.lastAccessed = ++accessSequenceRef.current;
@@ -111,6 +134,7 @@ function MainLayout() {
   const refreshCurrentPage = useCallback(() => {
     if (refreshing) return;
     setRefreshing(true);
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
 
     const refreshEvent = new Event(PAGE_REFRESH_EVENT, { cancelable: true });
     const handledByPage = !window.dispatchEvent(refreshEvent);
@@ -146,7 +170,6 @@ function MainLayout() {
                   active ? ' main-layout__route-view--active' : ''
                 }`}
                 aria-hidden={!active}
-                hidden={!active}
               >
                 <LocationContext.Provider value={view.locationContext}>
                   <RouteContext.Provider value={view.routeContext}>

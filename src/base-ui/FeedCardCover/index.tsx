@@ -11,11 +11,11 @@ import type { CSSProperties, FC, SyntheticEvent } from 'react';
 import TextCoverPoster from '@/base-ui/TextCoverPoster';
 import VideoCover from '@/base-ui/VideoCover';
 import { resolveFeedCoverMaxHeight } from '@/constants/feedCardMedia';
-import { resolveFeedTitlePosterSize } from '@/utils/generateTitlePoster';
 import {
   resolveFeedCoverDisplay,
   type FeedCoverDisplayLayout,
 } from '@/utils/feedCardCoverLayout';
+import { resolveFeedTitlePosterSize } from '@/utils/generateTitlePoster';
 
 import './style.less';
 
@@ -104,7 +104,6 @@ const FeedCardCover: FC<FeedCardCoverProps> = ({
     .filter(Boolean)
     .join(' ');
 
-  const crop = imageLayout?.mode === 'crop';
   const rootStyle = useMemo((): CSSProperties | undefined => {
     const style: CSSProperties & Record<string, string> = {};
 
@@ -143,7 +142,7 @@ const FeedCardCover: FC<FeedCardCoverProps> = ({
   return (
     <div
       ref={mediaRef}
-      className={`${rootClass}${crop ? ' is-crop' : ''}`}
+      className={`${rootClass}${imageLayout?.mode === 'crop' ? ' is-crop' : ''}`}
       style={rootStyle}
     >
       {coverUrl ? (

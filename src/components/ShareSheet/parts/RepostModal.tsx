@@ -22,7 +22,7 @@ const RepostModal: FC<RepostModalProps> = ({
     onCancel={onCancel}
     onOk={onSubmit}
     centered
-    destroyOnClose
+    destroyOnHidden
     className="share-sheet__repost-modal"
   >
     <p className="share-sheet__repost-tip">{repostModalTip}</p>

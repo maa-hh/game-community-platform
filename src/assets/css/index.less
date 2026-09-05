@@ -22,15 +22,24 @@ html,
 body {
   min-height: 100%;
   overflow-anchor: none;
+  background: var(--color-bg-secondary);
+  color: var(--color-text);
 }
 
 #root {
   min-height: 100vh;
+  background: var(--color-bg-secondary);
+  color: var(--color-text);
 }
 
-// 异步列表返回时，滚动位置恢复完成前不绘制顶部帧，避免视觉跳闪。
-html.is-restoring-scroll .site-main {
-  visibility: hidden;
+// antd controls carry their own transitions (for example Input uses
+// `transition: all`). Disable them for the single frame in which theme tokens
+// change, preventing borders and backgrounds from lagging behind the page.
+html[data-theme-switching],
+html[data-theme-switching] *,
+html[data-theme-switching] *::before,
+html[data-theme-switching] *::after {
+  transition: none !important;
 }
 
 // 选中文字的颜色（可选）

@@ -35,7 +35,11 @@ export function useInfiniteScroll({
 
     const observer = new IntersectionObserver(
       (entries) => {
-        const hit = entries.some((entry) => entry.isIntersecting);
+        const hit = entries.some(
+          (entry) =>
+            entry.isIntersecting &&
+            getComputedStyle(entry.target).visibility === 'visible',
+        );
         if (!hit || !hasMore || loadingRef.current) return;
         void onLoadMore();
       },

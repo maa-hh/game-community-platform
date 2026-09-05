@@ -4,7 +4,6 @@ import {
   Button,
   Empty,
   Input,
-  List,
   Pagination,
   Rate,
   Select,
@@ -96,17 +95,10 @@ function GameDetail() {
     typeof location.state === 'object' && location.state !== null
       ? (location.state as {
           returnTo?: unknown;
-          returnScrollY?: unknown;
         })
       : null;
   const returnTo =
     typeof locationState?.returnTo === 'string' ? locationState.returnTo : null;
-  const returnScrollY =
-    typeof locationState?.returnScrollY === 'number' &&
-    Number.isFinite(locationState.returnScrollY) &&
-    locationState.returnScrollY >= 0
-      ? locationState.returnScrollY
-      : null;
 
   useEffect(() => {
     if (myReview) {
@@ -122,18 +114,18 @@ function GameDetail() {
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
-    if (canGoBackInApp()) {
+    if (returnTo && canGoBackInApp()) {
       navigate(-1);
       return;
     }
     if (returnTo) {
       navigate(returnTo, {
         replace: true,
-        preventScrollReset: true,
-        flushSync: true,
-        state:
-          returnScrollY == null ? undefined : { restoreScrollY: returnScrollY },
       });
+      return;
+    }
+    if (canGoBackInApp()) {
+      navigate(-1);
       return;
     }
     navigate('/games');
@@ -320,7 +312,7 @@ function GameDetail() {
                   <Spin />
                 ) : (
                   <Space
-                    direction="vertical"
+                    orientation="vertical"
                     size="middle"
                     style={{ width: '100%' }}
                   >
@@ -378,17 +370,23 @@ function GameDetail() {
                     onChange={setReviewSort}
                   />
                 </div>
-                <List
-                  loading={reviewsLoading}
-                  dataSource={reviews}
-                  locale={{ emptyText: '暂无评价' }}
-                  renderItem={(item) => (
-                    <GameReviewItem
-                      review={item}
-                      onRequireLogin={requireLogin}
-                    />
-                  )}
-                />
+                {reviewsLoading ? (
+                  <div className="game-detail__review-loading">
+                    <Spin />
+                  </div>
+                ) : reviews.length > 0 ? (
+                  <div className="game-detail__review-items">
+                    {reviews.map((item) => (
+                      <GameReviewItem
+                        key={item.reviewId}
+                        review={item}
+                        onRequireLogin={requireLogin}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <Empty description="暂无评价" />
+                )}
                 {reviewsTotal > reviewPageSize ? (
                   <Pagination
                     className="game-detail__review-pager"

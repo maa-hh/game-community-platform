@@ -9,13 +9,13 @@ import type {
 } from './types';
 
 export const headerBrand: HeaderBrandConfig = {
-  to: '/login',
+  to: '/',
   logoText: 'GC',
   name: BRAND_NAME,
 };
 
 export const headerNavItems: HeaderNavItem[] = [
-  { to: '/', label: '首页', end: true },
+  { to: '/community', label: '社区', end: true },
   { to: '/feed', label: '动态', requireAuth: true },
   { to: '/recommend', label: '推荐' },
   { to: '/shop', label: '商城', requireAuth: true },

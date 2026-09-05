@@ -135,6 +135,7 @@ function Profile() {
   const [userListType, setUserListType] =
     useState<ProfileUserListType>('following');
   const feedAnchorRef = useRef<HTMLDivElement | null>(null);
+  const [feedTransitionHeight, setFeedTransitionHeight] = useState(0);
   const { isSelf, isOther, viewUser, loading: viewLoading } = useProfileView();
   const { requireLogin } = useRequireLogin();
   const { reportOpen, reportTarget, openReport, closeReport } =
@@ -278,10 +279,8 @@ function Profile() {
 
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
-        const dock = document.querySelector<HTMLElement>(
-          '.profile-page__top-dock',
-        );
-        const dockBottom = dock?.getBoundingClientRect().bottom ?? 0;
+        const appHeader = document.querySelector<HTMLElement>('.app-header');
+        const dockBottom = appHeader?.getBoundingClientRect().bottom ?? 0;
         const targetTop =
           anchor.getBoundingClientRect().top + window.scrollY - dockBottom - 12;
         window.scrollTo({
@@ -292,6 +291,16 @@ function Profile() {
     });
   }, []);
 
+  const preserveFeedHeight = useCallback(() => {
+    const feedShell = feedAnchorRef.current?.querySelector<HTMLElement>(
+      '.profile-feed-shell',
+    );
+    const height = feedShell?.getBoundingClientRect().height ?? 0;
+    if (height > 0) {
+      setFeedTransitionHeight(Math.ceil(height));
+    }
+  }, []);
+
   const handleStatClick = (key: ProfileStatKey) => {
     if (key === 'following' || key === 'followers') {
       setUserListType(key);
@@ -299,6 +308,7 @@ function Profile() {
       return;
     }
     if (key === 'likes') {
+      preserveFeedHeight();
       setMainTab('received');
       const nextParams = new URLSearchParams(searchParams);
       nextParams.set('tab', 'received');
@@ -310,6 +320,7 @@ function Profile() {
       scrollToFeed();
       return;
     }
+    preserveFeedHeight();
     setMainTab('favorites');
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set('tab', 'favorites');
@@ -323,6 +334,7 @@ function Profile() {
 
   const handleMainTabChange = (key: string) => {
     const next = parseProfileMainTab(key);
+    preserveFeedHeight();
     setMainTab(next);
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set('tab', next);
@@ -332,6 +344,7 @@ function Profile() {
 
   const handlePostSubTabChange = (key: string) => {
     const next = parseProfileSubTab(key);
+    preserveFeedHeight();
     setPostSubTab(next);
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set('tab', 'posts');
@@ -341,6 +354,7 @@ function Profile() {
 
   const handleOtherTabChange = (key: string) => {
     const next = parseOtherProfileTab(key);
+    preserveFeedHeight();
     setOtherTab(next);
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set('tab', next);
@@ -353,7 +367,7 @@ function Profile() {
       navigate(-1);
       return;
     }
-    navigate('/');
+    navigate('/community');
   };
 
   useEffect(() => {
@@ -424,7 +438,7 @@ function Profile() {
 
   return (
     <div className="profile-page">
-      <div className="profile-page__top-dock">
+      <div className="profile-page__top-bar">
         <div className="profile-page__align-track">
           <PageSubTopBar
             onBack={handleBack}
@@ -703,7 +717,11 @@ function Profile() {
                 />
               )}
 
-              <ProfileFeed mainTab={mainTab} postSubTab={postSubTab} />
+              <ProfileFeed
+                mainTab={mainTab}
+                postSubTab={postSubTab}
+                transitionMinHeight={feedTransitionHeight}
+              />
             </div>
           </>
         ) : viewUser ? (
@@ -727,6 +745,7 @@ function Profile() {
                   <ProfileFeed
                     mainTab="posts"
                     postSubTab="published"
+                    transitionMinHeight={feedTransitionHeight}
                     targetAccountId={viewUser.accountId}
                     authorUser={{
                       accountId: viewUser.accountId,

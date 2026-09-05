@@ -25,13 +25,35 @@
   }
 
   &__user-item {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 12px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
     cursor: pointer;
-    padding-inline: 8px !important;
+    padding: 12px 8px;
     border-radius: 8px;
     transition: background 0.2s;
 
     &:hover {
       background: var(--header-link-hover-bg);
+    }
+  }
+
+  &__user-list {
+    display: grid;
+  }
+
+  &__user-copy {
+    display: grid;
+    min-width: 0;
+    gap: 4px;
+
+    span {
+      color: var(--color-text-secondary);
     }
   }
 

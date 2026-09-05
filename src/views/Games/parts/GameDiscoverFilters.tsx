@@ -190,16 +190,18 @@ const GameDiscoverFilters: FC<GameDiscoverFiltersProps> = ({
       </div>
       <div className="game-discover-filters__field">
         <span className="game-discover-filters__label">最低折扣</span>
-        <InputNumber
-          min={0}
-          max={100}
-          addonAfter="%"
-          placeholder="如 30"
-          value={filters.minDiscount}
-          onChange={(value) =>
-            onFiltersChange({ ...filters, minDiscount: value ?? undefined })
-          }
-        />
+        <Space.Compact>
+          <InputNumber
+            min={0}
+            max={100}
+            placeholder="如 30"
+            value={filters.minDiscount}
+            onChange={(value) =>
+              onFiltersChange({ ...filters, minDiscount: value ?? undefined })
+            }
+          />
+          <Space.Addon>%</Space.Addon>
+        </Space.Compact>
       </div>
       <div className="game-discover-filters__checks">
         <Checkbox
@@ -254,7 +256,7 @@ const GameDiscoverFilters: FC<GameDiscoverFiltersProps> = ({
         trigger="click"
         placement="bottomLeft"
         content={filterPanel}
-        overlayClassName="game-discover-filters__popover"
+        classNames={{ root: 'game-discover-filters__popover' }}
       >
         <Button icon={<FilterOutlined />}>
           筛选{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}

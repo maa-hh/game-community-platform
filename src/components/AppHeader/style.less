@@ -27,6 +27,11 @@
     color: var(--color-text);
     text-decoration: none;
     flex-shrink: 0;
+    transition: color 0.2s;
+
+    &:hover {
+      color: var(--color-primary);
+    }
   }
 
   &__logo {
@@ -160,7 +165,7 @@
       background 0.2s;
 
     &:hover {
-      color: var(--color-text);
+      color: var(--color-primary);
       background: var(--header-link-hover-bg);
     }
 

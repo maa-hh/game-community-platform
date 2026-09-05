@@ -38,7 +38,7 @@ const ShareSheet: FC<IShareSheetProps> = (props) => {
         centered
         width={shareSheetWidth}
         className="share-sheet"
-        destroyOnClose
+        destroyOnHidden
       >
         <ShareLinkPreview card={shareCard} copyText={copyText} />
         <ShareActions onCopy={handleCopy} onRepost={openRepost} />

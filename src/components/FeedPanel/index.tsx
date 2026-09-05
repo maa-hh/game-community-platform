@@ -3,7 +3,6 @@ import type { FC } from 'react';
 import { Spin } from 'antd';
 
 import ListEndHint from '@/base-ui/ListEndHint';
-import MasonryGrid from '@/base-ui/MasonryGrid';
 import { PAGE_REFRESH_EVENT } from '@/utils/pageRefresh';
 
 import type { IFeedPanelProps } from './types';
@@ -13,6 +12,7 @@ import './style.less';
 
 const FeedPanel: FC<IFeedPanelProps> = ({
   children,
+  masonry,
   loading = false,
   onRefresh,
   className,
@@ -23,7 +23,7 @@ const FeedPanel: FC<IFeedPanelProps> = ({
   const panelRef = useRef<HTMLElement>(null);
   const { handleRefresh } = useFeedPanel(onRefresh);
   const childCount = Children.count(children);
-  const hasList = childCount > 0;
+  const hasList = childCount > 0 || Boolean(masonry);
   const itemCount = infinite?.itemCount ?? childCount;
   const isMasonry = listLayout === 'masonry';
 
@@ -32,7 +32,12 @@ const FeedPanel: FC<IFeedPanelProps> = ({
 
     const refreshVisiblePanel = (event: Event) => {
       const panel = panelRef.current;
-      if (!panel || panel.getClientRects().length === 0) return;
+      if (
+        !panel ||
+        panel.getClientRects().length === 0 ||
+        getComputedStyle(panel).visibility !== 'visible'
+      )
+        return;
       event.preventDefault();
       void handleRefresh();
     };
@@ -59,11 +64,16 @@ const FeedPanel: FC<IFeedPanelProps> = ({
         <div className="feed-panel__empty">{empty}</div>
       ) : (
         <div className="feed-panel__list">
-          {isMasonry ? (
-            <MasonryGrid fillOrder="row">{children}</MasonryGrid>
-          ) : (
-            children
-          )}
+          {loading && hasList ? (
+            <div
+              className="feed-panel__refreshing"
+              role="status"
+              aria-label="正在刷新"
+            >
+              <Spin size="small" />
+            </div>
+          ) : null}
+          {isMasonry ? (masonry ?? children) : children}
           {infinite ? (
             <ListEndHint
               ref={infinite.sentinelRef}

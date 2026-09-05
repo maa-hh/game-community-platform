@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useMemo, useRef } from 'react';
+import React, { memo, useMemo } from 'react';
 import type { FC } from 'react';
 
 import FeedPanel from '@/components/FeedPanel';
@@ -15,6 +15,7 @@ import type { IProps } from './types';
 import { useProfileFeed } from './useProfileFeed';
 
 const ProfileFeed: FC<IProps> = (props) => {
+  const { transitionMinHeight } = props;
   const {
     mainTab,
     isOther = false,
@@ -92,29 +93,19 @@ const ProfileFeed: FC<IProps> = (props) => {
   });
 
   const feedContent = useMemo(() => {
+    if (feedCards.length === 0) return null;
     if (!useRowLayout) return feedCards;
     return <div className="profile-feed__rows">{feedCards}</div>;
   }, [feedCards, useRowLayout]);
 
-  const feedShellRef = useRef<HTMLDivElement | null>(null);
-  const previousHeightRef = useRef(0);
-
-  useEffect(() => {
-    if (loading || !feedShellRef.current) return;
-    const height = feedShellRef.current.getBoundingClientRect().height;
-    if (height > 0) previousHeightRef.current = height;
-  }, [list.length, loading, mainTab, useRowLayout]);
-
-  const preserveHeight =
-    loading && previousHeightRef.current > 0
-      ? previousHeightRef.current
-      : undefined;
-
   return (
     <div
-      ref={feedShellRef}
       className="profile-feed-shell"
-      style={preserveHeight ? { minHeight: preserveHeight } : undefined}
+      style={
+        loading && list.length === 0 && transitionMinHeight
+          ? { minHeight: transitionMinHeight }
+          : undefined
+      }
     >
       <FeedPanel
         className={`profile-feed${useRowLayout ? ' profile-feed--rows' : ''}`}

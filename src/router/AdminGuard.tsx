@@ -9,13 +9,11 @@ function AdminGuard() {
   const loggedIn = isAuthenticated();
 
   if (!loggedIn) {
-    return (
-      <Navigate to="/login" replace state={{ tip: '请先登录管理员账号' }} />
-    );
+    return <Navigate to="/" replace state={{ tip: '请先登录管理员账号' }} />;
   }
 
   if (user?.type !== 1) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/community" replace />;
   }
 
   return <Outlet />;

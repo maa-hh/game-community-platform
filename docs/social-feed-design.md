@@ -5,16 +5,16 @@
 
 ## 一、本次已落地（前端）
 
-| 能力 | 接口 | 前端位置 |
-|------|------|----------|
-| 评论 / 回复 / 删评 / 删回 | `/social/comment/**`、`/social/reply/**` | `CommentSection`、`PostDetail` |
-| 帖子 / 评论 / 回复点赞 | `/social/like/**` | 详情、评论区 |
-| 收藏 | `/social/favorite/article/**` | `PostDetail` |
-| 关注 / 取关 | `/social/follow/{id}` | `PostDetail`、`FollowButton` |
-| **拉黑** | `POST/DELETE /social/follow/black/{id}` | `toggleBlockApi` → 帖子详情更多菜单 |
-| **关注流（动态页）** | `GET /social/feed?postType&includeSelf` | `views/Feed` + 顶栏「动态」 |
-| 举报 | `POST /report` | 评论 / 帖子 |
-| 分享 / 转发 | `/social/share/**` + content 存稿 | `ShareSheet` |
+| 能力                      | 接口                                     | 前端位置                            |
+| ------------------------- | ---------------------------------------- | ----------------------------------- |
+| 评论 / 回复 / 删评 / 删回 | `/social/comment/**`、`/social/reply/**` | `CommentSection`、`PostDetail`      |
+| 帖子 / 评论 / 回复点赞    | `/social/like/**`                        | 详情、评论区                        |
+| 收藏                      | `/social/favorite/article/**`            | `PostDetail`                        |
+| 关注 / 取关               | `/social/follow/{id}`                    | `PostDetail`、`FollowButton`        |
+| **拉黑**                  | `POST/DELETE /social/follow/black/{id}`  | `toggleBlockApi` → 帖子详情更多菜单 |
+| **关注流（动态页）**      | `GET /social/feed?postType&includeSelf`  | `views/Feed` + 顶栏「动态」         |
+| 举报                      | `POST /report`                           | 评论 / 帖子                         |
+| 分享 / 转发               | `/social/share/**` + content 存稿        | `ShareSheet`                        |
 
 ### 动态页 `/feed`
 
@@ -31,18 +31,18 @@
 
 ## 二、后端已有、前端未做（建议排期）
 
-| 能力 | 接口 | 说明 |
-|------|------|------|
-| 关注流游标分页 | `GET /social/feed?before=` | 动态页目前首屏 20 条，待加「加载更多」 |
-| 首页游标 | `GET /article/more` | 首页仍为 `/article/latest` 固定 20 条 |
-| 浏览历史 | `GET /social/browse/history` | 可做「最近看过」Tab |
-| 关注 / 粉丝列表 | `/social/follow/list`、`/fans` | 个人页统计与列表 |
-| 关注数 / 粉丝数 | `/social/follow/count/{userId}` | 作者卡展示 |
-| 拉黑列表 | `/social/follow/black/list` | 设置页管理黑名单 |
-| 拉黑状态查询 | `/social/follow/black/check/{id}` | 详情页可预查是否已拉黑 |
-| 他人主页帖列表 | `GET /article/author/{id}/published` | 点击作者进主页流 |
-| 长文按需加载 | `GET /article/{id}/content` | 文章详情正文片段 |
-| content 关注文章 | `GET /article/follow` | 与 social feed 二选一，优先 social feed |
+| 能力             | 接口                                 | 说明                                    |
+| ---------------- | ------------------------------------ | --------------------------------------- |
+| 关注流游标分页   | `GET /social/feed?before=`           | 动态页目前首屏 20 条，待加「加载更多」  |
+| 首页游标         | `GET /article/more`                  | 首页仍为 `/article/latest` 固定 20 条   |
+| 浏览历史         | `GET /social/browse/history`         | 可做「最近看过」Tab                     |
+| 关注 / 粉丝列表  | `/social/follow/list`、`/fans`       | 个人页统计与列表                        |
+| 关注数 / 粉丝数  | `/social/follow/count/{userId}`      | 作者卡展示                              |
+| 拉黑列表         | `/social/follow/black/list`          | 设置页管理黑名单                        |
+| 拉黑状态查询     | `/social/follow/black/check/{id}`    | 详情页可预查是否已拉黑                  |
+| 他人主页帖列表   | `GET /article/author/{id}/published` | 点击作者进主页流                        |
+| 长文按需加载     | `GET /article/{id}/content`          | 文章详情正文片段                        |
+| content 关注文章 | `GET /article/follow`                | 与 social feed 二选一，优先 social feed |
 
 ---
 
@@ -54,7 +54,7 @@
 
 ## 四、前端样式约定（与首页一致）
 
-- 页面壳：`views/Feed/style.less` — `padding: var(--card-stack-gap) 0 48px`（同 `home-page`）
+- 页面壳：`views/Feed/style.less` — `padding: var(--card-stack-gap) 0 48px`（同 `community-page`）
 - 类型 Tab：`antd Segmented` block，类名 `feed-page__tabs`
 - 列表：**禁止**页面内手搓卡片，统一 `PostFeedList` → `ContentCard`
 - 空态：`EmptyState` + 文案见 `views/Feed/config.ts` 的 `feedEmptyText`

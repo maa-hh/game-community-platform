@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { Empty, List, Spin, Tabs } from 'antd';
+import { Empty, Spin, Tabs } from 'antd';
 
 import ListEndHint from '@/base-ui/ListEndHint';
 import UserAvatarWithFrame from '@/base-ui/UserAvatarWithFrame';
@@ -118,34 +118,30 @@ function Search() {
     }
     return (
       <>
-        <List
-          itemLayout="horizontal"
-          dataSource={users}
-          renderItem={(item) => (
-            <List.Item
+        <div className="search-page__user-list">
+          {users.map((item) => (
+            <button
+              key={item.accountId}
+              type="button"
               className="search-page__user-item"
               onClick={() => navigate(`/profile?accountId=${item.accountId}`)}
             >
-              <List.Item.Meta
-                avatar={
-                  <UserAvatarWithFrame
-                    accountId={item.accountId}
-                    name={item.username || 'U'}
-                    src={item.avatar}
-                    size={48}
-                  />
-                }
-                title={item.username}
-                description={
-                  <span>
-                    ID {item.accountId ?? '—'}
-                    {item.signature ? ` · ${item.signature}` : ''}
-                  </span>
-                }
+              <UserAvatarWithFrame
+                accountId={item.accountId}
+                name={item.username || 'U'}
+                src={item.avatar}
+                size={48}
               />
-            </List.Item>
-          )}
-        />
+              <span className="search-page__user-copy">
+                <strong>{item.username}</strong>
+                <span>
+                  ID {item.accountId ?? '—'}
+                  {item.signature ? ` · ${item.signature}` : ''}
+                </span>
+              </span>
+            </button>
+          ))}
+        </div>
         <ListEndHint
           ref={usersSentinelRef}
           loadingMore={usersLoadingMore}

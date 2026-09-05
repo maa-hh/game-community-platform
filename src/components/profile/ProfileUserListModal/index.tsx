@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import type { FC } from 'react';
-import { Alert, List, Modal, Spin } from 'antd';
+import { Alert, Modal, Spin } from 'antd';
 import { useNavigate } from 'react-router-dom';
 
 import ListEndHint from '@/base-ui/ListEndHint';
@@ -66,17 +66,18 @@ const ProfileUserListModal: FC<IProps> = ({ open, type, onClose }) => {
         <Alert
           type="info"
           showIcon
-          message={`暂无${TITLE_MAP[type]}`}
+          title={`暂无${TITLE_MAP[type]}`}
           className="profile-user-list-modal__empty"
         />
       ) : (
-        <List
-          dataSource={pager.items}
-          renderItem={(item) => {
+        <div className="profile-user-list-modal__list">
+          {pager.items.map((item) => {
             const href = buildProfileHref(item);
             const displayId = item.accountId;
             return (
-              <List.Item
+              <button
+                key={item.accountId}
+                type="button"
                 className={`profile-user-list-modal__item${
                   href ? ' is-clickable' : ''
                 }`}
@@ -86,27 +87,23 @@ const ProfileUserListModal: FC<IProps> = ({ open, type, onClose }) => {
                   onClose();
                 }}
               >
-                <List.Item.Meta
-                  avatar={
-                    <UserAvatarWithFrame
-                      accountId={item.accountId}
-                      name={item.username || 'U'}
-                      src={item.avatar}
-                      size={48}
-                    />
-                  }
-                  title={item.username}
-                  description={
-                    <span>
-                      ID {displayId ?? '—'}
-                      {item.signature ? ` · ${item.signature}` : ''}
-                    </span>
-                  }
+                <UserAvatarWithFrame
+                  accountId={item.accountId}
+                  name={item.username || 'U'}
+                  src={item.avatar}
+                  size={48}
                 />
-              </List.Item>
+                <span className="profile-user-list-modal__copy">
+                  <strong>{item.username}</strong>
+                  <span>
+                    ID {displayId ?? '—'}
+                    {item.signature ? ` · ${item.signature}` : ''}
+                  </span>
+                </span>
+              </button>
             );
-          }}
-        />
+          })}
+        </div>
       )}
 
       <ListEndHint

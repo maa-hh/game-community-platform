@@ -103,6 +103,7 @@ webpack 在解析模块路径时，会把 `@` 替换为 `/Users/ma/reactproject/
 - 这样在编辑器里点击 `@/App` 能跳转，`tsc` 类型检查也能通过。
 
 > ⚠️ 两套配置缺一不可：
+>
 > - 只配 webpack alias：代码能跑，但 IDE 报红、`tsc` 报错。
 > - 只配 tsconfig paths：IDE 正常，但 webpack 打包时找不到模块。
 
@@ -344,7 +345,7 @@ Jest 不走 webpack，需要在 `craco.config.js` 中单独配置 `jest.configur
 CRACO 版本必须与 react-scripts 主版本号对应：
 
 | react-scripts | @craco/craco |
-|---------------|--------------|
+| ------------- | ------------ |
 | 5.x           | 7.x          |
 | 4.x           | 6.x          |
 | 3.x           | 5.x          |
@@ -360,11 +361,11 @@ CRACO 版本必须与 react-scripts 主版本号对应：
 
 ## 六、相关文件清单
 
-| 文件 | 作用 |
-|------|------|
-| `craco.config.js` | CRACO 主配置文件，覆盖 webpack 等配置 |
-| `tsconfig.json` | TypeScript 配置，需与 webpack alias 保持一致 |
-| `package.json` | scripts 字段使用 `craco` 命令接管构建流程 |
+| 文件              | 作用                                         |
+| ----------------- | -------------------------------------------- |
+| `craco.config.js` | CRACO 主配置文件，覆盖 webpack 等配置        |
+| `tsconfig.json`   | TypeScript 配置，需与 webpack alias 保持一致 |
+| `package.json`    | scripts 字段使用 `craco` 命令接管构建流程    |
 
 ---
 

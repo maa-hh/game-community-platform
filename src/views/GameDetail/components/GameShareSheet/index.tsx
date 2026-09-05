@@ -40,7 +40,7 @@ const GameShareSheet: FC<IGameShareSheetProps> = (props) => {
         centered
         width={shareSheetWidth}
         className="share-sheet game-share-sheet"
-        destroyOnClose
+        destroyOnHidden
       >
         <GameSharePreview
           detail={detail}

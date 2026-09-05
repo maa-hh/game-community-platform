@@ -99,7 +99,7 @@ src/
 | --------------------------- | ----------------------- |
 | 布局壳子（Header + 内容区） | `layouts/Main/`         |
 | 顶栏导航、Logo、用户区      | `components/AppHeader/` |
-| 登录表单 UI                 | `views/Login/`          |
+| 登录表单 UI                 | `components/auth/`      |
 | 全屏居中背景                | `layouts/Auth/`         |
 
 **页面（views）不写 Header，布局由 layouts 负责。**
@@ -315,7 +315,7 @@ import { fetchHomeData } from '@/store/modules/home';
 1. layouts/Main/、layouts/Auth/     搭布局壳子
 2. components/AppHeader/              顶栏
 3. router/routes.tsx                  嵌套路由绑定布局
-4. views/Login/                       登录页（挂 AuthLayout）
+4. views/Home/                        官网首页（挂 HomeLayout）
 5. service/auth.ts + store/modules/   需要时再加
 6. mock/index.ts                      开发阶段 mock
 ```
@@ -338,9 +338,9 @@ npm run lint
 npm run typecheck   # 等价于 npx tsc --noEmit
 ```
 
-| 命令 | 作用 |
-| ---- | ---- |
-| `npm run lint` | ESLint + Prettier |
+| 命令                | 作用                                  |
+| ------------------- | ------------------------------------- |
+| `npm run lint`      | ESLint + Prettier                     |
 | `npm run typecheck` | TypeScript 类型检查（与编译红字同源） |
 
 涉及启动、路由、登录等行为时，按需再 `npm start` 冒烟。任一失败先修再交付。

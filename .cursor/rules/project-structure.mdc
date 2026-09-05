@@ -11,10 +11,10 @@ alwaysApply: true
 
 | 写什么 | 放哪 |
 |--------|------|
-| 布局壳（Header+Outlet） | `layouts/Main/` 或 `layouts/Login/` |
+| 布局壳（Header+Outlet） | `layouts/Main/` 或 `layouts/Home/` |
 | 顶栏 AppHeader | `components/AppHeader/` |
 | 站内页内容宽度 | 由 `MainLayout` 的 `main-layout__container` 统一限制（`--page-content-max-width`），页面内不要再套一层 max-width |
-| 登录落地（全屏视频） | `views/Login/` + `layouts/Login/`（有顶栏、**不**套内容盒） |
+| 官网首页（全屏视频） | `views/Home/` + `layouts/Home/`（有顶栏、**不**套内容盒） |
 | 视觉/交互规范 | 根目录 `DESIGN.md`（写前端必遵） |
 | 站内页面内容 | `views/xxx/`（路由挂 MainLayout） |
 | 无业务原子组件 | `base-ui/` |

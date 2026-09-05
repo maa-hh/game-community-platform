@@ -60,7 +60,8 @@ export function useCursorList<T>({
   const cursorRef = useRef<string | undefined>(cache?.cursor ?? initialCursor);
   const fetchRef = useRef(fetchBatch);
   const requestSeqRef = useRef(0);
-  const cacheKeyRef = useRef(cacheKey);
+  // 当前 state 对应的键。切换筛选的第一帧不得渲染上一份列表。
+  const [resolvedCacheKey, setResolvedCacheKey] = useState(cacheKey);
   const cacheInvalidatedRef = useRef(false);
   const [cacheVersion, setCacheVersion] = useState(0);
 
@@ -73,12 +74,9 @@ export function useCursorList<T>({
   }, [cacheKey]);
 
   useEffect(() => {
-    if (cacheKeyRef.current !== cacheKey) {
-      cacheKeyRef.current = cacheKey;
-      return;
-    }
     if (
       !cacheKey ||
+      resolvedCacheKey !== cacheKey ||
       cacheInvalidatedRef.current ||
       loading ||
       loadingMore ||
@@ -90,9 +88,10 @@ export function useCursorList<T>({
       hasMore,
       cursor: cursorRef.current,
     });
-  }, [cacheKey, hasMore, items, loading, loadingMore]);
+  }, [cacheKey, hasMore, items, loading, loadingMore, resolvedCacheKey]);
 
-  useEffect(() => {
+  // reset/load 会在 layout effect 中发起，因此请求闭包也要在同一阶段更新。
+  useLayoutEffect(() => {
     fetchRef.current = fetchBatch;
   }, [fetchBatch]);
 
@@ -154,8 +153,11 @@ export function useCursorList<T>({
   }, [hasMore, loadBatch, loading, loadingMore]);
 
   useLayoutEffect(() => {
+    // 当前页面键变化后，使所有旧请求失效，避免旧结果回写到新筛选。
+    requestSeqRef.current += 1;
+    setResolvedCacheKey(cacheKey);
+
     if (!enabled) {
-      requestSeqRef.current += 1;
       setItems([]);
       setHasMore(true);
       setLoading(false);
@@ -169,7 +171,6 @@ export function useCursorList<T>({
         ? getPageDataCache<CursorListCache<T>>(cacheKey)
         : undefined;
     if (cachedForKey) {
-      requestSeqRef.current += 1;
       setItems(cachedForKey.items);
       setHasMore(cachedForKey.hasMore);
       setLoading(false);
@@ -177,7 +178,11 @@ export function useCursorList<T>({
       cursorRef.current = cachedForKey.cursor;
       return;
     }
-    if (skipInitialFetch) return;
+    if (skipInitialFetch) {
+      setLoading(false);
+      setLoadingMore(false);
+      return;
+    }
     setItems([]);
     setLoading(true);
     setLoadingMore(false);
@@ -196,18 +201,20 @@ export function useCursorList<T>({
   ]);
 
   const { sentinelRef } = useInfiniteScroll({
-    enabled: enabled && items.length > 0,
+    enabled: enabled && resolvedCacheKey === cacheKey && items.length > 0,
     hasMore,
     loading,
     loadingMore,
     onLoadMore: loadMore,
   });
 
+  const keyChanged = resolvedCacheKey !== cacheKey;
+
   return {
-    items,
-    loading,
-    loadingMore,
-    hasMore,
+    items: keyChanged ? [] : items,
+    loading: keyChanged ? enabled : loading,
+    loadingMore: keyChanged ? false : loadingMore,
+    hasMore: keyChanged ? true : hasMore,
     reload,
     loadMore,
     setItems,

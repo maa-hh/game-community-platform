@@ -7,7 +7,7 @@ import { fetchLatestPostsPageApi } from '@/service/social';
 
 const PAGE_SIZE = 20;
 
-export function useHomeFeed() {
+export function useCommunityFeed() {
   const fetchBatch = useCallback(
     async (cursor: string | undefined, size: number) => {
       const res = await fetchLatestPostsPageApi({
@@ -21,7 +21,7 @@ export function useHomeFeed() {
 
   const list = useCursorList({
     pageSize: PAGE_SIZE,
-    cacheKey: 'home:latest',
+    cacheKey: 'community:latest',
     getCursor: (item) => item.id,
     fetchBatch,
   });

@@ -1,18 +1,15 @@
 import React from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, ScrollRestoration } from 'react-router-dom';
 
 import AppHeader from '@/components/AppHeader';
 import ArticleProgressBanner from '@/components/ArticleProgressBanner';
 import AuthModal from '@/components/AuthModal';
 import { DecorationRegistryProvider } from '@/hooks/useDecorationRegistry';
-import { useScrollRestoration } from '@/hooks/useScrollRestoration';
 
 import './style.less';
 
 /** 根布局：全站顶栏 + 审核进度条 + 全局 AuthModal */
 function RootLayout() {
-  useScrollRestoration();
-
   return (
     <DecorationRegistryProvider>
       <AppHeader />
@@ -20,6 +17,7 @@ function RootLayout() {
       <div className="site-main">
         <Outlet />
       </div>
+      <ScrollRestoration storageKey="gc:scroll-positions" />
       <AuthModal />
     </DecorationRegistryProvider>
   );

@@ -12,6 +12,8 @@ export interface IFeedPanelInfiniteProps {
 
 export interface IFeedPanelProps {
   children?: ReactNode;
+  /** 瀑布流由调用方提供，避免布局容器持有具体实现。 */
+  masonry?: ReactNode;
   /** 首屏加载中（列表为空时） */
   loading?: boolean;
   /** 点击刷新 */

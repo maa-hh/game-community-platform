@@ -46,11 +46,11 @@ npx tsc --noEmit
 
 ## 子系统文档
 
-| 主题  | 文件                                |
-| ----- | ----------------------------------- |
-| 路由  | `src/router/README.md`              |
-| HTTP  | `src/service/README.md`           |
-| Redux | `src/store/README.md`               |
-| 样式  | `src/assets/css/README.md`          |
+| 主题  | 文件                                    |
+| ----- | --------------------------------------- |
+| 路由  | `src/router/README.md`                  |
+| HTTP  | `src/service/README.md`                 |
+| Redux | `src/store/README.md`                   |
+| 样式  | `src/assets/css/README.md`              |
 | 组件  | `src/components/COMPONENT_STRUCTURE.md` |
-| CRACO | `CRACO_GUIDE.md`                    |
+| CRACO | `CRACO_GUIDE.md`                        |

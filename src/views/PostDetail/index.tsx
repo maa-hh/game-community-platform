@@ -94,37 +94,31 @@ function PostDetail() {
 
   const locationState =
     typeof location.state === 'object' && location.state !== null
-      ? (location.state as { returnTo?: unknown; returnScrollY?: unknown })
+      ? (location.state as { returnTo?: unknown })
       : null;
   const returnTo =
     typeof locationState?.returnTo === 'string' ? locationState.returnTo : null;
-  const returnScrollY =
-    typeof locationState?.returnScrollY === 'number' &&
-    Number.isFinite(locationState.returnScrollY) &&
-    locationState.returnScrollY >= 0
-      ? locationState.returnScrollY
-      : null;
 
   const handleBack = useCallback(() => {
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
-    if (canGoBackInApp()) {
+    if (returnTo && canGoBackInApp()) {
       navigate(-1);
       return;
     }
     if (returnTo) {
       navigate(returnTo, {
         replace: true,
-        preventScrollReset: true,
-        flushSync: true,
-        state:
-          returnScrollY == null ? undefined : { restoreScrollY: returnScrollY },
       });
       return;
     }
+    if (canGoBackInApp()) {
+      navigate(-1);
+      return;
+    }
     goBack();
-  }, [goBack, navigate, returnScrollY, returnTo]);
+  }, [goBack, navigate, returnTo]);
 
   const { get: getAuthorDecoration } = useUserDecorations([
     post?.author.accountId,

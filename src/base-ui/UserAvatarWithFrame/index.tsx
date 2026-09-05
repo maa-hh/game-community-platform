@@ -20,6 +20,8 @@ export interface UserAvatarWithFrameProps {
   frameUrl?: string;
   /** 为 false 时不自动拉取装扮（仅使用 frameUrl） */
   resolveFrame?: boolean;
+  /** 在紧凑区域内将头像框限制在头像的占位尺寸中。 */
+  compactFrame?: boolean;
 }
 
 const UserAvatarWithFrame: FC<UserAvatarWithFrameProps> = ({
@@ -30,6 +32,7 @@ const UserAvatarWithFrame: FC<UserAvatarWithFrameProps> = ({
   className,
   frameUrl,
   resolveFrame = true,
+  compactFrame = false,
 }) => {
   const decoration = useDecorationRegistry(
     resolveFrame && frameUrl === undefined ? accountId : undefined,
@@ -55,8 +58,9 @@ const UserAvatarWithFrame: FC<UserAvatarWithFrameProps> = ({
         src={src}
         size={size}
         frameUrl={resolvedFrameUrl}
-        frameScale={resolvedFrameScale}
-        avatarRatio={resolvedAvatarRatio}
+        frameScale={compactFrame ? 1 : resolvedFrameScale}
+        // 紧凑顶栏只压缩挂件的占位，头像本身仍与无挂件时同尺寸。
+        avatarRatio={compactFrame ? 1 : resolvedAvatarRatio}
         className={className}
       />
     );

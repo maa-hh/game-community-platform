@@ -16,6 +16,7 @@
     "antd": "^6.5.1",
     "axios": "^1.18.1",
     "dplayer": "^1.27.1",
+    "masonic": "^4.1.0",
     "normalize.css": "^8.0.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",

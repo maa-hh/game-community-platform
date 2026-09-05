@@ -15,13 +15,18 @@
     transform 0.2s ease;
 
   &:hover {
-    border-color: color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
+    border-color: color-mix(
+      in srgb,
+      var(--color-primary) 35%,
+      var(--color-border)
+    );
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
   }
 
   &.is-selected {
     border-color: var(--color-primary);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 18%, transparent);
+    box-shadow: 0 0 0 2px
+      color-mix(in srgb, var(--color-primary) 18%, transparent);
   }
 
   &.is-equipped {
@@ -78,7 +83,8 @@
   border-radius: 14px;
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--color-bg-secondary) 88%, var(--color-primary) 12%) 0%,
+    color-mix(in srgb, var(--color-bg-secondary) 88%, var(--color-primary) 12%)
+      0%,
     var(--color-bg) 100%
   );
   border: 1px solid var(--color-border);

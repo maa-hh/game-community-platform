@@ -40,6 +40,9 @@ function useMasonryColumnCount(
 
     const update = () => {
       const width = el.clientWidth;
+      // KeepAlive 使用 hidden 暂时收起父页时宽度会变为 0。不能因此把
+      // 已计算好的多列布局重置为单列，否则返回时必然重排并改变滚动锚点。
+      if (width <= 0) return;
       const colMin = width <= 480 ? MASONRY_COL_MIN_MOBILE : MASONRY_COL_MIN;
       setColumnCount(
         Math.max(1, Math.floor((width + MASONRY_GAP) / (colMin + MASONRY_GAP))),

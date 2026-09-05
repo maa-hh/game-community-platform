@@ -32,6 +32,7 @@ import { isProfileBgCosmeticCode } from '@/constants/profileBgCatalog';
 import type { CosmeticSlot, IUserCosmeticItem } from '@/types/cosmetic';
 import { formatApiError } from '@/utils/apiError';
 import { notifyCosmeticUpdated } from '@/utils/cosmeticRefresh';
+import { getPageDataCache, setPageDataCache } from '@/hooks/pageDataCache';
 
 import { useAppSelector } from '@/store';
 
@@ -62,16 +63,38 @@ const SLOT_LABEL: Record<CosmeticSlot, string> = {
 
 type ShopTabKey = 'store' | 'backpack';
 
+interface BackpackCache {
+  items: IUserCosmeticItem[];
+  total: number;
+}
+
 const SHOP_TABS = [
   { key: 'store', label: '兑换', icon: <ShoppingOutlined /> },
   { key: 'backpack', label: '背包', icon: <GiftOutlined /> },
 ];
 
+function buildBackpackCacheKey(
+  accountId: string,
+  options: {
+    category: ShopCategory;
+    effectMode?: 'EQUIP' | 'CONSUMABLE';
+    equipped?: boolean;
+    state?: 'ACTIVE' | 'EXPIRED';
+    keyword: string;
+    page: number;
+    pageSize: number;
+  },
+) {
+  return `shop:backpack:${accountId}:${JSON.stringify(options)}`;
+}
+
 function ShopPage() {
   const { user } = useAppSelector((state) => state.auth);
+  const accountId = String(user?.accountId ?? 'anonymous');
+  const pointsCacheKey = `shop:points:${accountId}`;
+  const storeCacheKey = `shop:store:${accountId}`;
   const [tab, setTab] = useState<ShopTabKey>('store');
-  const [storeCategory, setStoreCategory] =
-    useState<ShopCategory>('avatar_frame');
+  const [storeCategory, setStoreCategory] = useState<ShopCategory>('all');
   const [backpackCategory, setBackpackCategory] = useState<ShopCategory>('all');
   const [backpackEffectMode, setBackpackEffectMode] = useState<
     'EQUIP' | 'CONSUMABLE' | undefined
@@ -85,15 +108,32 @@ function ShopPage() {
   const [backpackKeyword, setBackpackKeyword] = useState('');
   const [backpackPage, setBackpackPage] = useState(1);
   const [backpackPageSize, setBackpackPageSize] = useState(20);
-  const [backpackTotal, setBackpackTotal] = useState(0);
+  const backpackCacheKey = buildBackpackCacheKey(accountId, {
+    category: backpackCategory,
+    effectMode: backpackEffectMode,
+    equipped: backpackEquipped,
+    state: backpackState,
+    keyword: backpackKeyword,
+    page: backpackPage,
+    pageSize: backpackPageSize,
+  });
+  const initialPointsCache = getPageDataCache<number>(pointsCacheKey);
+  const initialStoreCache = getPageDataCache<IShopItem[]>(storeCacheKey);
+  const initialBackpackCache =
+    getPageDataCache<BackpackCache>(backpackCacheKey);
+  const [backpackTotal, setBackpackTotal] = useState(
+    initialBackpackCache?.total ?? 0,
+  );
   const [ownedFilter, setOwnedFilter] = useState<ShopOwnedFilter>('all');
   const [priceSort, setPriceSort] = useState<ShopPriceSort>('default');
-  const [points, setPoints] = useState(0);
-  const [items, setItems] = useState<IShopItem[]>([]);
-  const [backpack, setBackpack] = useState<IUserCosmeticItem[]>([]);
-  // 请求在首次 effect 中立即发起，首帧直接显示 loading，避免先闪出空状态。
-  const [loadingStore, setLoadingStore] = useState(true);
-  const [loadingBackpack, setLoadingBackpack] = useState(true);
+  const [points, setPoints] = useState(initialPointsCache ?? 0);
+  const [items, setItems] = useState<IShopItem[]>(initialStoreCache ?? []);
+  const [backpack, setBackpack] = useState<IUserCosmeticItem[]>(
+    initialBackpackCache?.items ?? [],
+  );
+  // 首次没有缓存时显示 loading；一级导航返回时直接复用上次数据。
+  const [loadingStore, setLoadingStore] = useState(!initialStoreCache);
+  const [loadingBackpack, setLoadingBackpack] = useState(!initialBackpackCache);
   const [exchangingId, setExchangingId] = useState<number | null>(null);
   const [actingCode, setActingCode] = useState<string | null>(null);
 
@@ -110,24 +150,28 @@ function ShopPage() {
     try {
       const res = await fetchShopCurrencyApi();
       if (res.code !== 200) throw new Error(res.message || '加载失败');
-      setPoints(Number(res.data?.points ?? 0));
+      const nextPoints = Number(res.data?.points ?? 0);
+      setPoints(nextPoints);
+      setPageDataCache(pointsCacheKey, nextPoints);
     } catch (error) {
       message.error(formatApiError('加载积分失败', error));
     }
-  }, []);
+  }, [pointsCacheKey]);
 
   const loadStore = useCallback(async () => {
     setLoadingStore(true);
     try {
       const res = await fetchShopItemsApi({ page: 1, size: 100 });
       if (res.code !== 200) throw new Error(res.message || '加载失败');
-      setItems(res.data || []);
+      const nextItems = res.data || [];
+      setItems(nextItems);
+      setPageDataCache(storeCacheKey, nextItems);
     } catch (error) {
       message.error(formatApiError('加载商城失败', error));
     } finally {
       setLoadingStore(false);
     }
-  }, []);
+  }, [storeCacheKey]);
 
   const loadBackpack = useCallback(async () => {
     setLoadingBackpack(true);
@@ -147,12 +191,18 @@ function ShopPage() {
         keyword: backpackKeyword || undefined,
       });
       if (res.code !== 200) throw new Error(res.message || '加载失败');
-      setBackpack(res.data || []);
-      setBackpackTotal(res.total || 0);
+      const nextItems = res.data || [];
+      const nextTotal = res.total || 0;
+      setBackpack(nextItems);
+      setBackpackTotal(nextTotal);
+      setPageDataCache(backpackCacheKey, {
+        items: nextItems,
+        total: nextTotal,
+      });
       if (
-        (res.data || []).length === 0 &&
+        nextItems.length === 0 &&
         backpackPage > 1 &&
-        (res.total || 0) <= (backpackPage - 1) * backpackPageSize
+        nextTotal <= (backpackPage - 1) * backpackPageSize
       ) {
         setBackpackPage((page) => Math.max(1, page - 1));
       }
@@ -169,13 +219,38 @@ function ShopPage() {
     backpackPage,
     backpackPageSize,
     backpackState,
+    backpackCacheKey,
   ]);
 
   useEffect(() => {
-    void loadPoints();
+    const cachedPoints = getPageDataCache<number>(pointsCacheKey);
+    if (cachedPoints === undefined) {
+      void loadPoints();
+    } else {
+      setPoints(cachedPoints);
+    }
+  }, [loadPoints, pointsCacheKey]);
+
+  useEffect(() => {
+    const cachedStore = getPageDataCache<IShopItem[]>(storeCacheKey);
+    if (cachedStore) {
+      setItems(cachedStore);
+      setLoadingStore(false);
+      return;
+    }
     void loadStore();
+  }, [loadStore, storeCacheKey]);
+
+  useEffect(() => {
+    const cachedBackpack = getPageDataCache<BackpackCache>(backpackCacheKey);
+    if (cachedBackpack) {
+      setBackpack(cachedBackpack.items);
+      setBackpackTotal(cachedBackpack.total);
+      setLoadingBackpack(false);
+      return;
+    }
     void loadBackpack();
-  }, [loadPoints, loadStore, loadBackpack]);
+  }, [backpackCacheKey, loadBackpack]);
 
   const categoryStoreItems = useMemo(
     () => filterByShopCategory(items, storeCategory),
@@ -280,7 +355,9 @@ function ShopPage() {
           : '兑换成功，请到背包装备后生效',
       );
       changeTab('backpack');
-      setPoints(Number(res.data.pointsBalance));
+      const nextPoints = Number(res.data.pointsBalance);
+      setPoints(nextPoints);
+      setPageDataCache(pointsCacheKey, nextPoints);
       void loadStore();
       void loadBackpack();
     } catch (error) {
@@ -412,7 +489,7 @@ function ShopPage() {
         previewAvatar={previewAvatar}
         extraActions={
           equipAction || useAction ? (
-            <Space direction="vertical" className="shop-page__action">
+            <Space orientation="vertical" className="shop-page__action">
               {equipAction}
               {useAction}
             </Space>

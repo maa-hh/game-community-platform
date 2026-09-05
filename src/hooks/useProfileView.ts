@@ -33,6 +33,8 @@ export function useProfileView() {
     }
 
     let cancelled = false;
+    // accountId 变化时先清掉旧资料，避免请求期间短暂显示上一位用户的横幅。
+    setViewUser(null);
     setLoading(true);
 
     const load = async () => {

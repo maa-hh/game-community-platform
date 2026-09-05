@@ -18,7 +18,7 @@ function Notifications() {
       navigate(-1);
       return;
     }
-    navigate('/');
+    navigate('/community');
   }, [navigate]);
 
   return (

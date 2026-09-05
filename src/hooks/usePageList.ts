@@ -41,7 +41,6 @@ export function usePageList<T>({
   const cached = cacheKey
     ? getPageDataCache<PageListCache<T>>(cacheKey)
     : undefined;
-  const cacheKeyRef = useRef(cacheKey);
   const [items, setItems] = useState<T[]>(cached?.items ?? []);
   const [page, setPage] = useState(cached?.page ?? 1);
   const [total, setTotal] = useState(cached?.total ?? 0);
@@ -52,6 +51,8 @@ export function usePageList<T>({
   const requestSeqRef = useRef(0);
   const cacheInvalidatedRef = useRef(false);
   const [cacheVersion, setCacheVersion] = useState(0);
+  // 当前 state 所属缓存键，避免关键词切换时短暂展示上一份结果。
+  const [resolvedCacheKey, setResolvedCacheKey] = useState(cacheKey);
 
   useEffect(() => {
     if (!cacheKey) return undefined;
@@ -68,12 +69,9 @@ export function usePageList<T>({
   }, [fetchPage]);
 
   useEffect(() => {
-    if (cacheKeyRef.current !== cacheKey) {
-      cacheKeyRef.current = cacheKey;
-      return;
-    }
     if (
       !cacheKey ||
+      resolvedCacheKey !== cacheKey ||
       cacheInvalidatedRef.current ||
       loading ||
       loadingMore ||
@@ -81,7 +79,16 @@ export function usePageList<T>({
     )
       return;
     setPageDataCache(cacheKey, { items, page, total, hasMore });
-  }, [cacheKey, hasMore, items, loading, loadingMore, page, total]);
+  }, [
+    cacheKey,
+    hasMore,
+    items,
+    loading,
+    loadingMore,
+    page,
+    resolvedCacheKey,
+    total,
+  ]);
 
   const loadPage = useCallback(
     async (nextPage: number, append: boolean) => {
@@ -132,10 +139,12 @@ export function usePageList<T>({
   }, [hasMore, loading, loadingMore, loadPage, page]);
 
   useLayoutEffect(() => {
+    // 新条件开始前即废弃旧请求，不能让旧响应覆盖新列表。
+    requestSeqRef.current += 1;
+    setResolvedCacheKey(cacheKey);
+
     if (!enabled) {
-      requestSeqRef.current += 1;
       setItems([]);
-      cacheKeyRef.current = cacheKey;
       setPage(1);
       setTotal(0);
       setHasMore(true);
@@ -143,7 +152,6 @@ export function usePageList<T>({
     }
     // 关键词切换时必须继续执行 reset/load，不能只更新 key 后直接 return，
     // 否则新关键词不会发起请求，界面会一直保留上一关键词的列表。
-    cacheKeyRef.current = cacheKey;
     // 失效通知优先于缓存命中，确保监控到变化后一定重新请求。
     const invalidated = cacheInvalidatedRef.current;
     cacheInvalidatedRef.current = false;
@@ -152,7 +160,6 @@ export function usePageList<T>({
         ? getPageDataCache<PageListCache<T>>(cacheKey)
         : undefined;
     if (cachedForKey) {
-      requestSeqRef.current += 1;
       setItems(cachedForKey.items);
       setPage(cachedForKey.page);
       setTotal(cachedForKey.total);
@@ -170,7 +177,7 @@ export function usePageList<T>({
   }, [cacheKey, cacheVersion, enabled, pageSize, ...resetDeps]);
 
   const { sentinelRef } = useInfiniteScroll({
-    enabled: enabled && items.length > 0,
+    enabled: enabled && resolvedCacheKey === cacheKey && items.length > 0,
     hasMore,
     loading,
     loadingMore,
@@ -178,8 +185,8 @@ export function usePageList<T>({
   });
 
   // cacheKey 在关键词切换的首次 render 中已经变化，但 layout effect 还没来得及
-  // 清空上一关键词的 state。此时不能把旧列表当成新查询结果渲染出来。
-  const keyChanged = cacheKeyRef.current !== cacheKey;
+  // 切换到新 state。此时不能把旧列表当成新查询结果渲染出来。
+  const keyChanged = resolvedCacheKey !== cacheKey;
   const visibleItems = keyChanged ? [] : items;
 
   return {

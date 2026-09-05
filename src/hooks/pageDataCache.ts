@@ -9,13 +9,18 @@ export function setPageDataCache<T>(key: string, value: T): void {
   pageDataCache.set(key, value);
 }
 
+/** 清空缓存但不广播；用于路由/账号切换时即将卸载的页面。 */
+export function clearPageDataCache(): void {
+  pageDataCache.clear();
+}
+
 export function invalidatePageDataCache(key?: string): void {
   if (key) {
     pageDataCache.delete(key);
     pageDataCacheListeners.get(key)?.forEach((listener) => listener());
     return;
   }
-  pageDataCache.clear();
+  clearPageDataCache();
   pageDataCacheListeners.forEach((listeners) => {
     listeners.forEach((listener) => listener());
   });

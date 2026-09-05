@@ -40,7 +40,7 @@ const CancelAccountPanel: FC<IProps> = ({
         type="warning"
         showIcon
         className="account-security__alert"
-        message="注销预警"
+        title="注销预警"
         description="确认后账号将进入 7 天冷静期。一周内登录可自动取消注销；期满后账号停用。"
       />
 

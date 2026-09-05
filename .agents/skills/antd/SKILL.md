@@ -28,7 +28,6 @@ which antd || npm install -g @ant-design/cli
 
 After running any command, if the output contains an "Update available" notice, run `antd upgrade` to update before continuing.
 
-
 **Always use `--format json` for structured output you can parse programmatically.**
 
 ## Scenarios
@@ -255,13 +254,13 @@ This provides 8 tools (`antd_list`, `antd_info`, `antd_doc`, `antd_demo`, `antd_
 
 ## Global Flags
 
-| Flag | Purpose |
-|---|---|
+| Flag                | Purpose                                                                    |
+| ------------------- | -------------------------------------------------------------------------- |
 | `--format <format>` | Output format: `json`, `text`, or `markdown` (agents should prefer `json`) |
-| `--version <v>` | Target a specific antd version (e.g. `5.20.0`) |
-| `--lang zh` | Chinese output (default: `en`) |
-| `--detail` | Include extra fields (description, since, deprecated, FAQ) |
-| `-V, --cli-version` | Print CLI version and exit |
+| `--version <v>`     | Target a specific antd version (e.g. `5.20.0`)                             |
+| `--lang zh`         | Chinese output (default: `en`)                                             |
+| `--detail`          | Include extra fields (description, since, deprecated, FAQ)                 |
+| `-V, --cli-version` | Print CLI version and exit                                                 |
 
 ## Key Rules
 

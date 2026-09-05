@@ -56,7 +56,7 @@ const PostDetailTopBar: FC<PostDetailTopBarProps> = ({
           nickname={author.nickname}
           avatar={author.avatar}
           avatarFrameUrl={avatarFrameUrl}
-          size={32}
+          size={34}
           showNickname={false}
           className="post-detail-top-bar__avatar"
         />

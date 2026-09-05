@@ -2,6 +2,8 @@ import React, { memo } from 'react';
 import type { FC } from 'react';
 import { NavLink } from 'react-router-dom';
 
+import { primaryNavigationState } from '@/utils/primaryNavigation';
+
 import type { HeaderNavItem } from '../types';
 
 interface HeaderNavProps {
@@ -24,6 +26,7 @@ const HeaderNav: FC<HeaderNavProps> = ({ items, loggedIn = false }) => (
           key={item.to}
           to={item.to}
           end={item.end}
+          state={primaryNavigationState}
           className={({ isActive }) =>
             `app-header__link${isActive ? ' is-active' : ''}`
           }

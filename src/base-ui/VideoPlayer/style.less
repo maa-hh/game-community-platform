@@ -80,14 +80,14 @@
   display: none !important;
 }
 
-/* 暂停时复用 DPlayer 自带的中央播放按钮，桌面端也保持显示。 */
-.video-player__dplayer.dplayer:not(.dplayer-playing) .dplayer-mobile-play {
-  display: block !important;
-  z-index: 2;
+/* 中央按钮只跟真实 video 状态走，避免 DPlayer 初始化时的 class 短暂错位。 */
+.video-player__dplayer.dplayer .dplayer-mobile-play {
+  display: none !important;
 }
 
-.video-player__dplayer.dplayer.dplayer-playing .dplayer-mobile-play {
-  display: none !important;
+.video-player__dplayer.dplayer.video-player__dplayer--paused .dplayer-mobile-play {
+  display: block !important;
+  z-index: 2;
 }
 
 /* 中央持续播放按钮已接管暂停反馈，隐藏 DPlayer 短暂淡出的暂停竖线图标。 */

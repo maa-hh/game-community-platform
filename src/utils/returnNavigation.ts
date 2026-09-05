@@ -6,7 +6,6 @@ export interface ReturnLocation {
 
 export interface ReturnNavigationState {
   returnTo: string;
-  returnScrollY: number;
 }
 
 /** React Router 为站内 history entry 写入递增 idx；大于 0 才能安全 POP。 */
@@ -19,9 +18,7 @@ export function buildReturnNavigationState(
   location: ReturnLocation,
 ): ReturnNavigationState {
   const returnTo = `${location.pathname}${location.search}${location.hash}`;
-  const returnScrollY = window.scrollY;
   return {
     returnTo,
-    returnScrollY,
   };
 }

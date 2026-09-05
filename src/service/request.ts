@@ -81,8 +81,8 @@ function forceReLogin(tip = '登录已过期，请重新登录') {
   clearAuth();
   setAuthTip(tip);
   message.error(tip);
-  if (!window.location.pathname.includes('/login')) {
-    window.location.assign('/login');
+  if (window.location.pathname !== '/') {
+    window.location.assign('/');
   }
 }
 

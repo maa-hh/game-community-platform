@@ -46,12 +46,12 @@ export const ACCESS_TOKEN_KEY = 'game_community_access_token';
 export const ENABLE_MOCK = ...; // 开发环境默认 true
 ```
 
-| 配置项        | 作用           | 自定义方式                                   |
-| ------------- | -------------- | -------------------------------------------- |
-| `BASE_URL`    | API 基础地址   | `.env` 中设置 `REACT_APP_BASE_URL`           |
-| `TIMEOUT`     | 请求超时       | 修改 `config.ts`                             |
-| `ACCESS_TOKEN_KEY` | access token 存储 key | 修改 `config.ts`                       |
-| `ENABLE_MOCK` | 是否启用 mock  | `.env` 设 `REACT_APP_ENABLE_MOCK=false` 关闭 |
+| 配置项             | 作用                  | 自定义方式                                   |
+| ------------------ | --------------------- | -------------------------------------------- |
+| `BASE_URL`         | API 基础地址          | `.env` 中设置 `REACT_APP_BASE_URL`           |
+| `TIMEOUT`          | 请求超时              | 修改 `config.ts`                             |
+| `ACCESS_TOKEN_KEY` | access token 存储 key | 修改 `config.ts`                             |
+| `ENABLE_MOCK`      | 是否启用 mock         | `.env` 设 `REACT_APP_ENABLE_MOCK=false` 关闭 |
 
 `.env.development` 示例（项目根目录，已创建）：
 
@@ -76,13 +76,13 @@ export const BASE_URL = process.env.REACT_APP_BASE_URL || 'http://localhost:3000
 
 在项目根目录创建/修改 `.env` 文件：
 
-| 文件 | 何时加载 | 是否提交 git |
-| ---- | -------- | ------------ |
-| `.env` | 所有环境 | ✅ 可提交（放公共默认值） |
-| `.env.development` | `npm start` 开发时 | ✅ 可提交 |
-| `.env.production` | `npm run build` 生产时 | ✅ 可提交 |
-| `.env.local` | 所有环境，优先级最高 | ❌ 不提交（个人本地配置） |
-| `.env.development.local` | 开发环境本地覆盖 | ❌ 不提交 |
+| 文件                     | 何时加载               | 是否提交 git              |
+| ------------------------ | ---------------------- | ------------------------- |
+| `.env`                   | 所有环境               | ✅ 可提交（放公共默认值） |
+| `.env.development`       | `npm start` 开发时     | ✅ 可提交                 |
+| `.env.production`        | `npm run build` 生产时 | ✅ 可提交                 |
+| `.env.local`             | 所有环境，优先级最高   | ❌ 不提交（个人本地配置） |
+| `.env.development.local` | 开发环境本地覆盖       | ❌ 不提交                 |
 
 **规则：**
 
