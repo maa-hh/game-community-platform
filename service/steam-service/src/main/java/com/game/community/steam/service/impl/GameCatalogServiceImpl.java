@@ -2,6 +2,9 @@ package com.game.community.steam.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.game.community.common.constant.ApiErrorCodes;
 import com.game.community.common.constant.steam.GameCatalogConstants;
 import com.game.community.common.constant.steam.SteamApiConstants;
 import com.game.community.common.constant.steam.SteamRedisConstants;
@@ -38,8 +41,6 @@ import com.game.community.steam.service.GameCatalogService;
 import com.game.community.steam.service.SteamGameDetailService;
 import com.game.community.steam.util.SteamAchievementIconUrl;
 import com.game.community.utils.RedisUtils;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -176,6 +177,10 @@ public class GameCatalogServiceImpl implements GameCatalogService {
             if (hasBasicInfo(existing)) {
                 return;
             }
+            if (StringUtils.hasText(redisUtils.get(
+                    SteamRedisConstants.GAME_BASIC_INFO_UNAVAILABLE_KEY_PREFIX + appId))) {
+                return;
+            }
             SteamGameBasicPayload basic = readBasicInfoCache(appId);
             if (basic == null) {
                 basic = steamStoreClient.fetchBasicAppInfo(appId);
@@ -183,6 +188,17 @@ public class GameCatalogServiceImpl implements GameCatalogService {
             }
             GameCatalog saved = saveBasicInfo(existing, basic);
             gameSearchIndexProducer.upsertCatalog(saved);
+        } catch (BusinessException e) {
+            if (e.getCode() == ApiErrorCodes.NOT_FOUND) {
+                redisUtils.set(
+                        SteamRedisConstants.GAME_BASIC_INFO_UNAVAILABLE_KEY_PREFIX + appId,
+                        "1",
+                        SteamRedisConstants.GAME_BASIC_INFO_UNAVAILABLE_TTL_SECONDS,
+                        TimeUnit.SECONDS);
+                log.info("Steam 商店无该 App，跳过基础信息预热: appId={}", appId);
+                return;
+            }
+            log.warn("补充游戏基础信息失败: appId={}", appId, e);
         } catch (Exception e) {
             log.warn("补充游戏基础信息失败: appId={}", appId, e);
         } finally {

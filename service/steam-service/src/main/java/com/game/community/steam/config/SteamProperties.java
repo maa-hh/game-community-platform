@@ -23,4 +23,13 @@ public class SteamProperties {
 
     /** 榜单定时同步 cron 表达式。 */
     private String chartSyncCron = "0 0 5 * * ?";
+
+    /** Steam 出站请求之间的最小间隔，避免多个异步线程形成请求洪峰。 */
+    private long requestIntervalMs = 600L;
+
+    /** Steam 返回 429 时的最大 GET/HEAD 请求次数。 */
+    private int rateLimitMaxAttempts = 3;
+
+    /** Steam 返回 429 后的首次退避时长，后续按尝试次数递增。 */
+    private long rateLimitRetryDelayMs = 3000L;
 }

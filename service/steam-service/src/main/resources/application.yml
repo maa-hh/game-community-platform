@@ -82,6 +82,9 @@ steam:
   api-cc: ${STEAM_API_CC:cn}
   frontend-redirect: ${STEAM_FRONTEND_REDIRECT:http://localhost:3000/profile}
   chart-sync-cron: ${STEAM_CHART_SYNC_CRON:0 0 5 * * ?}
+  request-interval-ms: ${STEAM_REQUEST_INTERVAL_MS:600}
+  rate-limit-max-attempts: ${STEAM_RATE_LIMIT_MAX_ATTEMPTS:3}
+  rate-limit-retry-delay-ms: ${STEAM_RATE_LIMIT_RETRY_DELAY_MS:3000}
 
 xxl:
   job:
