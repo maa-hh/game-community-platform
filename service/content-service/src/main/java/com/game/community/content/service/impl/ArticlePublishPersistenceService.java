@@ -38,16 +38,16 @@ public class ArticlePublishPersistenceService {
     @Transactional(rollbackFor = Exception.class)
     public boolean publish(Long articleId, Long userId, String content, String contentHtml,
                            Map<String, String> paragraphs,
-                           List<String> publicImages, String publicCover, String publicVideo,
+                           List<String> mediaRefs, String coverRef, String videoRef,
                            LocalDateTime publishedTime, String auditMessage) {
-        articleContentService.saveContent(articleId, content, contentHtml, paragraphs, publicImages, userId);
+        articleContentService.saveContent(articleId, content, contentHtml, paragraphs, mediaRefs, userId);
         int updated = articleMapper.update(null, new LambdaUpdateWrapper<Article>()
                 .eq(Article::getId, articleId)
                 .eq(Article::getStatus, ContentConstants.ArticleStatus.PENDING)
                 .set(Article::getStatus, ContentConstants.ArticleStatus.PUBLISHED)
                 .set(Article::getAuditMessage, auditMessage)
-                .set(Article::getCoverUrl, publicCover)
-                .set(Article::getVideoUrl, publicVideo)
+                .set(Article::getCoverUrl, coverRef)
+                .set(Article::getVideoUrl, videoRef)
                 .set(Article::getPublishedTime, publishedTime)
                 .set(Article::getUpdateTime, publishedTime));
         if (updated == 0) {

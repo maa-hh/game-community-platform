@@ -9,6 +9,7 @@ import com.game.community.content.mapper.ArticleMapper;
 import com.game.community.content.service.ChunkUploadService;
 import com.game.community.content.service.ContentOutboxService;
 import com.game.community.content.service.TaskService;
+import com.game.community.content.util.ArticleMediaHelper;
 import com.game.community.model.entity.article.Article;
 import com.game.community.model.mongo.ArticleContent;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +31,7 @@ public class ArticleDeletionPersistenceService {
     private final ArticleSearchSyncProducer articleSearchSyncProducer;
     private final ContentOutboxService contentOutboxService;
     private final ArticleNotificationEventProducer articleNotificationEventProducer;
+    private final ArticleMediaHelper articleMediaHelper;
 
     @Transactional(rollbackFor = Exception.class)
     public boolean markDeleted(Article article, ArticleContent content) {
@@ -56,6 +58,7 @@ public class ArticleDeletionPersistenceService {
         if (content != null && content.getImageUrls() != null) {
             refs.addAll(content.getImageUrls());
         }
+        articleMediaHelper.removeFromBlacklist(refs);
         contentOutboxService.enqueue(
                 "article-cleanup:" + article.getId() + ":" + UUID.randomUUID(),
                 "ARTICLE_CLEANUP", null, String.valueOf(article.getId()),

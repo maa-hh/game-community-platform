@@ -346,6 +346,10 @@ public class RedisUtils {
         return result == null ? 0L : result;
     }
 
+    public boolean setContains(String key, String value) {
+        return Boolean.TRUE.equals(stringRedisTemplate.opsForSet().isMember(key, value));
+    }
+
     public Boolean expire(String key, long seconds) {
         return stringRedisTemplate.expire(key, Duration.ofSeconds(seconds));
     }
