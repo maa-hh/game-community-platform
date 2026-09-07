@@ -14,7 +14,7 @@ import VideoCover from '@/base-ui/VideoCover';
 import StatAction from '@/base-ui/StatAction';
 import ProfileUserLink from '@/components/ProfileUserLink';
 import { formatCardTime } from '@/utils/formatTime';
-import { buildReturnNavigationState } from '@/utils/returnNavigation';
+import { buildGameDetailNavigationState } from '@/utils/detailNavigation';
 
 import './style.less';
 
@@ -193,7 +193,11 @@ const ContentCard: FC<IProps> = ({
                 <Link
                   key={tag.appId}
                   to={`/game/${tag.appId}`}
-                  state={buildReturnNavigationState(location)}
+                  state={buildGameDetailNavigationState(location, {
+                    appId: tag.appId,
+                    name: tag.name,
+                    coverUrl: tag.iconUrl,
+                  })}
                   className="content-card__tag content-card__tag--game"
                   onClick={(event) => event.stopPropagation()}
                 >
@@ -231,6 +235,7 @@ const ContentCard: FC<IProps> = ({
                   kind="like"
                   count={likeCount ?? 0}
                   active={liked}
+                  disabled={data.likePending}
                   className="content-card__action"
                   stopPropagation
                   onClick={onLikeClick}

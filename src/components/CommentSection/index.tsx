@@ -12,7 +12,13 @@ import { useCommentSection } from './useCommentSection';
 import './style.less';
 
 const CommentSection: FC<ICommentSectionProps> = (props) => {
-  const { comments, onChange, hideComposer = false, infinite } = props;
+  const {
+    comments,
+    onChange,
+    hideComposer = false,
+    loading = false,
+    infinite,
+  } = props;
   const {
     draft,
     setDraft,
@@ -32,7 +38,6 @@ const CommentSection: FC<ICommentSectionProps> = (props) => {
     handleCommentLike,
     handleReplyLike,
     requireLogin,
-    openAuth,
     reportOpen,
     reportTarget,
     closeReport,
@@ -50,9 +55,6 @@ const CommentSection: FC<ICommentSectionProps> = (props) => {
           submitting={submitting}
           onDraftChange={setDraft}
           onSubmit={submitComment}
-          onFocusRequireLogin={() => {
-            if (!me) openAuth('login');
-          }}
         />
       )}
 
@@ -72,6 +74,7 @@ const CommentSection: FC<ICommentSectionProps> = (props) => {
         onCommentLike={handleCommentLike}
         onReplyLike={handleReplyLike}
         infinite={infinite}
+        loading={loading}
       />
 
       <ReplyPopup

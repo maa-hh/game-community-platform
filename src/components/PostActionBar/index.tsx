@@ -15,6 +15,8 @@ const PostActionBar: FC<IProps> = ({
   shareCount,
   liked,
   favorited,
+  likeDisabled,
+  favoriteDisabled,
   onLike,
   onFavorite,
   onShare,
@@ -26,12 +28,14 @@ const PostActionBar: FC<IProps> = ({
         kind="like"
         count={likeCount}
         active={liked}
+        disabled={likeDisabled}
         onClick={onLike}
       />
       <StatAction
         kind="favorite"
         count={favoriteCount}
         active={favorited}
+        disabled={favoriteDisabled}
         onClick={onFavorite}
       />
       {onShare ? (

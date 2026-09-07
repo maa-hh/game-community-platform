@@ -23,7 +23,9 @@ const FeedPanelRail: FC<FeedPanelRailProps> = ({
       <Tooltip title="刷新内容" placement="left">
         <button
           type="button"
-          className="feed-panel__tool"
+          className={`feed-panel__tool${
+            refreshing ? ' feed-panel__tool--refreshing' : ''
+          }`}
           aria-label="刷新内容"
           disabled={refreshing || loading}
           onClick={() => void onRefresh()}

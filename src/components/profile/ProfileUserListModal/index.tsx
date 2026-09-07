@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import React, { memo, useEffect, useRef } from 'react';
 import type { FC } from 'react';
 import { Alert, Modal, Spin } from 'antd';
 import { useNavigate } from 'react-router-dom';
@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import ListEndHint from '@/base-ui/ListEndHint';
 import UserAvatarWithFrame from '@/base-ui/UserAvatarWithFrame';
 import { usePageList } from '@/hooks/usePageList';
+import { useAppSelector } from '@/store';
 import { fetchFollowersListApi, fetchFollowingListApi } from '@/service/social';
 import type { IUserCard } from '@/service/types';
 
@@ -17,6 +18,7 @@ interface IProps {
   open: boolean;
   type: ProfileUserListType;
   onClose: () => void;
+  onRefreshReady?: (refresh: (() => Promise<void>) | null) => void;
 }
 
 const TITLE_MAP: Record<ProfileUserListType, string> = {
@@ -31,17 +33,49 @@ function buildProfileHref(item: IUserCard): string | null {
   return null;
 }
 
-const ProfileUserListModal: FC<IProps> = ({ open, type, onClose }) => {
+const ProfileUserListModal: FC<IProps> = ({
+  open,
+  type,
+  onClose,
+  onRefreshReady,
+}) => {
   const navigate = useNavigate();
+  const accountId = useAppSelector((state) => state.auth.user?.accountId);
   const pager = usePageList<IUserCard>({
     pageSize: 20,
     enabled: open,
-    resetDeps: [type, open],
+    cacheKey: `profile-users:${type}`,
+    resetDeps: [type],
     fetchPage: (page, size) =>
       type === 'following'
         ? fetchFollowingListApi(page, size)
         : fetchFollowersListApi(page, size),
   });
+  const reloadProfileUsers = pager.reload;
+  const wasOpenRef = useRef(false);
+  const previousTypeRef = useRef<ProfileUserListType | null>(null);
+
+  useEffect(() => {
+    onRefreshReady?.(reloadProfileUsers);
+    return () => onRefreshReady?.(null);
+  }, [onRefreshReady, reloadProfileUsers]);
+
+  useEffect(() => {
+    if (!open || !accountId) {
+      wasOpenRef.current = false;
+      previousTypeRef.current = null;
+      return;
+    }
+
+    // 关注列表可能在上次打开时被缓存；每次重新打开都以服务端结果为准。
+    const shouldReload =
+      !wasOpenRef.current || previousTypeRef.current !== type;
+    wasOpenRef.current = true;
+    previousTypeRef.current = type;
+    if (!shouldReload) return;
+
+    void reloadProfileUsers().catch(() => undefined);
+  }, [accountId, open, reloadProfileUsers, type]);
 
   const showEmpty =
     !pager.loading && pager.items.length === 0 && !pager.loadingMore;

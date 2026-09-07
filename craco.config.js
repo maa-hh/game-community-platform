@@ -41,11 +41,18 @@ const isApiProxyRequest = (pathname, req) => {
 
 module.exports = {
   devServer: {
+    // CRA 开发服务器默认会依据 Accept-Encoding 压缩响应；压缩会缓冲
+    // text/event-stream，浏览器 EventSource 因此收不到首帧。SSE 调试/开发
+    // 环境关闭该层压缩，网关仍可按普通 HTTP 响应处理其它接口。
+    compress: false,
     proxy: [{
       context: isApiProxyRequest,
       target: 'http://localhost:8080',
       changeOrigin: true,
       ws: true,
+      // SSE 是长连接，避免开发代理的默认超时主动切断通知流。
+      timeout: 0,
+      proxyTimeout: 0,
     }],
   },
   // webpack 配置块：会被深度合并到 CRA 默认 webpack 配置上

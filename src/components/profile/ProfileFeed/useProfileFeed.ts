@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { message } from 'antd';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -28,7 +28,9 @@ import {
   resolveRefPostMap,
   togglePostLikeApi,
 } from '@/service/social';
-import { useAppSelector } from '@/store';
+import { useAppDispatch, useAppSelector } from '@/store';
+import { clearProfileDataDirty } from '@/store/modules/profileRealtime';
+import { invalidatePageDataCache } from '@/hooks/pageDataCache';
 import { formatApiError } from '@/utils/apiError';
 import { buildPostActivityPath } from '@/utils/profileFeed';
 import {
@@ -41,6 +43,16 @@ import { resolvePostCardSummary } from '@/utils/postSummary';
 import { resolveRepostRefPost } from '@/utils/refPostCard';
 import { buildReturnNavigationState } from '@/utils/returnNavigation';
 import { isGameRefPostId } from '@/utils/gameRepost';
+import {
+  EMPTY_PROFILE_DATA_DOMAINS,
+  PROFILE_DATA_DOMAIN,
+} from '@/types/profileRealtime';
+import { invalidateProfileDataCaches } from '@/utils/profileDataCache';
+import {
+  buildPostDetailNavigationState,
+  mapFeedItemToLatestPost,
+  mapPostRefToLatestPost,
+} from '@/utils/detailNavigation';
 
 import type { IProps } from './types';
 
@@ -109,6 +121,7 @@ export function useProfileFeed({
 }: IProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const dispatch = useAppDispatch();
   const { user } = useAppSelector((state) => state.auth);
   const { requireLogin } = useRequireLogin();
   const [likeMap, setLikeMap] = useState<
@@ -116,6 +129,13 @@ export function useProfileFeed({
   >({});
 
   const feedAuthor = authorUser ?? user;
+  const profileOwnerAccountId = targetAccountId ?? feedAuthor?.accountId;
+  const profileDirtyDomains = useAppSelector((state) =>
+    profileOwnerAccountId != null
+      ? (state.profileRealtime.dirtyByAccount[String(profileOwnerAccountId)] ??
+        EMPTY_PROFILE_DATA_DOMAINS)
+      : EMPTY_PROFILE_DATA_DOMAINS,
+  );
   const ownerAuthor = useMemo(
     () => (isOther ? null : buildProfileDisplayAuthor(feedAuthor)),
     [feedAuthor, isOther],
@@ -208,17 +228,53 @@ export function useProfileFeed({
     ],
   );
 
+  const profileFeedCacheKey = `profile-feed:${isOther ? 'other' : 'self'}:${targetAccountId ?? feedAuthor?.accountId ?? 'unknown'}:${mainTab}:${mainTab === 'posts' ? postSubTab : 'all'}`;
   const pagedList = usePageList<FeedItemData>({
     pageSize: PAGE_SIZE,
+    cacheKey: profileFeedCacheKey,
     resetDeps: [mainTab, postSubTab, targetAccountId],
     fetchPage: fetchPagedTab,
   });
 
-  const { goEdit, buildOwnerActionBarItems } = useArticleOwnerActions({
-    onPublished: () => void pagedList.reload(),
-    onUnpublished: () => void pagedList.reload(),
-    onDeleted: () => void pagedList.reload(),
-  });
+  const feedDomain =
+    mainTab === 'posts'
+      ? PROFILE_DATA_DOMAIN.POSTS
+      : mainTab === 'history'
+        ? PROFILE_DATA_DOMAIN.HISTORY
+        : mainTab === 'liked'
+          ? PROFILE_DATA_DOMAIN.LIKED
+          : mainTab === 'received'
+            ? PROFILE_DATA_DOMAIN.RECEIVED
+            : mainTab === 'favorites'
+              ? PROFILE_DATA_DOMAIN.FAVORITES
+              : PROFILE_DATA_DOMAIN.COMMENTS;
+
+  useEffect(() => {
+    if (
+      isOther ||
+      location.pathname !== '/profile' ||
+      profileOwnerAccountId == null ||
+      !profileDirtyDomains.includes(feedDomain)
+    ) {
+      return;
+    }
+
+    dispatch(
+      clearProfileDataDirty({
+        accountId: profileOwnerAccountId,
+        domains: [feedDomain],
+      }),
+    );
+  }, [
+    dispatch,
+    feedDomain,
+    isOther,
+    location.pathname,
+    profileDirtyDomains,
+    profileOwnerAccountId,
+  ]);
+
+  const { goEdit, buildOwnerActionBarItems } = useArticleOwnerActions();
 
   const list = useMemo(
     () =>
@@ -266,6 +322,11 @@ export function useProfileFeed({
             likeCount: res.data.likeCount,
           },
         }));
+        invalidatePageDataCache(profileFeedCacheKey);
+        invalidateProfileDataCaches(user?.accountId, [
+          PROFILE_DATA_DOMAIN.LIKED,
+          PROFILE_DATA_DOMAIN.RECEIVED,
+        ]);
       } catch (err) {
         message.error(formatApiError('操作失败', err));
         setLikeMap((prev) => {
@@ -279,7 +340,7 @@ export function useProfileFeed({
         });
       }
     },
-    [likeMap, requireLogin],
+    [likeMap, profileFeedCacheKey, requireLogin, user?.accountId],
   );
 
   const handleRefresh = useCallback(async () => {
@@ -294,7 +355,14 @@ export function useProfileFeed({
     (item: FeedItemData) => {
       const activityPath = buildPostActivityPath(item);
       if (activityPath) {
-        navigate(activityPath);
+        const preview = item.refPost
+          ? mapPostRefToLatestPost(item.refPost, item.targetArticleId)
+          : undefined;
+        navigate(activityPath, {
+          state: preview
+            ? buildPostDetailNavigationState(location, preview)
+            : undefined,
+        });
         return;
       }
       if (!item.id || isGameRefPostId(item.id)) return;
@@ -310,8 +378,11 @@ export function useProfileFeed({
           return;
         }
       }
+      const preview = mapFeedItemToLatestPost(item);
       navigate(`/post/${item.id}`, {
-        state: buildReturnNavigationState(location),
+        state: preview
+          ? buildPostDetailNavigationState(location, preview)
+          : buildReturnNavigationState(location),
       });
     },
     [location, mainTab, goEdit, navigate],
@@ -322,9 +393,16 @@ export function useProfileFeed({
   }, [navigate]);
 
   const navigateToPost = useCallback(
-    (path: string) => {
+    (path: string, item?: FeedItemData) => {
+      const preview = item?.refPost
+        ? mapPostRefToLatestPost(item.refPost, item.targetArticleId)
+        : item
+          ? mapFeedItemToLatestPost(item)
+          : undefined;
       navigate(path, {
-        state: buildReturnNavigationState(location),
+        state: preview
+          ? buildPostDetailNavigationState(location, preview)
+          : buildReturnNavigationState(location),
       });
     },
     [location, navigate],
@@ -336,6 +414,7 @@ export function useProfileFeed({
     list,
     loading: pagedList.loading,
     loadingMore: pagedList.loadingMore,
+    refreshing: pagedList.refreshing,
     hasMore: pagedList.hasMore,
     sentinelRef: pagedList.sentinelRef,
     buildOwnerActionBarItems,

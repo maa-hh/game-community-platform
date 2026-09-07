@@ -13,8 +13,8 @@ function RootLayout() {
   return (
     <DecorationRegistryProvider>
       <AppHeader />
-      <ArticleProgressBanner />
       <div className="site-main">
+        <ArticleProgressBanner />
         <Outlet />
       </div>
       <ScrollRestoration storageKey="gc:scroll-positions" />

@@ -30,22 +30,28 @@ import PageLoading from '@/base-ui/PageLoading';
 import {
   ARTICLE_STATUS,
   POST_TYPE,
+  TASK_STATUS,
   bindChunkUploadApi,
   deleteArticleApi,
   listCategoriesApi,
   loadArticleForEditApi,
   saveArticleApi,
   unpublishArticleApi,
-  uploadImagesApi,
+  uploadFileWithProgress,
   uploadVideoWithProgress,
   type ICategory,
   type PostType,
 } from '@/service/content';
 import { searchGamesApi } from '@/service/game';
 import { useAppDispatch } from '@/store';
-import { startArticleProgressTrack } from '@/store/modules/articleProgress';
+import {
+  clearArticleProgressTrack,
+  startArticleProgressTrack,
+  updateArticleProgress,
+} from '@/store/modules/articleProgress';
 import { useGoBack } from '@/hooks/useGoBack';
 import { getArticleProgressResultMessage } from '@/utils/articleProgressMessage';
+import { invalidateOwnProfilePostCaches } from '@/utils/profileDataCache';
 import { useAppSelector } from '@/store';
 import { formatApiError } from '@/utils/apiError';
 import { mapGameTagsFromRaw, mergeGameTagOptions } from '@/utils/mapGameTag';
@@ -225,8 +231,11 @@ const PostEditor: FC = () => {
   const [gameSelectOpen, setGameSelectOpen] = useState(false);
   const [linkModalOpen, setLinkModalOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
+  const [richTextComposing, setRichTextComposing] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
-  const uploadIdRef = useRef<string | null>(null);
+  const uploadIdsRef = useRef<Set<string>>(new Set());
+  const uploadProgressIdRef = useRef<string | null>(null);
+  const uploadProgressAsDraftRef = useRef(false);
   const gameSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const titleComposingRef = useRef(false);
   const richQuillRef = useRef<ReactQuill | null>(null);
@@ -343,6 +352,26 @@ const PostEditor: FC = () => {
   );
 
   useEffect(() => {
+    const editor = richQuillRef.current?.getEditor();
+    const editorRoot = editor?.root;
+    if (!editorRoot) return undefined;
+
+    const handleCompositionStart = () => setRichTextComposing(true);
+    const handleCompositionEnd = () => setRichTextComposing(false);
+
+    editorRoot.addEventListener('compositionstart', handleCompositionStart);
+    editorRoot.addEventListener('compositionend', handleCompositionEnd);
+
+    return () => {
+      editorRoot.removeEventListener(
+        'compositionstart',
+        handleCompositionStart,
+      );
+      editorRoot.removeEventListener('compositionend', handleCompositionEnd);
+    };
+  }, [loadingArticle]);
+
+  useEffect(() => {
     if (editIdParam) return;
     if (!lockedGameAppId || !Number.isFinite(lockedGameAppId)) return;
 
@@ -429,7 +458,15 @@ const PostEditor: FC = () => {
         const legacyPlainContent =
           data.content?.trim() ||
           Object.values(data.contentParagraphs || {}).join('\n');
-        const allUrls = dedupeUrls([
+        const savedImageRefs = dedupeUrls([
+          ...(data.coverRef
+            ? [data.coverRef]
+            : data.coverUrl
+              ? [data.coverUrl]
+              : []),
+          ...(data.imageRefs || data.imageUrls || []),
+        ]);
+        const savedImagePreviews = dedupeUrls([
           ...(data.coverUrl ? [data.coverUrl] : []),
           ...(data.imageUrls || []),
         ]);
@@ -458,17 +495,18 @@ const PostEditor: FC = () => {
           setGameOptions((prev) => mergeGameTagOptions(prev, editGameTags));
         }
 
-        if (data.videoUrl) {
-          setVideoPendingUrl(data.videoUrl);
-          setVideoPreviewUrl(data.videoUrl);
+        const savedVideoUrl = data.videoRef || data.videoUrl;
+        if (savedVideoUrl) {
+          setVideoPendingUrl(savedVideoUrl);
+          setVideoPreviewUrl(data.videoUrl || data.videoRef || null);
         }
 
-        if (allUrls.length > 0) {
+        if (savedImageRefs.length > 0) {
           setCoverImages(
-            allUrls.map((url) => ({
+            savedImageRefs.map((ref, index) => ({
               id: createImageId(),
-              pendingUrl: url,
-              previewUrl: url,
+              pendingUrl: ref,
+              previewUrl: savedImagePreviews[index] || ref,
             })),
           );
         }
@@ -497,7 +535,7 @@ const PostEditor: FC = () => {
     setVideoPendingUrl(null);
     setVideoName(null);
     setUploadPercent(0);
-    uploadIdRef.current = null;
+    uploadIdsRef.current.clear();
   };
 
   const trimCoverImages = (max: number) => {
@@ -560,7 +598,119 @@ const PostEditor: FC = () => {
 
   const hasVideoSource = Boolean(pendingVideoFile || videoPendingUrl);
 
-  const uploadEditorImages = async (images: EditorImage[]) => {
+  const startUploadProgress = (title: string, asDraft: boolean) => {
+    const articleId = `upload:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+    uploadProgressIdRef.current = articleId;
+    uploadProgressAsDraftRef.current = asDraft;
+    dispatch(
+      startArticleProgressTrack({
+        articleId,
+        title,
+        kind: 'upload',
+        progress: {
+          articleId,
+          status: asDraft ? ARTICLE_STATUS.DRAFT : ARTICLE_STATUS.PENDING,
+          uploadPercent: 0,
+          uploadStatus: 'UPLOADING',
+          auditStageText: '媒体上传中',
+        },
+      }),
+    );
+  };
+
+  const reportUploadProgress = (percent: number) => {
+    setUploadPercent(percent);
+    const articleId = uploadProgressIdRef.current;
+    if (!articleId) return;
+    dispatch(
+      updateArticleProgress({
+        articleId,
+        status: uploadProgressAsDraftRef.current
+          ? ARTICLE_STATUS.DRAFT
+          : ARTICLE_STATUS.PENDING,
+        uploadPercent: percent,
+        uploadStatus: 'UPLOADING',
+        auditStageText: '媒体上传中',
+      }),
+    );
+  };
+
+  const finishUploadProgress = (
+    articleId: string,
+    title: string,
+    asDraft: boolean,
+  ) => {
+    const uploadTaskId = uploadProgressIdRef.current;
+    if (uploadTaskId) {
+      dispatch(clearArticleProgressTrack(uploadTaskId));
+    }
+
+    if (asDraft) {
+      dispatch(
+        startArticleProgressTrack({
+          articleId,
+          title,
+          kind: 'draft',
+          progress: {
+            articleId,
+            status: ARTICLE_STATUS.DRAFT,
+            uploadPercent: 100,
+            uploadStatus: 'SAVED',
+            auditStageText: '草稿已保存',
+          },
+        }),
+      );
+      window.setTimeout(
+        () => dispatch(clearArticleProgressTrack(articleId)),
+        4000,
+      );
+    } else {
+      dispatch(
+        startArticleProgressTrack({
+          articleId,
+          title,
+          kind: 'audit',
+          progress: {
+            articleId,
+            status: ARTICLE_STATUS.PENDING,
+            uploadPercent: 100,
+            uploadStatus: 'MERGED',
+            auditStageText: '排队审核中',
+          },
+        }),
+      );
+    }
+
+    uploadProgressIdRef.current = null;
+  };
+
+  const failUploadProgress = (error: unknown) => {
+    const articleId = uploadProgressIdRef.current;
+    if (!articleId) return;
+    dispatch(
+      updateArticleProgress({
+        articleId,
+        status: uploadProgressAsDraftRef.current
+          ? ARTICLE_STATUS.DRAFT
+          : ARTICLE_STATUS.PENDING,
+        uploadPercent,
+        uploadStatus: 'FAILED',
+        taskStatus: TASK_STATUS.FAILED,
+        taskErrorMessage: formatApiError('上传失败', error),
+        auditStageText: '上传失败',
+      }),
+    );
+    window.setTimeout(
+      () => dispatch(clearArticleProgressTrack(articleId)),
+      5000,
+    );
+    uploadProgressIdRef.current = null;
+  };
+
+  const uploadEditorImages = async (
+    images: EditorImage[],
+    onProgress?: (percent: number) => void,
+  ) => {
     const pending = images.filter((img) => img.file);
     if (pending.length === 0) {
       return {
@@ -569,15 +719,40 @@ const PostEditor: FC = () => {
       };
     }
 
-    const res = await uploadImagesApi(pending.map((img) => img.file!));
-    let uploadIdx = 0;
+    const uploaded = new Map<
+      string,
+      Awaited<ReturnType<typeof uploadFileWithProgress>>
+    >();
+    let completed = 0;
+    for (const img of pending) {
+      if (!img.file) continue;
+      const completedBeforeCurrent = completed;
+      const media = await uploadFileWithProgress(
+        img.file,
+        (percent) => {
+          onProgress?.(
+            Math.round(
+              ((completedBeforeCurrent + percent / 100) / pending.length) * 100,
+            ),
+          );
+        },
+        {
+          bizType: 'image',
+          signal: abortRef.current?.signal,
+          onUploadId: (uploadId) => uploadIdsRef.current.add(uploadId),
+        },
+      );
+      uploaded.set(img.id, media);
+      completed += 1;
+      onProgress?.(Math.round((completed / pending.length) * 100));
+    }
+
     const nextImages: EditorImage[] = [];
     const urls: string[] = [];
 
     images.forEach((img) => {
       if (img.file) {
-        const item = res.data[uploadIdx];
-        uploadIdx += 1;
+        const item = uploaded.get(img.id);
         if (!item) return;
         revokeBlobUrl(img.previewUrl);
         nextImages.push({
@@ -605,27 +780,38 @@ const PostEditor: FC = () => {
     imageUrls: string[];
   }> => {
     let videoUrl = videoPendingUrl;
-
-    const coverResult = await uploadEditorImages(coverImages);
-    setCoverImages(coverResult.nextImages);
-
-    const imageUrls = coverResult.urls;
-    const coverUrl = imageUrls[0] || null;
-
-    if (pendingVideoFile) {
+    const pendingImageCount = coverImages.filter((img) => img.file).length;
+    const hasPendingMedia = pendingImageCount > 0 || Boolean(pendingVideoFile);
+    if (hasPendingMedia) {
       abortRef.current?.abort();
-      const controller = new AbortController();
-      abortRef.current = controller;
+      abortRef.current = new AbortController();
       setUploading(true);
-      setUploadPercent(0);
-      try {
+      reportUploadProgress(0);
+    }
+
+    try {
+      const coverResult = await uploadEditorImages(
+        coverImages,
+        pendingVideoFile
+          ? (percent) => reportUploadProgress(Math.round(percent / 2))
+          : reportUploadProgress,
+      );
+      setCoverImages(coverResult.nextImages);
+
+      const imageUrls = coverResult.urls;
+      const coverUrl = imageUrls[0] || null;
+
+      if (pendingVideoFile) {
         const media = await uploadVideoWithProgress(
           pendingVideoFile,
-          setUploadPercent,
+          (percent) =>
+            reportUploadProgress(
+              pendingImageCount > 0 ? Math.round(50 + percent / 2) : percent,
+            ),
           {
-            signal: controller.signal,
+            signal: abortRef.current?.signal,
             onUploadId: (id) => {
-              uploadIdRef.current = id;
+              uploadIdsRef.current.add(id);
             },
           },
         );
@@ -633,12 +819,12 @@ const PostEditor: FC = () => {
         setVideoPendingUrl(media.pendingUrl);
         setVideoPreviewUrl(media.previewUrl);
         setPendingVideoFile(null);
-      } finally {
-        setUploading(false);
       }
-    }
 
-    return { coverUrl, videoUrl, imageUrls };
+      return { coverUrl, videoUrl, imageUrls };
+    } finally {
+      if (hasPendingMedia) setUploading(false);
+    }
   };
 
   const coverMaxCount = postType === POST_TYPE.VIDEO ? 1 : COVER_MAX;
@@ -670,7 +856,7 @@ const PostEditor: FC = () => {
     setVideoPreviewUrl(null);
     setVideoName(null);
     setUploadPercent(0);
-    uploadIdRef.current = null;
+    uploadIdsRef.current.clear();
   };
 
   const onSave = async (asDraft: boolean) => {
@@ -680,7 +866,7 @@ const PostEditor: FC = () => {
           ? ['title', 'categoryIds']
           : ['title', 'categoryIds', 'contentHtml'],
       );
-      if (postType === POST_TYPE.VIDEO && !hasVideoSource) {
+      if (!asDraft && postType === POST_TYPE.VIDEO && !hasVideoSource) {
         message.warning('请选择视频');
         return;
       }
@@ -688,14 +874,35 @@ const PostEditor: FC = () => {
         message.warning('正在上传，请稍候');
         return;
       }
+      const displayTitle = form.getFieldValue('title')?.trim() || '内容';
+      const hasPendingMedia =
+        coverImages.some((image) => Boolean(image.file)) ||
+        Boolean(pendingVideoFile);
       setSubmitting(true);
+      if (hasPendingMedia) {
+        startUploadProgress(displayTitle, asDraft);
+      }
+      if (!asDraft) {
+        // 提交审核先放弃旧草稿快照，已发布缓存等审核最终结果为 PUBLISHED 再失效。
+        invalidateOwnProfilePostCaches(user?.accountId, ['draft']);
+      }
       const media = await uploadPendingMedia();
       const payload = buildPayload(asDraft, media);
       const res = await saveArticleApi(payload);
-      if (uploadIdRef.current) {
-        await bindChunkUploadApi(uploadIdRef.current, res.data);
+      for (const uploadId of Array.from(uploadIdsRef.current)) {
+        await bindChunkUploadApi(uploadId, res.data);
       }
-      const title = payload.title || '内容';
+      uploadIdsRef.current.clear();
+      const title = payload.title || displayTitle;
+      finishUploadProgress(res.data, title, asDraft);
+      if (asDraft) {
+        invalidateOwnProfilePostCaches(
+          user?.accountId,
+          articleStatus === ARTICLE_STATUS.PUBLISHED
+            ? ['published', 'draft']
+            : ['draft'],
+        );
+      }
       setArticleId(res.data);
       if (asDraft) {
         setArticleStatus(ARTICLE_STATUS.DRAFT);
@@ -705,20 +912,22 @@ const PostEditor: FC = () => {
           'draft',
         );
         message.open({ type, content: text, duration: 1 });
-        goBack();
+        navigate('/profile', {
+          replace: true,
+          state: { postSubTab: 'draft' },
+        });
       } else {
         setArticleStatus(ARTICLE_STATUS.PENDING);
-        dispatch(
-          startArticleProgressTrack({
-            articleId: res.data,
-            title,
-            kind: 'audit',
-          }),
-        );
-        goBack();
+        navigate('/profile', {
+          replace: true,
+          state: { postSubTab: 'draft' },
+        });
       }
     } catch (err) {
       if ((err as { errorFields?: unknown })?.errorFields) return;
+      if (uploadProgressIdRef.current) {
+        failUploadProgress(err);
+      }
       if ((err as DOMException)?.name === 'AbortError') {
         message.info('已取消上传');
         return;
@@ -731,11 +940,12 @@ const PostEditor: FC = () => {
 
   const onCancelPublish = () => {
     if (!articleId) return;
+    const published = articleStatus === ARTICLE_STATUS.PUBLISHED;
     Modal.confirm({
-      title: '取消上架？',
+      title: published ? '移入草稿箱？' : '取消上架？',
       content:
-        '将停止上传并取消审核任务，已上传文件会保留，状态改为已取消上架。',
-      okText: '取消上架',
+        '将停止上传并取消审核任务，内容仅作者可见，已上传文件会继续保留。',
+      okText: published ? '移入草稿箱' : '取消上架',
       okButtonProps: { danger: true },
       cancelText: '再想想',
       onOk: async () => {
@@ -743,11 +953,15 @@ const PostEditor: FC = () => {
         await unpublishArticleApi(articleId);
         setUploading(false);
         const { type, text } = getArticleProgressResultMessage(
-          ARTICLE_STATUS.OFFLINE,
+          ARTICLE_STATUS.DRAFT,
           form.getFieldValue('title') || '内容',
           'unpublish',
         );
         message.open({ type, content: text, duration: 1 });
+        invalidateOwnProfilePostCaches(
+          user?.accountId,
+          published ? ['published', 'draft'] : ['draft'],
+        );
         goBack();
       },
     });
@@ -765,6 +979,10 @@ const PostEditor: FC = () => {
         abortRef.current?.abort();
         await deleteArticleApi(articleId);
         message.success({ content: '已删除', duration: 1 });
+        invalidateOwnProfilePostCaches(
+          user?.accountId,
+          isPublished ? ['published'] : ['draft'],
+        );
         goBack();
       },
     });
@@ -834,6 +1052,11 @@ const PostEditor: FC = () => {
         className="post-editor__form"
         requiredMark={false}
       >
+        <p className="post-editor__tip">
+          {isImageTextMode
+            ? '提示：服务器资源有限，请勿上传单张超过 5MB 的图片，图片总数不要超过 9 张。'
+            : '提示：服务器资源有限，请勿上传超过 500MB 的视频。'}
+        </p>
         <Form.Item
           name="title"
           label="标题"
@@ -967,6 +1190,12 @@ const PostEditor: FC = () => {
               gameAppIds={gameAppIds}
               gameOptions={gameOptions}
             />
+            {uploading && postType === POST_TYPE.IMAGE_TEXT && (
+              <div className="post-editor__progress">
+                <Progress percent={uploadPercent} status="active" />
+                <span className="post-editor__hint">图片上传中，请稍候</span>
+              </div>
+            )}
           </Form.Item>
         )}
 
@@ -1063,7 +1292,9 @@ const PostEditor: FC = () => {
         >
           <ReactQuill
             ref={richQuillRef}
-            className="post-editor__rich-editor"
+            className={`post-editor__rich-editor${
+              richTextComposing ? ' post-editor__rich-editor--composing' : ''
+            }`}
             theme="snow"
             modules={richTextModules}
             formats={RICH_TEXT_FORMATS}
@@ -1098,10 +1329,10 @@ const PostEditor: FC = () => {
             >
               {isPublished ? '保存并提交审核' : '提交审核'}
             </Button>
-            {articleId && (
+            {articleId && (isPublished || isPending) && (
               <>
                 <Button danger onClick={onCancelPublish}>
-                  取消上架
+                  {isPublished ? '移入草稿箱' : '取消上架'}
                 </Button>
                 <Button danger type="primary" ghost onClick={onDelete}>
                   删除
@@ -1110,8 +1341,7 @@ const PostEditor: FC = () => {
             )}
           </Space>
           <p className="post-editor__tip">
-            取消上架：停上传、取消审核、改状态，文件保留。删除：额外清空 MinIO
-            文件。
+            移入草稿箱：停上传、取消审核，仅作者可见，文件保留。删除：清空媒体文件。
           </p>
         </div>
       </Form>

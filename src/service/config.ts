@@ -1,11 +1,14 @@
-// API 全局配置：环境变量优先；开发留空时走当前站点（配合 craco devServer 代理）
+// API 全局配置：环境变量优先；未配置时开发走 devServer 代理，生产走当前站点。
+// 生产环境不能回退到 localhost，否则手机会把 API 请求发到自己的设备。
+const configuredBaseUrl = process.env.REACT_APP_BASE_URL?.trim();
+
 export const BASE_URL =
-  process.env.REACT_APP_BASE_URL !== undefined &&
-  process.env.REACT_APP_BASE_URL !== ''
-    ? process.env.REACT_APP_BASE_URL
-    : process.env.NODE_ENV === 'development'
-      ? ''
-      : 'http://localhost:8080';
+  configuredBaseUrl ||
+  (process.env.NODE_ENV === 'development'
+    ? ''
+    : typeof window !== 'undefined'
+      ? window.location.origin
+      : '');
 
 // 请求超时（毫秒）
 export const TIMEOUT = 10000;

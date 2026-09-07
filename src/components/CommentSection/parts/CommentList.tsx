@@ -1,12 +1,15 @@
 import React, { memo, useMemo } from 'react';
 import type { FC } from 'react';
-import { message } from 'antd';
+import { message, Spin } from 'antd';
 
 import ListEndHint from '@/base-ui/ListEndHint';
+import { REPLY_PAGE_SIZE } from '@/components/CommentItem/config';
 import CommentItem from '@/components/CommentItem';
 import { useUserDecorations } from '@/hooks/useUserDecorations';
 import { deleteCommentApi, deleteReplyApi } from '@/service/social';
 import { formatApiError } from '@/utils/apiError';
+import { invalidateProfileDataCaches } from '@/utils/profileDataCache';
+import { PROFILE_DATA_DOMAIN } from '@/types/profileRealtime';
 
 import type { CommentListProps } from '../types';
 
@@ -26,9 +29,12 @@ const CommentList: FC<CommentListProps> = ({
   onCommentLike,
   onReplyLike,
   infinite,
+  loading = false,
 }) => {
   const hasPendingReplies = comments.some(
-    (comment) => comment.replyCount > comment.replies.length,
+    (comment) =>
+      (comment.replyPage ?? 0) * (comment.replyPageSize ?? REPLY_PAGE_SIZE) <
+      comment.replyCount,
   );
 
   const decorationUserIds = useMemo(() => {
@@ -46,6 +52,12 @@ const CommentList: FC<CommentListProps> = ({
 
   return (
     <div className="comment-section__list">
+      {loading ? (
+        <div className="comment-section__loading" role="status">
+          <Spin size="small" />
+          <span>{comments.length > 0 ? '正在更新评论' : '正在加载评论'}</span>
+        </div>
+      ) : null}
       {comments.map((comment) => (
         <CommentItem
           key={comment.id}
@@ -68,6 +80,9 @@ const CommentList: FC<CommentListProps> = ({
             try {
               await deleteCommentApi(articleId, comment.id);
               onChange((prev) => prev.filter((c) => c.id !== comment.id));
+              invalidateProfileDataCaches(myAccountId, [
+                PROFILE_DATA_DOMAIN.COMMENTS,
+              ]);
             } catch (err) {
               message.error(formatApiError('删除评论失败', err));
             }
@@ -89,6 +104,9 @@ const CommentList: FC<CommentListProps> = ({
                 replies: comment.replies.filter((r) => r.id !== reply.id),
                 replyCount: Math.max(0, comment.replyCount - 1),
               });
+              invalidateProfileDataCaches(myAccountId, [
+                PROFILE_DATA_DOMAIN.COMMENTS,
+              ]);
             } catch (err) {
               message.error(formatApiError('删除回复失败', err));
             }
@@ -97,7 +115,7 @@ const CommentList: FC<CommentListProps> = ({
           getReplyDecoration={get}
         />
       ))}
-      {comments.length === 0 ? (
+      {comments.length === 0 && !loading ? (
         <div className="comment-section__empty">还没有评论，来抢沙发</div>
       ) : null}
       {infinite ? (

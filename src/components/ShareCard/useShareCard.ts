@@ -5,7 +5,11 @@ import { message } from 'antd';
 
 import type { IShareCardProps } from './types';
 import { resolveGameRefAppId } from '@/utils/gameRepost';
-import { buildReturnNavigationState } from '@/utils/returnNavigation';
+import {
+  buildGameDetailNavigationState,
+  buildPostDetailNavigationState,
+  mapPostRefToLatestPost,
+} from '@/utils/detailNavigation';
 
 export function useShareCard({
   data,
@@ -41,23 +45,22 @@ export function useShareCard({
       const gameAppId = resolveGameRefAppId(data.id);
       if (gameAppId) {
         navigate(`/game/${gameAppId}`, {
-          state: buildReturnNavigationState(location),
+          state: buildGameDetailNavigationState(location, {
+            appId: gameAppId,
+            name: data.title || `游戏 ${gameAppId}`,
+            coverUrl: data.coverUrl,
+          }),
         });
         return;
       }
+      const postPreview = mapPostRefToLatestPost(data);
       navigate(`/post/${data.id}`, {
-        state: buildReturnNavigationState(location),
+        state: postPreview
+          ? buildPostDetailNavigationState(location, postPreview)
+          : undefined,
       });
     },
-    [
-      data.id,
-      data.unavailableMessage,
-      location,
-      navigate,
-      onClick,
-      preview,
-      unavailable,
-    ],
+    [data, location, navigate, onClick, preview, unavailable],
   );
 
   const handleKeyDown = useCallback(

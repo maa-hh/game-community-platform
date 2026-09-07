@@ -1,4 +1,4 @@
-import { configureStore } from '@reduxjs/toolkit';
+import { combineReducers, configureStore } from '@reduxjs/toolkit';
 import {
   useDispatch,
   useSelector,
@@ -11,16 +11,22 @@ import recommendReducer from './modules/recommend';
 import authReducer from './modules/auth';
 import articleProgressReducer from './modules/articleProgress';
 import notificationReducer from './modules/notification';
+import postInteractionReducer from './modules/postInteraction';
+import profileRealtimeReducer from './modules/profileRealtime';
+
+const appReducer = combineReducers({
+  counter: counterReducer,
+  home: homeReducer,
+  recommend: recommendReducer,
+  auth: authReducer,
+  articleProgress: articleProgressReducer,
+  notification: notificationReducer,
+  postInteraction: postInteractionReducer,
+  profileRealtime: profileRealtimeReducer,
+});
 
 const store = configureStore({
-  reducer: {
-    counter: counterReducer,
-    home: homeReducer,
-    recommend: recommendReducer,
-    auth: authReducer,
-    articleProgress: articleProgressReducer,
-    notification: notificationReducer,
-  },
+  reducer: appReducer,
 });
 
 // 从 store 自动推导 RootState 类型，state 结构变化时类型自动同步

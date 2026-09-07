@@ -46,6 +46,8 @@ export interface PostReply {
   content: string;
   likeCount: number;
   liked: boolean;
+  likePending?: boolean;
+  pending?: boolean;
   createdAt: string;
 }
 
@@ -57,7 +59,12 @@ export interface PostComment {
   content: string;
   likeCount: number;
   liked: boolean;
+  likePending?: boolean;
+  pending?: boolean;
   replyCount: number;
+  /** 已加载的回复页；通知定位时目标回复会合并进已加载的首屏。 */
+  replyPage?: number;
+  replyPageSize?: number;
   createdAt: string;
   replies: PostReply[];
 }
@@ -84,6 +91,8 @@ export interface LatestPostItem {
   favoriteCount: number;
   liked?: boolean;
   favorited?: boolean;
+  likePending?: boolean;
+  favoritePending?: boolean;
   /** 游标分页用（ISO 时间，对应 publishedTime/createTime） */
   sortTime?: string;
   /** 热榜名次 */

@@ -15,6 +15,7 @@ import { Button, message } from 'antd';
 import { FlagOutlined } from '@ant-design/icons';
 
 import PageLoading from '@/base-ui/PageLoading';
+import { REPLY_PAGE_SIZE } from '@/components/CommentItem/config';
 import SurfaceCard from '@/base-ui/SurfaceCard';
 import CommentSection from '@/components/CommentSection';
 import FeedPanel from '@/components/FeedPanel';
@@ -26,15 +27,26 @@ import { useArticleOwnerActions } from '@/hooks/useArticleOwnerActions';
 import { useGoBack } from '@/hooks/useGoBack';
 import { usePostComments } from '@/hooks/usePagedSocial';
 import { useRequireLogin } from '@/hooks/useRequireLogin';
+import { invalidateProfileDataCaches } from '@/utils/profileDataCache';
+import { PROFILE_DATA_DOMAIN } from '@/types/profileRealtime';
 import { usePostLikeAction } from '@/hooks/usePostLikeAction';
+import { useOptimisticAction } from '@/hooks/useOptimisticAction';
+import { useProfileFollowingSync } from '@/hooks/useProfileFollowingSync';
 import { useReportModal } from '@/hooks/useReportModal';
 import { useUserDecorations } from '@/hooks/useUserDecorations';
+import {
+  usePostInteraction,
+  usePostInteractionActions,
+} from '@/hooks/usePostInteraction';
 import PostBody from '@/views/PostDetail/components/PostBody';
 import PostDetailTopBar from '@/views/PostDetail/components/PostDetailTopBar';
-import type { PostDetailData } from '@/types/post';
+import type { PostComment, PostDetailData } from '@/types/post';
 import {
   createCommentApi,
+  fetchPostCommentDetailApi,
   fetchPostDetailApi,
+  fetchPostReplyDetailApi,
+  fetchPostRepliesPageApi,
   toggleFavoriteApi,
   toggleFollowByAccountApi,
 } from '@/service/social';
@@ -43,26 +55,119 @@ import { formatApiError } from '@/utils/apiError';
 import { resolveAvatarFrameAsset } from '@/constants/avatarFrameCatalog';
 import { mapContentPostTypeToNumeric } from '@/utils/postType';
 import { canGoBackInApp } from '@/utils/returnNavigation';
+import { readPostDetailPreview } from '@/utils/detailNavigation';
 
 import './style.less';
+
+function arePostDetailsEqual(
+  previous: PostDetailData | null,
+  next: PostDetailData,
+): boolean {
+  return previous != null && JSON.stringify(previous) === JSON.stringify(next);
+}
 
 function PostDetail() {
   const { id = '' } = useParams();
   const location = useLocation();
   const [searchParams] = useSearchParams();
+  const commentHighlight = useMemo(
+    () => ({
+      commentId: searchParams.get('commentId') || undefined,
+      replyId: searchParams.get('replyId') || undefined,
+    }),
+    [searchParams],
+  );
   const navigate = useNavigate();
   const goBack = useGoBack();
-  const { user, requireLogin, openAuth } = useRequireLogin();
+  const { user, requireLogin } = useRequireLogin();
 
-  const [loading, setLoading] = useState(true);
+  const postPreview = useMemo(
+    () => readPostDetailPreview(location.state, id),
+    [id, location.state],
+  );
+
+  const [loading, setLoading] = useState(!postPreview);
+  const [refreshing, setRefreshing] = useState(Boolean(postPreview));
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [post, setPost] = useState<PostDetailData | null>(null);
+  const [postState, setPostState] = useState<PostDetailData | null>(
+    postPreview,
+  );
+  const interaction = usePostInteraction(id);
+  const { updateInteraction, invalidateCommunityFeed } =
+    usePostInteractionActions();
+  const optimisticIdRef = useRef(0);
+  const { run: runOptimisticAction, isPending } = useOptimisticAction();
+  const syncProfileFollowing = useProfileFollowingSync();
+  const displayedPost = useMemo(() => {
+    if (!postState) return null;
+    return {
+      ...postState,
+      stats: {
+        ...postState.stats,
+        ...(interaction.liked != null ? { liked: interaction.liked } : {}),
+        ...(interaction.favorited != null
+          ? { favorited: interaction.favorited }
+          : {}),
+        ...(interaction.likeCount != null
+          ? { likeCount: interaction.likeCount }
+          : {}),
+        ...(interaction.favoriteCount != null
+          ? { favoriteCount: interaction.favoriteCount }
+          : {}),
+      },
+    };
+  }, [interaction, postState]);
   const commentPager = usePostComments(id);
-  const comments = commentPager.items;
-  const setComments = commentPager.setItems;
+  const { items: normalComments, setItems: setNormalComments } = commentPager;
+  const [targetComment, setTargetComment] = useState<PostComment | null>(null);
+  const comments = useMemo(
+    () =>
+      targetComment
+        ? [
+            targetComment,
+            ...normalComments
+              .filter((comment) => comment.id !== targetComment.id)
+              .map((comment) =>
+                commentHighlight.replyId
+                  ? {
+                      ...comment,
+                      replies: comment.replies.filter(
+                        (reply) => reply.id !== commentHighlight.replyId,
+                      ),
+                    }
+                  : comment,
+              ),
+          ]
+        : normalComments,
+    [commentHighlight.replyId, normalComments, targetComment],
+  );
+  const setComments = useCallback<
+    React.Dispatch<React.SetStateAction<PostComment[]>>
+  >(
+    (nextValue) => {
+      if (!targetComment) {
+        setNormalComments(nextValue);
+        return;
+      }
+      const current = [
+        targetComment,
+        ...normalComments.filter((comment) => comment.id !== targetComment.id),
+      ];
+      const nextComments =
+        typeof nextValue === 'function' ? nextValue(current) : nextValue;
+      const nextTarget = nextComments.find(
+        (comment) => comment.id === targetComment.id,
+      );
+      setTargetComment(nextTarget || null);
+      setNormalComments(
+        nextComments.filter((comment) => comment.id !== targetComment.id),
+      );
+    },
+    [normalComments, setNormalComments, targetComment],
+  );
   const [shareOpen, setShareOpen] = useState(false);
   const [danmakuReportResetKey, setDanmakuReportResetKey] = useState(0);
-  const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const commentSubmitting = isPending('post-comment-create');
   const { reportOpen, reportTarget, openReport, closeReport } =
     useReportModal();
 
@@ -71,7 +176,7 @@ function PostDetail() {
   const handleLike = usePostLikeAction(
     id,
     (next) => {
-      setPost((current) =>
+      setPostState((current) =>
         current
           ? {
               ...current,
@@ -90,7 +195,7 @@ function PostDetail() {
     }),
   );
 
-  postRef.current = post;
+  postRef.current = displayedPost;
 
   const locationState =
     typeof location.state === 'object' && location.state !== null
@@ -121,21 +226,84 @@ function PostDetail() {
   }, [goBack, navigate, returnTo]);
 
   const { get: getAuthorDecoration } = useUserDecorations([
-    post?.author.accountId,
+    postState?.author.accountId,
   ]);
-  const authorDecoration = getAuthorDecoration(post?.author.accountId);
+  const authorDecoration = getAuthorDecoration(postState?.author.accountId);
   const authorFrameUrl = resolveAvatarFrameAsset(
     authorDecoration?.avatarFrame?.code,
     authorDecoration?.avatarFrame?.assetJson,
   )?.frameUrl;
 
-  const commentHighlight = useMemo(
-    () => ({
-      commentId: searchParams.get('commentId') || undefined,
-      replyId: searchParams.get('replyId') || undefined,
-    }),
-    [searchParams],
-  );
+  useEffect(() => {
+    const commentId = commentHighlight.commentId;
+    if (!commentId) {
+      setTargetComment(null);
+      return;
+    }
+
+    let cancelled = false;
+    setTargetComment(null);
+    const hydrateTarget = async () => {
+      try {
+        const comment = await fetchPostCommentDetailApi(id, commentId);
+        if (!comment || cancelled) return;
+
+        let replies: PostComment['replies'] = [];
+        let replyPage = 0;
+        const replyPageSize = REPLY_PAGE_SIZE;
+        let replyCount = comment.replyCount;
+        if (commentHighlight.replyId) {
+          const [reply, replyPageResult] = await Promise.all([
+            fetchPostReplyDetailApi(commentHighlight.replyId).catch(() => null),
+            fetchPostRepliesPageApi(commentId, 1, replyPageSize).catch(
+              () => null,
+            ),
+          ]);
+          const firstPageReplies = replyPageResult?.data || [];
+          const mergedReplies = reply
+            ? [reply, ...firstPageReplies]
+            : firstPageReplies;
+          const seen = new Set<string>();
+          replies = mergedReplies.filter((item) => {
+            if (seen.has(item.id)) return false;
+            seen.add(item.id);
+            return true;
+          });
+          if (replyPageResult) {
+            replyPage = Number(replyPageResult.page ?? 1);
+            replyCount = Math.max(
+              replyCount,
+              Number(replyPageResult.total ?? 0),
+              replies.length,
+            );
+          }
+        } else if (comment.replyCount > 0) {
+          const replyPageResult = await fetchPostRepliesPageApi(
+            commentId,
+            1,
+            replyPageSize,
+          );
+          replies = replyPageResult.data || [];
+          replyPage = Number(replyPageResult.page ?? 1);
+        }
+
+        if (cancelled) return;
+        setTargetComment({
+          ...comment,
+          replies,
+          replyPage,
+          replyPageSize,
+          replyCount,
+        });
+      } catch {
+        // 目标内容被删除或暂时不可见时，正常评论流仍然可用。
+      }
+    };
+    void hydrateTarget();
+    return () => {
+      cancelled = true;
+    };
+  }, [commentHighlight.commentId, commentHighlight.replyId, id]);
 
   const targetDanmakuId = useMemo(() => {
     const value = Number(searchParams.get('danmakuId') || '');
@@ -145,7 +313,7 @@ function PostDetail() {
   const reloadDetail = useCallback(async () => {
     const detailRes = await fetchPostDetailApi(id);
     if (!detailRes.data) {
-      setPost(null);
+      setPostState(null);
       setLoadError('帖子不存在、已删除或已下架');
       return false;
     }
@@ -159,15 +327,23 @@ function PostDetail() {
       detail.status !== ARTICLE_STATUS.PUBLISHED &&
       !isOwner
     ) {
-      setPost(null);
+      setPostState(null);
       setLoadError('帖子已下架或暂不可见');
       return false;
     }
 
     setLoadError(null);
-    setPost(detail);
+    setPostState((current) =>
+      arePostDetailsEqual(current, detail) ? current : detail,
+    );
+    updateInteraction(id, {
+      liked: detail.stats.liked,
+      favorited: detail.stats.favorited,
+      likeCount: detail.stats.likeCount,
+      favoriteCount: detail.stats.favoriteCount,
+    });
     return true;
-  }, [id, user?.accountId]);
+  }, [id, updateInteraction, user?.accountId]);
 
   const reloadAll = useCallback(async () => {
     await Promise.all([reloadDetail(), commentPager.reload()]);
@@ -190,18 +366,34 @@ function PostDetail() {
 
   useEffect(() => {
     let cancelled = false;
+    if (postPreview) {
+      setPostState(postPreview);
+      updateInteraction(id, {
+        liked: postPreview.stats.liked,
+        likeCount: postPreview.stats.likeCount,
+        favorited: postPreview.stats.favorited,
+        favoriteCount: postPreview.stats.favoriteCount,
+      });
+    } else {
+      setPostState(null);
+    }
+    setLoadError(null);
+    setLoading(!postPreview);
+    setRefreshing(Boolean(postPreview));
     (async () => {
-      setLoading(true);
       try {
         await reloadDetail();
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [reloadDetail]);
+  }, [id, postPreview, reloadDetail, updateInteraction]);
 
   const handleReportDanmaku = useCallback(
     (messageId: string) => {
@@ -229,7 +421,7 @@ function PostDetail() {
     );
   }
 
-  if (loadError || !post) {
+  if (loadError || !displayedPost) {
     return (
       <div className="post-detail post-detail--unavailable">
         <div className="post-detail__align-track">
@@ -247,82 +439,185 @@ function PostDetail() {
     );
   }
 
-  const isVideo = post.postType === 'video';
+  const postData = displayedPost;
+
+  const isVideo = postData.postType === 'video';
   const isOwner =
-    user?.accountId != null && Number(user.accountId) === post.author.accountId;
+    user?.accountId != null &&
+    Number(user.accountId) === postData.author.accountId;
 
   const handleFollow = async () => {
-    if (!requireLogin() || !post) return;
-    try {
-      const next = !post.followedAuthor;
-      await toggleFollowByAccountApi(post.author.accountId, next);
-      setPost({ ...post, followedAuthor: next });
-      message.success(next ? '已关注' : '已取消关注');
-    } catch (err) {
-      message.error(formatApiError('关注失败', err));
-    }
+    if (!requireLogin() || !postData) return;
+    if (isPending('post-follow')) return;
+    const next = !postData.followedAuthor;
+    await runOptimisticAction('post-follow', {
+      apply: () =>
+        setPostState((current) =>
+          current ? { ...current, followedAuthor: next } : current,
+        ),
+      request: () => toggleFollowByAccountApi(postData.author.accountId, next),
+      commit: () => {
+        syncProfileFollowing();
+        message.success(next ? '已关注' : '已取消关注');
+      },
+      rollback: (err) => {
+        setPostState((current) =>
+          current ? { ...current, followedAuthor: !next } : current,
+        );
+        message.error(formatApiError('关注失败', err));
+      },
+    });
   };
 
   const handleFavorite = async () => {
     if (!requireLogin()) return;
-    const currentPost = post;
+    const currentPost = postData;
     if (!currentPost) return;
-    try {
-      const next = !currentPost.stats.favorited;
-      const res = await toggleFavoriteApi(currentPost.id, next);
-      setPost((current) =>
-        current
-          ? { ...current, stats: { ...current.stats, ...res.data } }
-          : current,
-      );
-    } catch (err) {
-      message.error(formatApiError('收藏失败', err));
-    }
+    if (isPending('post-favorite')) return;
+    const nextFavorited = !currentPost.stats.favorited;
+    const nextFavoriteCount = Math.max(
+      0,
+      currentPost.stats.favoriteCount + (nextFavorited ? 1 : -1),
+    );
+    await runOptimisticAction('post-favorite', {
+      apply: () => {
+        setPostState((current) =>
+          current
+            ? {
+                ...current,
+                stats: {
+                  ...current.stats,
+                  favorited: nextFavorited,
+                  favoriteCount: nextFavoriteCount,
+                },
+              }
+            : current,
+        );
+        updateInteraction(currentPost.id, {
+          favorited: nextFavorited,
+          favoriteCount: nextFavoriteCount,
+          favoritePending: true,
+        });
+      },
+      request: () => toggleFavoriteApi(currentPost.id, nextFavorited),
+      commit: (res) => {
+        setPostState((current) =>
+          current
+            ? { ...current, stats: { ...current.stats, ...res.data } }
+            : current,
+        );
+        updateInteraction(currentPost.id, {
+          favorited: res.data.favorited,
+          favoriteCount: res.data.favoriteCount,
+          favoritePending: false,
+        });
+        invalidateCommunityFeed();
+        invalidateProfileDataCaches(user?.accountId, [
+          PROFILE_DATA_DOMAIN.FAVORITES,
+        ]);
+      },
+      rollback: (err) => {
+        setPostState((current) =>
+          current
+            ? {
+                ...current,
+                stats: {
+                  ...current.stats,
+                  favorited: currentPost.stats.favorited,
+                  favoriteCount: currentPost.stats.favoriteCount,
+                },
+              }
+            : current,
+        );
+        updateInteraction(currentPost.id, {
+          favorited: currentPost.stats.favorited,
+          favoriteCount: currentPost.stats.favoriteCount,
+          favoritePending: false,
+        });
+        message.error(formatApiError('收藏失败', err));
+      },
+    });
   };
 
   const handleBottomComment = async (content: string) => {
     if (!requireLogin() || !user?.accountId) return;
-    setCommentSubmitting(true);
-    try {
-      const res = await createCommentApi(post.id, content, {
-        accountId: Number(user.accountId),
-        nickname: user.username || '我',
-        avatar: user.avatar,
-      });
-      setComments((prev) => [res.data, ...prev]);
-      setPost((p) =>
-        p
-          ? {
-              ...p,
-              stats: {
-                ...p.stats,
-                commentCount: p.stats.commentCount + 1,
-              },
-            }
-          : p,
-      );
-      message.success('发布成功');
-      document
-        .getElementById('post-comments')
-        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    } catch (err) {
-      message.error(formatApiError('发布失败', err));
-    } finally {
-      setCommentSubmitting(false);
-    }
+    if (commentSubmitting) return;
+    const tempId = `optimistic-post-comment-${++optimisticIdRef.current}`;
+    const optimisticComment: PostComment = {
+      id: tempId,
+      accountId: Number(user.accountId),
+      nickname: user.username || '我',
+      avatar: user.avatar,
+      content: content.trim(),
+      likeCount: 0,
+      liked: false,
+      replyCount: 0,
+      createdAt: '发送中…',
+      replies: [],
+      pending: true,
+    };
+    await runOptimisticAction('post-comment-create', {
+      apply: () => {
+        setComments((prev) => [optimisticComment, ...prev]);
+        setPostState((current) =>
+          current
+            ? {
+                ...current,
+                stats: {
+                  ...current.stats,
+                  commentCount: current.stats.commentCount + 1,
+                },
+              }
+            : current,
+        );
+        document
+          .getElementById('post-comments')
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      },
+      request: () =>
+        createCommentApi(postData.id, content.trim(), {
+          accountId: Number(user.accountId),
+          nickname: user.username || '我',
+          avatar: user.avatar,
+        }),
+      commit: (res) => {
+        setComments((prev) =>
+          prev.map((comment) => (comment.id === tempId ? res.data : comment)),
+        );
+        invalidateProfileDataCaches(user?.accountId, [
+          PROFILE_DATA_DOMAIN.COMMENTS,
+        ]);
+        message.success('发布成功');
+      },
+      rollback: (err) => {
+        setComments((prev) => prev.filter((comment) => comment.id !== tempId));
+        setPostState((current) =>
+          current
+            ? {
+                ...current,
+                stats: {
+                  ...current.stats,
+                  commentCount: Math.max(0, current.stats.commentCount - 1),
+                },
+              }
+            : current,
+        );
+        message.error(formatApiError('发布失败', err));
+      },
+    });
   };
 
   const handleReport = () => {
-    if (isOwner || !requireLogin() || !post) return;
-    openReport('article', post.id, '举报帖子');
+    if (isOwner || !requireLogin() || !postData) return;
+    openReport('article', postData.id, '举报帖子');
   };
 
   const ownerMenu = isOwner
     ? buildOwnerMenuItems({
-        id: post.id,
-        status: post.status,
-        postType: mapContentPostTypeToNumeric(post.postType),
-        title: post.title,
+        id: postData.id,
+        status: postData.status,
+        postType: mapContentPostTypeToNumeric(postData.postType),
+        title: postData.title,
       })
     : undefined;
 
@@ -342,10 +637,11 @@ function PostDetail() {
       <div className="post-detail__top-dock">
         <div className="post-detail__align-track">
           <PostDetailTopBar
-            author={post.author}
+            author={postData.author}
             avatarFrameUrl={authorFrameUrl}
-            createdAt={post.createdAt}
-            followed={Boolean(post.followedAuthor)}
+            createdAt={postData.createdAt}
+            followed={Boolean(postData.followedAuthor)}
+            followDisabled={isPending('post-follow')}
             isOwner={isOwner}
             moreMenu={isOwner ? ownerMenu : guestMoreMenu}
             onBack={handleBack}
@@ -356,10 +652,14 @@ function PostDetail() {
       </div>
 
       <div className="post-detail__shell">
-        <FeedPanel className="post-detail__panel" onRefresh={handleRefresh}>
+        <FeedPanel
+          className="post-detail__panel"
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+        >
           <SurfaceCard className="post-detail__main">
             <PostBody
-              post={post}
+              post={postData}
               muted
               targetDanmakuId={targetDanmakuId}
               onReportDanmaku={handleReportDanmaku}
@@ -367,11 +667,13 @@ function PostDetail() {
             />
 
             <PostActionBar
-              viewCount={post.stats.viewCount}
-              likeCount={post.stats.likeCount}
-              favoriteCount={post.stats.favoriteCount}
-              liked={post.stats.liked}
-              favorited={post.stats.favorited}
+              viewCount={postData.stats.viewCount}
+              likeCount={postData.stats.likeCount}
+              favoriteCount={postData.stats.favoriteCount}
+              liked={postData.stats.liked}
+              favorited={postData.stats.favorited}
+              likeDisabled={interaction.likePending}
+              favoriteDisabled={interaction.favoritePending}
               onLike={handleLike}
               onFavorite={handleFavorite}
             />
@@ -379,16 +681,33 @@ function PostDetail() {
 
           <SurfaceCard flush className="post-detail__comments">
             <CommentSection
-              articleId={post.id}
+              articleId={postData.id}
               comments={comments}
               onChange={setComments}
+              onCommentCountChange={(delta) => {
+                setPostState((current) =>
+                  current
+                    ? {
+                        ...current,
+                        stats: {
+                          ...current.stats,
+                          commentCount: Math.max(
+                            0,
+                            current.stats.commentCount + delta,
+                          ),
+                        },
+                      }
+                    : current,
+                );
+              }}
+              loading={commentPager.loading}
               hideComposer
               highlight={commentHighlight}
               infinite={{
                 sentinelRef: commentPager.sentinelRef,
                 loadingMore: commentPager.loadingMore,
                 hasMore: commentPager.hasMore,
-                totalCount: post.stats.commentCount,
+                totalCount: postData.stats.commentCount,
               }}
             />
           </SurfaceCard>
@@ -398,19 +717,18 @@ function PostDetail() {
           <div className="post-detail__align-track">
             <PostBottomBar
               className="post-detail__bottom-bar"
-              likeCount={post.stats.likeCount}
-              favoriteCount={post.stats.favoriteCount}
-              shareCount={post.stats.shareCount}
-              liked={post.stats.liked}
-              favorited={post.stats.favorited}
+              likeCount={postData.stats.likeCount}
+              favoriteCount={postData.stats.favoriteCount}
+              shareCount={postData.stats.shareCount}
+              liked={postData.stats.liked}
+              favorited={postData.stats.favorited}
+              likeDisabled={interaction.likePending}
+              favoriteDisabled={interaction.favoritePending}
               submitting={commentSubmitting}
               onLike={handleLike}
               onFavorite={handleFavorite}
               onShare={() => setShareOpen(true)}
               onComment={handleBottomComment}
-              onFocusComment={() => {
-                if (!user?.accountId) openAuth('login');
-              }}
             />
           </div>
         </div>
@@ -418,20 +736,20 @@ function PostDetail() {
 
       <ShareSheet
         open={shareOpen}
-        articleId={post.id}
-        articleTitle={post.title}
-        articleSummary={post.content}
-        coverUrl={post.coverUrl || post.images?.[0]}
-        videoUrl={post.videoUrl}
-        postType={post.postType}
-        author={post.author}
-        viewCount={post.stats.viewCount}
-        commentCount={post.stats.commentCount}
-        likeCount={post.stats.likeCount}
+        articleId={postData.id}
+        articleTitle={postData.title}
+        articleSummary={postData.content}
+        coverUrl={postData.coverUrl || postData.images?.[0]}
+        videoUrl={postData.videoUrl}
+        postType={postData.postType}
+        author={postData.author}
+        viewCount={postData.stats.viewCount}
+        commentCount={postData.stats.commentCount}
+        likeCount={postData.stats.likeCount}
         onClose={() => setShareOpen(false)}
         onShared={(shareCount) => {
           if (shareCount > 0) {
-            setPost((p) =>
+            setPostState((p) =>
               p ? { ...p, stats: { ...p.stats, shareCount } } : p,
             );
           }

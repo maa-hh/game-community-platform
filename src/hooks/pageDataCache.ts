@@ -26,6 +26,19 @@ export function invalidatePageDataCache(key?: string): void {
   });
 }
 
+/**
+ * 失效同一业务域下的所有派生缓存。
+ *
+ * 列表页通常会按分类、筛选条件和分页分别缓存。发生写操作后只删掉
+ * 当前条件的 key 会让用户在切换筛选时看到旧快照，因此需要按业务前缀
+ * 一次性清理整组缓存。
+ */
+export function invalidatePageDataCacheByPrefix(prefix: string): void {
+  Array.from(pageDataCache.keys())
+    .filter((key) => key.startsWith(prefix))
+    .forEach((key) => invalidatePageDataCache(key));
+}
+
 export function subscribePageDataCache(
   key: string,
   listener: () => void,

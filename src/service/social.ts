@@ -28,6 +28,7 @@ import type {
   PostDetailData,
   PostRefCard,
   PostReply,
+  PostStats,
 } from '@/types/post';
 import { applyCurrentUserOwnerAuthor } from '@/utils/profileAuthor';
 import {
@@ -95,9 +96,43 @@ const detailStore: Record<string, PostDetailData> =
   structuredClone(MOCK_POST_DETAILS);
 const commentStore: Record<string, PostComment[]> =
   structuredClone(MOCK_COMMENTS);
+type MockPostInteraction = Pick<PostStats, 'liked' | 'favorited'>;
+const mockInteractionStore: Record<
+  string,
+  Record<string, MockPostInteraction>
+> = {};
 let commentSeq = 1000;
 let replySeq = 2000;
 let repostSeq = 9000;
+
+function getMockInteractionScope(): string {
+  return String(getUserInfo()?.accountId ?? 'anonymous');
+}
+
+function getMockPostInteraction(articleId: string): MockPostInteraction {
+  const scope = getMockInteractionScope();
+  const stored = mockInteractionStore[scope]?.[articleId];
+  const base = detailStore[articleId]?.stats;
+  return {
+    liked: stored?.liked ?? base?.liked ?? false,
+    favorited: stored?.favorited ?? base?.favorited ?? false,
+  };
+}
+
+function setMockPostInteraction(
+  articleId: string,
+  patch: Partial<MockPostInteraction>,
+): MockPostInteraction {
+  const scope = getMockInteractionScope();
+  const scopeStore = mockInteractionStore[scope] ?? {};
+  const next = {
+    ...getMockPostInteraction(articleId),
+    ...patch,
+  };
+  scopeStore[articleId] = next;
+  mockInteractionStore[scope] = scopeStore;
+  return next;
+}
 
 async function fetchStats(articleId: string) {
   const res = await hyRequest.get<IDataType<IArticleStatsRaw>>({
@@ -565,8 +600,8 @@ export async function fetchLatestPostsPageApi(
         commentCount: d.stats.commentCount,
         viewCount: d.stats.viewCount,
         favoriteCount: d.stats.favoriteCount,
-        liked: d.stats.liked,
-        favorited: d.stats.favorited,
+        liked: getMockPostInteraction(item.id).liked,
+        favorited: getMockPostInteraction(item.id).favorited,
       };
     });
     if (options.lastId != null) {
@@ -691,8 +726,13 @@ export async function fetchPostDetailApi(
 
   if (ENABLE_MOCK) {
     const detail = detailStore[id] || null;
-    if (detail) detail.stats.viewCount += 1;
-    return delay(detail ? structuredClone(detail) : null);
+    if (!detail) return delay(null);
+    detail.stats.viewCount += 1;
+    const result = structuredClone(detail);
+    const interaction = getMockPostInteraction(id);
+    result.stats.liked = interaction.liked;
+    result.stats.favorited = interaction.favorited;
+    return delay(result);
   }
 
   try {
@@ -842,19 +882,24 @@ export async function fetchPostCommentsPageApi(
   articleId: string,
   page = 1,
   size = 20,
-  options: { withReplies?: boolean; replyPreviewSize?: number } = {},
+  options: {
+    withReplies?: boolean;
+    replyPageSize?: number;
+  } = {},
 ): Promise<IPageResult<PostComment>> {
-  const { withReplies = false, replyPreviewSize = 0 } = options;
+  const { withReplies = false, replyPageSize = 20 } = options;
   if (ENABLE_MOCK) {
     const all = structuredClone(commentStore[articleId] || []);
     const start = (page - 1) * size;
     const slice = all.slice(start, start + size).map((comment: PostComment) => {
-      if (!replyPreviewSize || comment.replyCount <= 0) {
+      if (comment.replyCount <= 0) {
         return { ...comment, replies: [] };
       }
       return {
         ...comment,
-        replies: comment.replies.slice(0, replyPreviewSize),
+        replyPage: 1,
+        replyPageSize,
+        replies: comment.replies.slice(0, replyPageSize),
       };
     });
     return {
@@ -872,25 +917,25 @@ export async function fetchPostCommentsPageApi(
     params: { page, size },
   });
   const comments = pageRes.data || [];
-  const previewSize = withReplies
-    ? Math.min(100, Number.MAX_SAFE_INTEGER)
-    : replyPreviewSize;
+  const initialReplyPageSize = withReplies
+    ? Math.min(100, Math.max(replyPageSize, 1))
+    : Math.max(replyPageSize, 1);
   const mapped = await Promise.all(
     comments.map(async (c) => {
       // 某些旧数据的 replyCount 尚未回填，但回复接口仍有真实数据；
       // 只要调用方要求预览就请求一次，避免整帖回复全部消失。
-      if (!previewSize) return mapComment(c, []);
       try {
-        const replyRes = await hyRequest.get<IPageResult<IReplyRaw>>({
-          url: `/social/reply/list/${c.id}`,
-          params: {
-            page: 1,
-            size: withReplies
-              ? Math.min(100, Math.max(Number(c.replyCount ?? 0), 1))
-              : Math.min(previewSize, Math.max(Number(c.replyCount ?? 0), 1)),
-          },
-        });
-        return mapComment(c, (replyRes.data || []).map(mapReply));
+        const replyRes = await fetchPostRepliesPageApi(
+          String(c.id),
+          1,
+          initialReplyPageSize,
+        );
+        return mapComment(
+          c,
+          replyRes.data || [],
+          Number(replyRes.page ?? 1),
+          initialReplyPageSize,
+        );
       } catch {
         // 单条历史脏数据不能阻断整页评论；用户仍可通过“展开”重试。
         return mapComment(c, []);
@@ -910,13 +955,17 @@ export async function fetchPostRepliesPageApi(
   size = 20,
 ): Promise<IPageResult<PostReply>> {
   if (ENABLE_MOCK) {
+    const comment = Object.values(commentStore)
+      .flat()
+      .find((item) => item.id === commentId);
+    const replies = comment?.replies || [];
     return {
       code: 200,
       message: 'success',
-      data: [],
+      data: replies.slice((page - 1) * size, page * size),
       page,
       size,
-      total: 0,
+      total: replies.length,
     };
   }
   const pageRes = await hyRequest.get<IPageResult<IReplyRaw>>({
@@ -937,6 +986,42 @@ export async function fetchPostCommentsApi(
     withReplies: true,
   });
   return ok(pageRes.data || []);
+}
+
+/** 通知定位用的单条评论详情；不改变正常评论分页。 */
+export async function fetchPostCommentDetailApi(
+  articleId: string,
+  commentId: string,
+): Promise<PostComment | null> {
+  if (ENABLE_MOCK) {
+    const comment = (commentStore[articleId] || []).find(
+      (item) => item.id === commentId,
+    );
+    return comment ? structuredClone(comment) : null;
+  }
+  const res = await hyRequest.get<IDataType<ICommentRaw>>({
+    url: `/social/comment/${commentId}`,
+  });
+  return res.data ? mapComment(res.data, []) : null;
+}
+
+/** 通知定位用的单条回复详情；回复仍由 CommentItem 负责交互。 */
+export async function fetchPostReplyDetailApi(
+  replyId: string,
+): Promise<PostReply | null> {
+  if (ENABLE_MOCK) {
+    for (const comments of Object.values(commentStore)) {
+      const reply = comments
+        .flatMap((comment) => comment.replies)
+        .find((item) => item.id === replyId);
+      if (reply) return structuredClone(reply);
+    }
+    return null;
+  }
+  const res = await hyRequest.get<IDataType<IReplyRaw>>({
+    url: `/social/reply/${replyId}`,
+  });
+  return res.data ? mapReply(res.data) : null;
 }
 
 export async function togglePostLikeApi(
@@ -977,12 +1062,13 @@ export async function togglePostLikeApi(
         detailStore[articleId] = d;
       }
     }
-    const wasLiked = d.stats.liked;
-    d.stats.liked = liked;
+    const current = getMockPostInteraction(articleId);
+    const wasLiked = current.liked;
+    const interaction = setMockPostInteraction(articleId, { liked });
     if (wasLiked !== liked) {
       d.stats.likeCount = Math.max(0, d.stats.likeCount + (liked ? 1 : -1));
     }
-    return delay({ likeCount: d.stats.likeCount, liked: d.stats.liked });
+    return delay({ likeCount: d.stats.likeCount, liked: interaction.liked });
   }
 
   return enqueuePostLikeAction(articleId, () =>
@@ -998,8 +1084,9 @@ export async function toggleFavoriteApi(
     if (ENABLE_MOCK) {
       const d = detailStore[articleId];
       if (!d) throw new Error('帖子不存在');
-      const wasFavorited = d.stats.favorited;
-      d.stats.favorited = favorited;
+      const current = getMockPostInteraction(articleId);
+      const wasFavorited = current.favorited;
+      const interaction = setMockPostInteraction(articleId, { favorited });
       if (wasFavorited !== favorited) {
         d.stats.favoriteCount = Math.max(
           0,
@@ -1008,7 +1095,7 @@ export async function toggleFavoriteApi(
       }
       return delay({
         favoriteCount: d.stats.favoriteCount,
-        favorited: d.stats.favorited,
+        favorited: interaction.favorited,
       });
     }
 
@@ -1123,8 +1210,8 @@ export async function fetchFollowFeedApi(
         commentCount: d.stats.commentCount,
         viewCount: d.stats.viewCount,
         favoriteCount: d.stats.favoriteCount,
-        liked: d.stats.liked,
-        favorited: d.stats.favorited,
+        liked: getMockPostInteraction(item.id).liked,
+        favorited: getMockPostInteraction(item.id).favorited,
       };
     });
     if (postType != null) {
@@ -1195,6 +1282,10 @@ export async function createReplyApi(
   user: { accountId: number; nickname: string; avatar?: string },
   afterReplyId?: string | null,
 ): Promise<IDataType<PostReply>> {
+  if (!Number.isInteger(replyTo.accountId) || replyTo.accountId <= 0) {
+    throw new Error('回复对象信息缺失，请刷新消息后重试');
+  }
+
   if (ENABLE_MOCK) {
     const list = commentStore[articleId] || [];
     const comment = list.find((c) => c.id === commentId);
@@ -1334,49 +1425,32 @@ async function toggleCommentLikeApiImpl(
 async function toggleReplyLikeApiImpl(
   replyId: string,
   targetLiked: boolean,
+  currentLikeCount: number,
 ): Promise<IDataType<{ likeCount: number; liked: boolean }>> {
-  let liked = false;
-  let likeCount = 0;
-
-  try {
-    const [check, detail] = await Promise.all([
-      readReplyLikeCheck(replyId),
-      hyRequest.get<IDataType<IReplyRaw>>({
-        url: `/social/reply/${replyId}`,
-      }),
-    ]);
-    liked = check;
-    likeCount = Number(detail.data?.likeCount ?? 0);
-  } catch (err) {
-    throw Object.assign(new Error('无法获取回复点赞状态，请稍后重试'), {
-      cause: err,
-    });
-  }
-
-  if (liked === targetLiked) {
-    return ok({ liked, likeCount });
-  }
-
+  // 点赞/取消点赞接口本身是幂等的，不要把只读状态接口作为操作前置条件。
+  // 回复详情或 check 接口偶发失败时，不能因此阻止实际点赞操作。
   await mutateReplyLike(replyId, targetLiked);
 
   try {
-    const [check, detail] = await Promise.all([
-      readReplyLikeCheck(replyId),
-      hyRequest.get<IDataType<IReplyRaw>>({
-        url: `/social/reply/${replyId}`,
-      }),
-    ]);
-    liked = check;
-    likeCount = Number(detail.data?.likeCount ?? 0);
-  } catch (err) {
-    throw Object.assign(new Error('回复点赞失败，请稍后重试'), { cause: err });
+    const detail = await hyRequest.get<IDataType<IReplyRaw>>({
+      url: `/social/reply/${replyId}`,
+    });
+    return ok({
+      liked: detail.data?.liked ?? targetLiked,
+      likeCount: Number(detail.data?.likeCount ?? currentLikeCount),
+    });
+  } catch {
+    // 写操作已经成功；读回详情失败时使用调用方的乐观计数，避免误回滚。
+    const fallbackLikeCount = Math.max(
+      0,
+      currentLikeCount + (targetLiked ? 1 : -1),
+    );
+    const confirmedLiked = await readReplyLikeCheck(replyId).catch(() => null);
+    return ok({
+      liked: confirmedLiked ?? targetLiked,
+      likeCount: fallbackLikeCount,
+    });
   }
-
-  if (liked !== targetLiked) {
-    throw new Error('回复点赞状态未同步，请刷新后重试');
-  }
-
-  return ok({ liked, likeCount });
 }
 
 export async function toggleCommentLikeApi(
@@ -1407,6 +1481,7 @@ export async function toggleReplyLikeApi(
   commentId: string,
   replyId: string,
   liked: boolean,
+  currentLikeCount = 0,
 ): Promise<IDataType<{ likeCount: number; liked: boolean }>> {
   if (ENABLE_MOCK) {
     const comment = (commentStore[articleId] || []).find(
@@ -1423,7 +1498,7 @@ export async function toggleReplyLikeApi(
   }
 
   return enqueueReplyLikeAction(replyId, () =>
-    toggleReplyLikeApiImpl(replyId, liked),
+    toggleReplyLikeApiImpl(replyId, liked, currentLikeCount),
   );
 }
 
@@ -1550,6 +1625,24 @@ export async function reportTargetApi(payload: {
       targetType: typeMap[payload.targetType],
       targetId: payload.targetId,
       reason: payload.reason,
+    },
+  });
+  return ok(null);
+}
+
+/** 通用问题反馈：复用举报链路，以站点反馈目标类型进入管理员审核中心。 */
+export async function submitFeedbackApi(payload: {
+  feedbackType: string;
+  content: string;
+}): Promise<IDataType<null>> {
+  const reason = `反馈类型：${payload.feedbackType.trim()}\n具体内容：${payload.content.trim()}`;
+  if (ENABLE_MOCK) return delay(null);
+  await hyRequest.post({
+    url: '/report',
+    data: {
+      targetType: 6,
+      targetId: '0',
+      reason,
     },
   });
   return ok(null);

@@ -176,6 +176,18 @@
     }
   }
 
+  &__feed-badge {
+    .ant-badge-count {
+      top: -10px;
+      inset-inline-end: -18px;
+      min-width: 16px;
+      height: 16px;
+      padding: 0 4px;
+      font-size: 10px;
+      line-height: 16px;
+    }
+  }
+
   &__actions {
     margin-left: auto;
     flex-shrink: 0;
@@ -189,6 +201,28 @@
     width: 36px;
     height: 36px;
     padding: 0;
+  }
+
+  &__mail-btn {
+    width: 42px;
+    height: 42px;
+    font-size: 20px;
+  }
+
+  &__notification-badge {
+    display: inline-flex;
+    align-items: center;
+
+    .ant-badge-count {
+      min-width: 22px;
+      height: 22px;
+      padding: 0 6px;
+      border-radius: 11px;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 22px;
+      box-shadow: 0 0 0 2px var(--header-bg);
+    }
   }
 
   &__theme-btn {

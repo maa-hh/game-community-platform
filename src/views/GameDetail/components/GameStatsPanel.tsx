@@ -1,6 +1,14 @@
 import React, { memo } from 'react';
 import type { FC } from 'react';
-import { Button, Empty, Progress, Skeleton, Table, Typography } from 'antd';
+import {
+  Button,
+  Empty,
+  Progress,
+  Skeleton,
+  Spin,
+  Table,
+  Typography,
+} from 'antd';
 import {
   ReloadOutlined,
   TrophyFilled,
@@ -63,7 +71,7 @@ const GameStatsPanel: FC<GameStatsPanelProps> = ({
     );
   }
 
-  if (loading) {
+  if (loading && !stats) {
     return (
       <div className="game-stats-panel__loading">
         <Skeleton active paragraph={{ rows: 5 }} />
@@ -209,6 +217,12 @@ const GameStatsPanel: FC<GameStatsPanelProps> = ({
 
   return (
     <section className="game-stats-panel">
+      {loading ? (
+        <div className="game-stats-panel__refreshing" role="status">
+          <Spin size="small" />
+          <span>正在更新统计</span>
+        </div>
+      ) : null}
       <div className="game-stats-panel__summary">
         <div className="game-stats-panel__card">
           <Text type="secondary">游戏时长</Text>

@@ -22,6 +22,7 @@ const ProfileFeed: FC<IProps> = (props) => {
     list,
     loading,
     loadingMore,
+    refreshing,
     hasMore,
     sentinelRef,
     buildOwnerActionBarItems,
@@ -46,14 +47,14 @@ const ProfileFeed: FC<IProps> = (props) => {
     const activityPath = buildPostActivityPath(item);
     const goActivity = () => {
       if (activityPath) {
-        navigateToPost(activityPath);
+        navigateToPost(activityPath, item);
         return;
       }
       handleItemClick(item);
     };
     const goPost = () => {
       if (activityPath) {
-        navigateToPost(activityPath);
+        navigateToPost(activityPath, item);
         return;
       }
       handleItemClick(item);
@@ -110,6 +111,7 @@ const ProfileFeed: FC<IProps> = (props) => {
       <FeedPanel
         className={`profile-feed${useRowLayout ? ' profile-feed--rows' : ''}`}
         loading={loading && list.length === 0}
+        refreshing={refreshing}
         onRefresh={handleRefresh}
         infinite={{
           sentinelRef,

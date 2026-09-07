@@ -57,7 +57,7 @@ function buildPostCoverSourceFromArticle(
 /** 与首页信息流同款：批量解析通知帖封面源 */
 export async function buildNotificationCoverSources(
   articles: IArticleRaw[],
-): Promise<Map<number, PostCoverSource>> {
+): Promise<Map<string, PostCoverSource>> {
   if (articles.length === 0) return new Map();
 
   const hydrated = await hydrateArticlesForGameRepost(articles);
@@ -68,10 +68,12 @@ export async function buildNotificationCoverSources(
     .filter((appId): appId is number => appId != null && appId > 0);
   const gameRepostMetaMap = await fetchGameRepostMetaMap(gameRepostAppIds);
 
-  const map = new Map<number, PostCoverSource>();
+  // 公开文章接口只返回 publicId，内部数据库 id 会被 JsonView 隐藏。
+  // 通知本身也通过 articlePublicId 关联帖子，因此这里必须使用 publicId 做 key。
+  const map = new Map<string, PostCoverSource>();
   hydrated.forEach((raw) => {
     map.set(
-      raw.id,
+      raw.publicId,
       buildPostCoverSourceFromArticle(raw, refPostMap, gameRepostMetaMap),
     );
   });

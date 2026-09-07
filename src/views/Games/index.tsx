@@ -17,6 +17,7 @@ import GameDiscoverFilters from '@/views/Games/parts/GameDiscoverFilters';
 import GameCard from '@/views/Games/parts/GameCard';
 import GameMasonryGrid from '@/views/Games/parts/GameMasonryGrid';
 import GameSearchModal from '@/views/Games/parts/GameSearchModal';
+import UserAvatar from '@/base-ui/UserAvatar';
 import { useRequireLogin } from '@/hooks/useRequireLogin';
 import {
   checkGameFollowBatchApi,
@@ -29,7 +30,7 @@ import type {
   IUserGameItem,
 } from '@/types/game';
 import { formatApiError } from '@/utils/apiError';
-import { buildReturnNavigationState } from '@/utils/returnNavigation';
+import { buildGameDetailNavigationState } from '@/utils/detailNavigation';
 import { searchGamesApi } from '@/service/game';
 import { fetchSuggestApi, triggerSuggestApi } from '@/service/search';
 import type { ISuggestItem } from '@/service/search';
@@ -98,8 +99,9 @@ function Games() {
     myGames,
     myLoading,
     steamBound,
+    steamProfile,
     importing,
-    loadMyGames,
+    invalidateMineCache,
     importSteam,
     discoverItems,
     discoverLoading,
@@ -115,14 +117,11 @@ function Games() {
     changeDiscoverOrder,
     changeDiscoverFilters,
     changeDiscoverPage,
-    reloadDiscover,
   } = useGamesPage();
 
-  const openGame = (appId: number) => {
-    navigate(`/game/${appId}`, {
-      state: {
-        ...buildReturnNavigationState(location),
-      },
+  const openGame = (game: IGameListItem) => {
+    navigate(`/game/${game.appId}`, {
+      state: buildGameDetailNavigationState(location, game),
     });
   };
 
@@ -284,6 +283,7 @@ function Games() {
         setFollowedMap((prev) => ({ ...prev, [game.appId]: true }));
         message.success('已加入我的游戏');
       }
+      invalidateMineCache();
     } catch (err) {
       message.error(formatApiError('操作失败', err));
     } finally {
@@ -302,7 +302,7 @@ function Games() {
       );
     }
 
-    if (myLoading) {
+    if (myLoading && myGames.length === 0) {
       return (
         <div className="games-page__loading">
           <Spin />
@@ -314,6 +314,25 @@ function Games() {
       <>
         <div className="games-page__toolbar">
           <div className="games-page__toolbar-left">
+            <div className="games-page__steam-profile">
+              {steamBound && steamProfile ? (
+                <UserAvatar
+                  name={steamProfile.personaName}
+                  src={steamProfile.avatarUrl}
+                  size={36}
+                />
+              ) : null}
+              <div className="games-page__steam-profile-meta">
+                <span className="games-page__steam-profile-label">
+                  Steam 账号
+                </span>
+                <strong className="games-page__steam-profile-name">
+                  {steamBound
+                    ? steamProfile?.personaName || '已绑定'
+                    : '未绑定'}
+                </strong>
+              </div>
+            </div>
             {steamBound ? (
               <Button
                 icon={<SyncOutlined spin={importing} />}
@@ -348,7 +367,7 @@ function Games() {
               <GameCard
                 key={game.appId}
                 game={toListItem(game)}
-                onClick={() => openGame(game.appId)}
+                onClick={() => openGame(toListItem(game))}
               />
             ))}
           </GameMasonryGrid>
@@ -457,7 +476,7 @@ function Games() {
                 showFollow
                 followed={followedMap[game.appId]}
                 followLoading={followLoadingId === game.appId}
-                onClick={() => openGame(game.appId)}
+                onClick={() => openGame(game)}
                 onFollow={() => void toggleDiscoverFollow(game)}
               />
             ))}
@@ -494,10 +513,7 @@ function Games() {
       <GameSearchModal
         open={searchOpen}
         onClose={() => setSearchOpen(false)}
-        onAdded={() => {
-          void loadMyGames();
-          void reloadDiscover();
-        }}
+        onChanged={invalidateMineCache}
       />
     </div>
   );

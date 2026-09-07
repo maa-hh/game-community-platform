@@ -35,15 +35,21 @@ export function useHeaderActions() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const { user } = useAppSelector((state) => state.auth);
-  const notificationUnread = useAppSelector(
-    (state) => state.notification.summary.unreadNotificationCount,
+  const notificationUnread = useAppSelector((state) =>
+    Number(state.notification.summary.unreadNotificationCount || 0),
   );
+  const feedUnreadCount = useAppSelector((state) => {
+    const { feedUnread, feedUnreadCount } = state.notification.summary;
+    if (!feedUnread) return 0;
+    return Math.max(1, Number(feedUnreadCount || 0));
+  });
   const { openAuth } = useAuthModal();
   const loggedIn = isAuthenticated();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   useEffect(() => {
     if (!loggedIn || !user?.accountId) return;
+    // 顶栏不能只依赖 SSE 首次推送，否则首次事件丢失时数量会停留在旧值。
     void dispatch(fetchNotificationMetaAction());
     void dispatch(fetchCurrentUserAction());
   }, [dispatch, loggedIn, user?.accountId]);
@@ -52,14 +58,16 @@ export function useHeaderActions() {
     (keyword: string) => {
       const q = keyword.trim();
       if (!q) return;
-      if (loggedIn) {
-        void addSearchHistoryApi(q).catch(() => undefined);
+      if (!loggedIn) {
+        openAuth('login');
+        return;
       }
+      void addSearchHistoryApi(q).catch(() => undefined);
       navigate(
         `/search?q=${encodeURIComponent(q)}&tab=${headerSearch.defaultTab}`,
       );
     },
-    [loggedIn, navigate],
+    [loggedIn, navigate, openAuth],
   );
 
   const handlePublish = useCallback(() => {
@@ -147,6 +155,7 @@ export function useHeaderActions() {
     userMenuOpen,
     setUserMenuOpen,
     notificationUnread,
+    feedUnreadCount,
     goSearch,
     handlePublish,
     openLogin,

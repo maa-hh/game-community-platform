@@ -11,6 +11,7 @@ import {
   ACCESS_REFRESH_BUFFER_MS,
   CODE_ACCESS_EXPIRED,
   CODE_REFRESH_EXPIRED,
+  CODE_TOO_MANY_REQUESTS,
 } from './config';
 import type { IDataType, IRefreshResult } from './types';
 import {
@@ -19,8 +20,8 @@ import {
   clearAuth,
   isAccessTokenExpired,
   hasAuthSession,
-  setAuthTip,
 } from '@/utils/storage';
+import { emitAuthRequired } from '@/utils/authEvents';
 
 // 自定义拦截器配置（实例创建时可覆盖默认行为）
 export interface IHYInterceptors {
@@ -47,50 +48,34 @@ type AuthRequestConfig = InternalAxiosRequestConfig & {
   _retry?: boolean;
 };
 
-/** 刷新单飞：并发 401 时只发一次 refresh，其余排队 */
-let isRefreshing = false;
-let refreshWaitQueue: Array<{
-  resolve: (token: string) => void;
-  reject: (error: unknown) => void;
-}> = [];
+/** 刷新单飞：同一标签页内的并发请求共享同一个 refresh Promise。 */
+let refreshPromise: Promise<string> | null = null;
+let authGeneration = 0;
 
-function enqueueRefreshWaiters() {
-  return new Promise<string>((resolve, reject) => {
-    refreshWaitQueue.push({ resolve, reject });
-  });
-}
-
-function resolveRefreshWaiters(token: string) {
-  refreshWaitQueue.forEach((item) => item.resolve(token));
-  refreshWaitQueue = [];
-}
-
-function rejectRefreshWaiters(error: unknown) {
-  refreshWaitQueue.forEach((item) => item.reject(error));
-  refreshWaitQueue = [];
+class RefreshInvalidatedError extends Error {
+  constructor() {
+    super('refresh 已被新的登录态取消');
+  }
 }
 
 /** 登录/登出后重置刷新单飞，避免旧 refresh 竞态拖死新会话 */
 export function resetAuthRefreshState() {
-  isRefreshing = false;
-  refreshWaitQueue = [];
+  refreshPromise = null;
+  authGeneration += 1;
 }
 
 function forceReLogin(tip = '登录已过期，请重新登录') {
   resetAuthRefreshState();
   clearAuth();
-  setAuthTip(tip);
+  emitAuthRequired(tip);
   message.error(tip);
-  if (window.location.pathname !== '/') {
-    window.location.assign('/');
-  }
 }
 
 /**
  * 刷新 access：不读、不传 refreshToken
  * 依赖 withCredentials 自动带上 HttpOnly Cookie
  */
-async function doRefreshToken(): Promise<string> {
+async function doRefreshToken(retryCount = 0): Promise<IRefreshResult> {
   if (!hasAuthSession()) {
     throw new Error('无登录会话');
   }
@@ -104,16 +89,98 @@ async function doRefreshToken(): Promise<string> {
     },
   );
   const payload = res.data;
+  if (payload.code === CODE_TOO_MANY_REQUESTS && retryCount < 3) {
+    // 后端用会话锁串行化 refresh；跨标签页同时刷新时短暂返回 429，等待其他标签页完成轮换。
+    await new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 200 * (retryCount + 1));
+    });
+    return doRefreshToken(retryCount + 1);
+  }
   if (payload.code !== 200 || !payload.data) {
     throw Object.assign(new Error(payload.message || '刷新失败'), payload);
   }
 
   const data = payload.data;
-  setAccessAuth({
-    accessToken: data.accessToken,
-    accessExpiresIn: data.accessExpiresIn,
-  });
-  return data.accessToken;
+  return data;
+}
+
+function refreshAccessTokenSingleFlight(): Promise<string> {
+  if (refreshPromise) return refreshPromise;
+
+  const generation = authGeneration;
+  const nextPromise = doRefreshToken()
+    .then((data) => {
+      if (generation !== authGeneration) {
+        throw new RefreshInvalidatedError();
+      }
+      setAccessAuth({
+        accessToken: data.accessToken,
+        accessExpiresIn: data.accessExpiresIn,
+      });
+      return data.accessToken;
+    })
+    .catch((error) => {
+      if (!(error instanceof RefreshInvalidatedError)) {
+        forceReLogin('登录已过期，请重新登录');
+      }
+      throw error;
+    });
+  refreshPromise = nextPromise;
+
+  // 只清理当前这一轮，避免旧 refresh 的 finally 把新一轮误清掉。
+  void nextPromise.then(
+    () => {
+      if (refreshPromise === nextPromise) refreshPromise = null;
+    },
+    () => {
+      if (refreshPromise === nextPromise) refreshPromise = null;
+    },
+  );
+
+  return nextPromise;
+}
+
+/**
+ * SSE 不能使用 axios 的请求拦截器，因此在创建 EventSource 前复用同一套
+ * access 刷新逻辑，避免 SSE 抢在普通请求刷新完成前携带旧 token 建连。
+ */
+export function refreshAccessTokenForSse(): Promise<string> {
+  return refreshAccessTokenSingleFlight();
+}
+
+function getErrorResponse(error: unknown): {
+  status?: number;
+  data?: Partial<IDataType>;
+  config?: AuthRequestConfig;
+} | null {
+  if (!error || typeof error !== 'object' || !('response' in error)) {
+    return null;
+  }
+  const response = error.response;
+  if (!response || typeof response !== 'object') return null;
+
+  const responseData = 'data' in response ? response.data : undefined;
+  return {
+    status: 'status' in response ? Number(response.status) : undefined,
+    data:
+      responseData && typeof responseData === 'object'
+        ? (responseData as Partial<IDataType>)
+        : undefined,
+    config:
+      'config' in response ? (response.config as AuthRequestConfig) : undefined,
+  };
+}
+
+async function retryAfterAccessExpired(
+  config: AuthRequestConfig,
+): Promise<AxiosResponse> {
+  config._retry = true;
+  const newToken = await refreshAccessTokenSingleFlight();
+  config.headers.Authorization = `Bearer ${newToken}`;
+  (
+    window as Window & { __MOCK_ACCESS_TOKEN__?: string }
+  ).__MOCK_ACCESS_TOKEN__ = newToken;
+  return hyRequest.instance.request(config);
 }
 
 /**
@@ -173,31 +240,17 @@ const hyRequest: HYRequest = new HYRequest({
         return config;
       }
 
-      // 有 access 且临近过期才静默刷新（仅有会话标记、尚无 token 时不刷新）
-      if (
-        hasAuthSession() &&
-        getAccessToken() &&
-        isAccessTokenExpired(ACCESS_REFRESH_BUFFER_MS)
-      ) {
-        if (!isRefreshing) {
-          isRefreshing = true;
-          try {
-            const newToken = await doRefreshToken();
-            resolveRefreshWaiters(newToken);
-          } catch (error) {
-            rejectRefreshWaiters(error);
-            forceReLogin('登录已过期，请重新登录');
-            return Promise.reject(error);
-          } finally {
-            isRefreshing = false;
-          }
-        } else {
-          const newToken = await enqueueRefreshWaiters();
+      // access 缺失或临近过期都先静默刷新，避免“会话还在但本地 access 被清掉”时发出裸请求。
+      if (hasAuthSession() && isAccessTokenExpired(ACCESS_REFRESH_BUFFER_MS)) {
+        try {
+          const newToken = await refreshAccessTokenSingleFlight();
           authConfig.headers.Authorization = `Bearer ${newToken}`;
           (
             window as Window & { __MOCK_ACCESS_TOKEN__?: string }
           ).__MOCK_ACCESS_TOKEN__ = newToken;
           return config;
+        } catch (error) {
+          return Promise.reject(error);
         }
       }
 
@@ -227,33 +280,7 @@ const hyRequest: HYRequest = new HYRequest({
         !config.skipAuth &&
         !config._retry
       ) {
-        config._retry = true;
-
-        if (!isRefreshing) {
-          isRefreshing = true;
-          try {
-            const newToken = await doRefreshToken();
-            resolveRefreshWaiters(newToken);
-            config.headers.Authorization = `Bearer ${newToken}`;
-            (
-              window as Window & { __MOCK_ACCESS_TOKEN__?: string }
-            ).__MOCK_ACCESS_TOKEN__ = newToken;
-            return hyRequest.instance.request(config);
-          } catch (error) {
-            rejectRefreshWaiters(error);
-            forceReLogin('登录已过期，请重新登录');
-            return Promise.reject(error);
-          } finally {
-            isRefreshing = false;
-          }
-        }
-
-        const newToken = await enqueueRefreshWaiters();
-        config.headers.Authorization = `Bearer ${newToken}`;
-        (
-          window as Window & { __MOCK_ACCESS_TOKEN__?: string }
-        ).__MOCK_ACCESS_TOKEN__ = newToken;
-        return hyRequest.instance.request(config);
+        return retryAfterAccessExpired(config);
       }
 
       // refresh 失效或其它鉴权失败
@@ -267,19 +294,30 @@ const hyRequest: HYRequest = new HYRequest({
       return Promise.reject(data) as Promise<AxiosResponse>;
     },
     responseInterceptorCatch: (error) => {
-      // 网关 HTTP 401 等场景：尽量解析 JSON body，避免只显示 "Request failed with status code 401"
+      const response = getErrorResponse(error);
+      const data = response?.data;
+      const config = response?.config;
+
+      // 网关对失效 JWT 返回真实 HTTP 401，而不是 HTTP 200 + 业务码。
+      // 这条路径也必须走与业务码 40101 相同的 refresh + 原请求重试。
       if (
-        error &&
-        typeof error === 'object' &&
-        'response' in error &&
-        error.response &&
-        typeof error.response === 'object' &&
-        'data' in error.response &&
-        error.response.data &&
-        typeof error.response.data === 'object' &&
-        'message' in error.response.data
+        response?.status === 401 &&
+        config &&
+        !config.skipAuth &&
+        !config._retry &&
+        data?.code !== CODE_REFRESH_EXPIRED
       ) {
-        return Promise.reject(error.response.data);
+        return retryAfterAccessExpired(config);
+      }
+
+      if (data?.code === CODE_REFRESH_EXPIRED) {
+        forceReLogin(data.message || '登录已过期，请重新登录');
+      } else if (data?.code === CODE_ACCESS_EXPIRED && config?._retry) {
+        forceReLogin(data.message || '登录已过期，请重新登录');
+      }
+
+      if (data && typeof data === 'object' && 'message' in data) {
+        return Promise.reject(data);
       }
       // 保留开发环境网络诊断；生产构建不应因调试输出触发 no-console 检查。
       // eslint-disable-next-line no-console

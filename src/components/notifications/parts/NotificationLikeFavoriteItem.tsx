@@ -7,9 +7,11 @@ import NotificationPostCover from '@/components/notifications/parts/Notification
 import type { INotificationMessage } from '@/types/notification';
 import {
   getNotificationActionText,
+  resolveNotificationContent,
   resolveNotificationCoverTitle,
 } from '@/utils/notificationDisplay';
 import { formatCardTime } from '@/utils/formatTime';
+import { NOTIFICATION_EVENT } from '@/types/notification';
 
 interface NotificationLikeFavoriteItemProps {
   item: INotificationMessage;
@@ -31,6 +33,10 @@ const NotificationLikeFavoriteItem: FC<NotificationLikeFavoriteItemProps> = ({
     aggregateAction,
   );
   const timeText = item.createTime ? formatCardTime(item.createTime) : '';
+  const isCommentLike =
+    item.eventType === NOTIFICATION_EVENT.COMMENT_LIKE ||
+    item.eventType === NOTIFICATION_EVENT.REPLY_LIKE;
+  const targetContent = isCommentLike ? resolveNotificationContent(item) : '';
 
   const handleCoverClick = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
@@ -78,11 +84,16 @@ const NotificationLikeFavoriteItem: FC<NotificationLikeFavoriteItemProps> = ({
           <span>{actionText}</span>
           {timeText ? <time>{timeText}</time> : null}
         </p>
+        {targetContent ? (
+          <p className="notification-item-card__content">{targetContent}</p>
+        ) : null}
       </div>
 
       <NotificationPostCover
         coverSource={item.articleCoverSource}
         coverUrl={item.articleCoverUrl}
+        gameAppId={item.gameAppId}
+        gameCoverUrl={item.gameCoverUrl}
         title={resolveNotificationCoverTitle(item)}
         onClick={onCoverClick ? handleCoverClick : undefined}
       />

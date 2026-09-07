@@ -7,17 +7,28 @@ import AppRouter from '@/router';
 import { ThemeProvider, useTheme } from '@/hooks/useTheme';
 import { AuthModalProvider } from '@/hooks/useAuthModal';
 import { useNotificationSse } from '@/hooks/useNotificationSse';
+import { useProfileAuditPoll } from '@/hooks/useProfileAuditPoll';
+import { useCrossTabAuthSync } from '@/hooks/useCrossTabAuthSync';
+
+function ThemedAppContent() {
+  useCrossTabAuthSync();
+  useNotificationSse();
+  useProfileAuditPoll();
+
+  return (
+    <AuthModalProvider>
+      <AppRouter />
+    </AuthModalProvider>
+  );
+}
 
 function ThemedApp() {
   const { antdThemeConfig } = useTheme();
-  useNotificationSse();
 
   return (
     <ConfigProvider locale={zhCN} theme={antdThemeConfig}>
       <AntdApp>
-        <AuthModalProvider>
-          <AppRouter />
-        </AuthModalProvider>
+        <ThemedAppContent />
       </AntdApp>
     </ConfigProvider>
   );

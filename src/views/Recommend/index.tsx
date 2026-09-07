@@ -15,7 +15,7 @@ import {
   ALL_CATEGORY_VALUE,
 } from './config';
 import { useHotRankPage } from './useHotRankPage';
-import { buildReturnNavigationState } from '@/utils/returnNavigation';
+import { buildPostDetailNavigationState } from '@/utils/detailNavigation';
 
 import './style.less';
 
@@ -29,6 +29,7 @@ function Recommend() {
     categories,
     items,
     loading,
+    refreshing,
     onBoardChange,
     onCategoryChange,
     onPeriodChange,
@@ -85,12 +86,13 @@ function Recommend() {
       <PostFeedList
         items={items}
         loading={loading}
+        refreshing={refreshing}
         emptyText={hotRankEmptyText[board]}
         layout="hotRank"
         onRefresh={handleRefresh}
-        onItemClick={(id) =>
-          navigate(`/post/${id}`, {
-            state: buildReturnNavigationState(location),
+        onItemClick={(item) =>
+          navigate(`/post/${item.id}`, {
+            state: buildPostDetailNavigationState(location, item),
           })
         }
         onLikeClick={handleLike}

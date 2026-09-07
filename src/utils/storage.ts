@@ -34,7 +34,8 @@ import {
 import type { IUserInfo } from '@/service/types';
 import { normalizeUserInfo } from '@/service/types';
 
-const USER_KEY = 'game_community_user';
+/** 跨标签页监听用户资料变化时使用的 localStorage key。 */
+export const USER_INFO_STORAGE_KEY = 'game_community_user';
 const AUTH_TIP_KEY = 'game_community_auth_tip';
 
 // ---------- access token（短期，localStorage） ----------
@@ -118,7 +119,7 @@ export function clearRefreshCookie(): void {
 // ---------- 用户信息 ----------
 
 export function getUserInfo(): IUserInfo | null {
-  const raw = localStorage.getItem(USER_KEY);
+  const raw = localStorage.getItem(USER_INFO_STORAGE_KEY);
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as IUserInfo;
@@ -130,11 +131,11 @@ export function getUserInfo(): IUserInfo | null {
 }
 
 export function setUserInfo(user: IUserInfo): void {
-  localStorage.setItem(USER_KEY, JSON.stringify(user));
+  localStorage.setItem(USER_INFO_STORAGE_KEY, JSON.stringify(user));
 }
 
 export function removeUserInfo(): void {
-  localStorage.removeItem(USER_KEY);
+  localStorage.removeItem(USER_INFO_STORAGE_KEY);
 }
 
 // ---------- 登录过期提示（跨整页跳转） ----------

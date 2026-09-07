@@ -62,11 +62,13 @@ const TARGET_TYPE_LABEL: Record<number, string> = {
   3: '回复',
   4: '用户',
   5: '弹幕',
+  6: '站点问题反馈',
 };
 
 function actionOptions(
   taskType?: ModerationTaskType,
   availableReportActions?: ModerationHandleAction[],
+  targetType?: number,
 ): { label: string; value: ModerationHandleAction }[] {
   if (taskType === 'ARTICLE_AUDIT') {
     return [
@@ -79,6 +81,9 @@ function actionOptions(
       { label: '资料审核通过', value: 'PROFILE_APPROVE' },
       { label: '资料审核不通过', value: 'PROFILE_REJECT' },
     ];
+  }
+  if (targetType === 6) {
+    return [{ label: '已处理并关闭', value: 'NO_VIOLATION' }];
   }
   const punitive: { label: string; value: ModerationHandleAction }[] = [
     { label: '下架帖子', value: 'OFFLINE_ARTICLE' },
@@ -194,6 +199,7 @@ function ModerationPage() {
         handleAction: actionOptions(
           claimedDetail.taskType,
           claimedDetail.availableReportActions,
+          claimedDetail.targetType,
         )[0]?.value,
       });
       setHandleOpen(true);
@@ -278,7 +284,8 @@ function ModerationPage() {
       title: '类型',
       dataIndex: 'taskType',
       width: 110,
-      render: (value: ModerationTaskType) => TASK_TYPE_LABEL[value] || value,
+      render: (value: ModerationTaskType, record) =>
+        record.targetType === 6 ? '问题反馈' : TASK_TYPE_LABEL[value] || value,
     },
     {
       title: '提交时间',
@@ -357,7 +364,7 @@ function ModerationPage() {
             style={{ width: 140 }}
             value={typeFilter}
             options={[
-              { label: '举报', value: 'REPORT' },
+              { label: '举报/问题反馈', value: 'REPORT' },
               { label: '帖子审核', value: 'ARTICLE_AUDIT' },
               { label: '资料审核', value: 'PROFILE_AUDIT' },
             ]}
@@ -413,7 +420,9 @@ function ModerationPage() {
             ) : null}
             <Descriptions column={1} bordered size="small">
               <Descriptions.Item label="类型">
-                {TASK_TYPE_LABEL[detail.taskType]}
+                {detail.targetType === 6
+                  ? '问题反馈'
+                  : TASK_TYPE_LABEL[detail.taskType]}
               </Descriptions.Item>
               {detail.targetType ? (
                 <Descriptions.Item label="举报目标">
@@ -426,7 +435,9 @@ function ModerationPage() {
                 </Descriptions.Item>
               ) : null}
               {detail.reporterName ? (
-                <Descriptions.Item label="举报人">
+                <Descriptions.Item
+                  label={detail.targetType === 6 ? '提交人' : '举报人'}
+                >
                   {detail.reporterName}
                 </Descriptions.Item>
               ) : null}
@@ -454,7 +465,9 @@ function ModerationPage() {
                   {detail.currentTargetUpdatedAt}
                 </Descriptions.Item>
               ) : null}
-              <Descriptions.Item label="举报原因/说明">
+              <Descriptions.Item
+                label={detail.targetType === 6 ? '反馈内容' : '举报原因/说明'}
+              >
                 {detail.reason || '—'}
               </Descriptions.Item>
               <Descriptions.Item label="摘要">
@@ -507,6 +520,7 @@ function ModerationPage() {
               options={actionOptions(
                 detail?.taskType,
                 detail?.availableReportActions,
+                detail?.targetType,
               )}
             />
           </Form.Item>

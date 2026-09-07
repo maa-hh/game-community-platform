@@ -8,8 +8,11 @@ import type { FollowButtonProps } from './types';
 const FollowButton: FC<FollowButtonProps> = ({
   followed,
   onClick,
+  disabled,
   size = 'small',
   className,
+  followText = '关注',
+  followedText = '已关注',
 }) => {
   return (
     <Button
@@ -17,8 +20,9 @@ const FollowButton: FC<FollowButtonProps> = ({
       type={followed ? 'default' : 'primary'}
       className={className}
       onClick={onClick}
+      disabled={disabled}
     >
-      {followed ? '已关注' : '关注'}
+      {followed ? followedText : followText}
     </Button>
   );
 };

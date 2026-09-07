@@ -4,38 +4,73 @@ import { App } from 'antd';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { fetchCurrentUserAction } from '@/store/modules/auth';
 import {
-  fetchNotificationCategoriesAction,
-  receiveRealtimeNotification,
-  refetchCategoryIfLoadedAction,
+  markCategoryRefreshRequired,
+  incrementFeedUnread,
+  incrementNotificationUnread,
+  patchNotificationSummary,
+  resetNotificationState,
   setNotificationSummary,
 } from '@/store/modules/notification';
 import {
+  markFollowFeedReloadRequired,
+  markProfileDataDirty,
+  resetProfileRealtime,
+} from '@/store/modules/profileRealtime';
+import {
   createNotificationEventSource,
   isProfileAuditEvent,
-  type INotificationSseEvent,
+  parseNotificationSseEvent,
 } from '@/service/notification';
 import { PROFILE_AUDIT_EVENT } from '@/service/types';
-import { isAuthenticated } from '@/utils/storage';
+import { NOTIFICATION_EVENT } from '@/types/notification';
+import { getAccessToken, isAuthenticated } from '@/utils/storage';
 import { resolveNotificationCategory } from '@/utils/notificationCategory';
-import type { NotificationCategoryKey } from '@/types/notification';
+import {
+  isProfileDataDomain,
+  PROFILE_DATA_DOMAIN,
+  type ProfileDataDomain,
+} from '@/types/profileRealtime';
+import { invalidateProfileDataCaches } from '@/utils/profileDataCache';
 
-/**
- * 登录后建立 notification SSE：资料审核 + 消息未读红点
- */
+/** 登录后建立 notification SSE：资料审核 + 消息未读红点。 */
 export function useNotificationSse() {
   const dispatch = useAppDispatch();
   const { message } = App.useApp();
   const accessToken = useAppSelector((state) => state.auth.accessToken);
-  const activeCategory = useAppSelector(
-    (state) => state.notification.activeCategory,
-  );
-  const activeCategoryRef = useRef<NotificationCategoryKey | null>(null);
+  const accountId = useAppSelector((state) => state.auth.user?.accountId);
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
+  const accountScopeRef = useRef<number | null | undefined>(undefined);
+  const pendingProfileInvalidationsRef = useRef<ProfileDataDomain[]>([]);
 
   useEffect(() => {
-    activeCategoryRef.current = activeCategory;
-  }, [activeCategory]);
+    if (
+      accountScopeRef.current !== undefined &&
+      accountScopeRef.current !== (accountId ?? null)
+    ) {
+      pendingProfileInvalidationsRef.current = [];
+      dispatch(resetNotificationState());
+      dispatch(resetProfileRealtime());
+    }
+    accountScopeRef.current = accountId ?? null;
+  }, [accountId, dispatch]);
+
+  useEffect(() => {
+    if (!accountId || pendingProfileInvalidationsRef.current.length === 0) {
+      return;
+    }
+    dispatch(
+      markProfileDataDirty({
+        accountId,
+        domains: pendingProfileInvalidationsRef.current,
+      }),
+    );
+    invalidateProfileDataCaches(
+      accountId,
+      pendingProfileInvalidationsRef.current,
+    );
+    pendingProfileInvalidationsRef.current = [];
+  }, [accountId, dispatch]);
 
   useEffect(() => {
     const clearReconnect = () => {
@@ -45,101 +80,172 @@ export function useNotificationSse() {
       }
     };
 
+    let disposed = false;
+
     const disconnect = () => {
       eventSourceRef.current?.close();
       eventSourceRef.current = null;
       clearReconnect();
     };
 
-    const handlePayload = (raw: string) => {
+    const handlePayload = (raw: string, eventType?: string) => {
       if (!raw) return;
+
       try {
-        const payload = JSON.parse(raw) as INotificationSseEvent;
+        const payload = parseNotificationSseEvent(raw, eventType);
+        if (!payload) return;
+
+        const isFeedUnreadEvent =
+          payload.eventType === 'feed_unread' ||
+          payload.message?.eventType === NOTIFICATION_EVENT.FEED_UNREAD;
         if (payload.summary) {
-          dispatch(setNotificationSummary(payload.summary));
+          if (isFeedUnreadEvent) {
+            dispatch(
+              patchNotificationSummary({
+                feedUnread: true,
+                feedUnreadCount: Math.max(
+                  1,
+                  Number(payload.summary.feedUnreadCount || 0),
+                ),
+              }),
+            );
+          } else if (payload.eventType === 'notification_created') {
+            dispatch(
+              patchNotificationSummary({
+                unreadNotificationCount:
+                  payload.summary.unreadNotificationCount,
+              }),
+            );
+          } else {
+            dispatch(setNotificationSummary(payload.summary));
+          }
+        } else if (isFeedUnreadEvent) {
+          dispatch(incrementFeedUnread());
+        } else if (payload.eventType === 'notification_created') {
+          dispatch(incrementNotificationUnread());
+        }
+
+        if (isFeedUnreadEvent) {
+          dispatch(markFollowFeedReloadRequired());
         }
 
         if (payload.eventType === 'notification_summary' && payload.summary) {
-          void dispatch(fetchNotificationCategoriesAction());
+          return;
+        }
+
+        if (payload.eventType === 'profile_invalidated') {
+          const domains = (payload.invalidationDomains ?? []).filter(
+            isProfileDataDomain,
+          );
+          if (domains.length > 0) {
+            if (accountId) {
+              dispatch(markProfileDataDirty({ accountId, domains }));
+              invalidateProfileDataCaches(accountId, domains);
+            } else {
+              pendingProfileInvalidationsRef.current = Array.from(
+                new Set([
+                  ...pendingProfileInvalidationsRef.current,
+                  ...domains,
+                ]),
+              );
+            }
+          }
+          if (
+            domains.includes(PROFILE_DATA_DOMAIN.FOLLOWING) ||
+            domains.includes(PROFILE_DATA_DOMAIN.FEED)
+          ) {
+            dispatch(markFollowFeedReloadRequired());
+          }
+          if (domains.includes(PROFILE_DATA_DOMAIN.BASE)) return;
           return;
         }
 
         const msg = payload.message;
-        if (payload.eventType === 'notification_created' && msg) {
-          dispatch(
-            receiveRealtimeNotification({
-              message: msg,
-              summary: payload.summary ?? undefined,
-            }),
-          );
-          const category = resolveNotificationCategory(msg.eventType);
-          const viewingCategory = activeCategoryRef.current;
+        if (payload.eventType !== 'notification_created' || !msg) return;
 
-          if (category) {
-            void dispatch(refetchCategoryIfLoadedAction(category));
-            // 正在查看该分类时由页面 effect 标记已读并刷新汇总，避免竞态把红点写回去
-            if (category !== viewingCategory) {
-              void dispatch(fetchNotificationCategoriesAction());
-            }
-          } else {
-            void dispatch(fetchNotificationCategoriesAction());
+        const category = resolveNotificationCategory(msg.eventType);
+        if (category) dispatch(markCategoryRefreshRequired({ category }));
+
+        if (isProfileAuditEvent(msg.eventType)) {
+          void dispatch(fetchCurrentUserAction());
+          if (msg.eventType === PROFILE_AUDIT_EVENT.PASSED) {
+            message.success(msg.previewText || '资料审核通过');
+          } else if (msg.eventType === PROFILE_AUDIT_EVENT.REJECTED) {
+            message.error(
+              msg.previewText || msg.resultText || '资料未通过，请修改后重试',
+            );
+          } else if (msg.eventType === PROFILE_AUDIT_EVENT.HUMAN_REVIEW) {
+            message.info(msg.previewText || '资料已进入人工审核');
           }
-          if (isProfileAuditEvent(msg.eventType)) {
-            void dispatch(fetchCurrentUserAction());
-            if (msg.eventType === PROFILE_AUDIT_EVENT.PASSED) {
-              message.success(msg.previewText || '资料审核通过');
-            } else if (msg.eventType === PROFILE_AUDIT_EVENT.REJECTED) {
-              message.error(
-                msg.previewText ||
-                  msg.resultText ||
-                  '资料审核未通过，请修改后重试',
-              );
-            } else if (msg.eventType === PROFILE_AUDIT_EVENT.HUMAN_REVIEW) {
-              message.info(msg.previewText || '资料已进入人工审核');
-            }
-          }
-          return;
         }
       } catch {
-        // ignore malformed SSE
+        // 忽略无法识别的 SSE 数据，避免中断连接。
       }
     };
 
-    const connect = () => {
+    const scheduleReconnect = () => {
+      if (!isAuthenticated() || !getAccessToken()) return;
+      if (reconnectTimerRef.current != null) return;
+      reconnectTimerRef.current = window.setTimeout(() => {
+        reconnectTimerRef.current = null;
+        void connect();
+      }, 3000);
+    };
+
+    const connect = async () => {
       disconnect();
       if (!isAuthenticated() || !accessToken) return;
 
-      const source = createNotificationEventSource();
-      if (!source) return;
-      eventSourceRef.current = source;
+      let source: EventSource | null = null;
+      try {
+        source = await createNotificationEventSource();
+      } catch {
+        scheduleReconnect();
+        return;
+      }
+      if (disposed) {
+        source?.close();
+        return;
+      }
+      if (!source) {
+        scheduleReconnect();
+        return;
+      }
 
-      source.addEventListener('notification_created', (event) => {
-        handlePayload((event as MessageEvent<string>).data);
-      });
-      source.addEventListener('notification_summary', (event) => {
-        handlePayload((event as MessageEvent<string>).data);
-      });
-      source.addEventListener('feed_unread', (event) => {
-        handlePayload((event as MessageEvent<string>).data);
-      });
-      source.onmessage = (event) => {
-        handlePayload(event.data);
+      const eventSource = source;
+      eventSourceRef.current = eventSource;
+      const handleEvent = (type: string, event: Event) => {
+        handlePayload((event as MessageEvent<string>).data, type);
       };
-      source.onerror = () => {
-        source.close();
-        if (eventSourceRef.current === source) {
+
+      eventSource.addEventListener('notification_created', (event) => {
+        handleEvent('notification_created', event);
+      });
+      eventSource.addEventListener('notification_summary', (event) => {
+        handleEvent('notification_summary', event);
+      });
+      eventSource.addEventListener('feed_unread', (event) => {
+        handleEvent('feed_unread', event);
+      });
+      eventSource.addEventListener('profile_invalidated', (event) => {
+        handleEvent('profile_invalidated', event);
+      });
+      eventSource.onmessage = (event) => {
+        handleEvent('message', event);
+      };
+      eventSource.onerror = () => {
+        eventSource.close();
+        if (eventSourceRef.current === eventSource) {
           eventSourceRef.current = null;
         }
-        if (!isAuthenticated() || !accessToken) return;
-        if (reconnectTimerRef.current != null) return;
-        reconnectTimerRef.current = window.setTimeout(() => {
-          reconnectTimerRef.current = null;
-          connect();
-        }, 3000);
+        scheduleReconnect();
       };
     };
 
-    connect();
-    return disconnect;
-  }, [accessToken, dispatch, message]);
+    void connect();
+    return () => {
+      disposed = true;
+      disconnect();
+    };
+  }, [accessToken, accountId, dispatch, message]);
 }

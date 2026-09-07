@@ -3,8 +3,11 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { message } from 'antd';
 
 import { useRequireLogin } from '@/hooks/useRequireLogin';
+import { useOptimisticAction } from '@/hooks/useOptimisticAction';
+import { usePostInteractionActions } from '@/hooks/usePostInteraction';
 import { togglePostLikeApi } from '@/service/social';
 import { formatApiError } from '@/utils/apiError';
+import { PROFILE_DATA_DOMAIN } from '@/types/profileRealtime';
 
 /** 与后端 RecommendConstants.LIKE_WEIGHT 一致 */
 export const LIKE_HOT_SCORE_DELTA = 2;
@@ -85,63 +88,94 @@ export function useFeedItemLike<T extends LikableFeedItem>(
   options?: UseFeedItemLikeOptions,
 ) {
   const { requireLogin } = useRequireLogin();
+  const { updateInteraction, invalidateProfileInteractionCaches } =
+    usePostInteractionActions();
   const optionsRef = useRef(options);
+  const { run: runOptimisticAction } = useOptimisticAction();
   optionsRef.current = options;
 
   return useCallback(
     async (item: T) => {
       if (!requireLogin()) return;
-
       const opts = optionsRef.current;
       const snapshot = takeSnapshot(item);
       const nextLiked = !snapshot.liked;
+      const nextLikeCount = Math.max(
+        0,
+        snapshot.likeCount + (nextLiked ? 1 : -1),
+      );
 
-      // ① 乐观更新：先按目标态展示
-      setItems((prev) => {
-        const row = prev.find((entry) => entry.id === item.id);
-        if (!row) return prev;
-        return prev.map((entry) =>
-          entry.id === item.id
-            ? buildOptimisticPatch(entry, nextLiked, opts)
-            : entry,
-        );
+      await runOptimisticAction(`feed-like:${item.id}`, {
+        apply: () => {
+          setItems((prev) => {
+            const row = prev.find((entry) => entry.id === item.id);
+            if (!row) return prev;
+            return prev.map((entry) =>
+              entry.id === item.id
+                ? buildOptimisticPatch(entry, nextLiked, opts)
+                : entry,
+            );
+          });
+          updateInteraction(item.id, {
+            liked: nextLiked,
+            likeCount: nextLikeCount,
+            likePending: true,
+          });
+          if (opts?.inflightRef) opts.inflightRef.current += 1;
+        },
+        request: () => togglePostLikeApi(item.id, nextLiked),
+        commit: (res) => {
+          setItems((prev) =>
+            prev.map((row) => {
+              if (row.id !== item.id) return row;
+              if (!shouldSyncFromServer(row, res.data)) return row;
+              return {
+                ...row,
+                liked: res.data.liked,
+                likeCount: res.data.likeCount,
+              };
+            }),
+          );
+          updateInteraction(item.id, {
+            liked: res.data.liked,
+            likeCount: res.data.likeCount,
+            likePending: false,
+          });
+          invalidateProfileInteractionCaches([
+            PROFILE_DATA_DOMAIN.LIKED,
+            PROFILE_DATA_DOMAIN.RECEIVED,
+          ]);
+        },
+        rollback: (err) => {
+          setItems((prev) =>
+            prev.map((row) =>
+              row.id === item.id ? restoreSnapshot(row, snapshot) : row,
+            ),
+          );
+          updateInteraction(item.id, {
+            liked: snapshot.liked,
+            likeCount: snapshot.likeCount,
+            likePending: false,
+          });
+          message.error(formatApiError('点赞失败', err));
+        },
+        finally: () => {
+          if (opts?.inflightRef) {
+            opts.inflightRef.current = Math.max(
+              0,
+              opts.inflightRef.current - 1,
+            );
+          }
+          opts?.onSettled?.();
+        },
       });
-
-      if (opts?.inflightRef) {
-        opts.inflightRef.current += 1;
-      }
-
-      try {
-        const res = await togglePostLikeApi(item.id, nextLiked);
-        // ② 成功：与乐观态一致则不变，仅在有差异时用服务端校正
-        setItems((prev) =>
-          prev.map((row) => {
-            if (row.id !== item.id) return row;
-            if (!shouldSyncFromServer(row, res.data)) {
-              return row;
-            }
-            return {
-              ...row,
-              liked: res.data.liked,
-              likeCount: res.data.likeCount,
-            };
-          }),
-        );
-      } catch (err) {
-        // ③ 失败：回滚 + 提示
-        setItems((prev) =>
-          prev.map((row) =>
-            row.id === item.id ? restoreSnapshot(row, snapshot) : row,
-          ),
-        );
-        message.error(formatApiError('点赞失败', err));
-      } finally {
-        if (opts?.inflightRef) {
-          opts.inflightRef.current = Math.max(0, opts.inflightRef.current - 1);
-        }
-        opts?.onSettled?.();
-      }
     },
-    [requireLogin, setItems],
+    [
+      invalidateProfileInteractionCaches,
+      requireLogin,
+      runOptimisticAction,
+      setItems,
+      updateInteraction,
+    ],
   );
 }

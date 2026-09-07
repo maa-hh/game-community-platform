@@ -19,6 +19,7 @@ export interface PostDetailTopBarProps {
   avatarFrameUrl?: string;
   createdAt?: string;
   followed: boolean;
+  followDisabled?: boolean;
   isOwner: boolean;
   moreMenu?: MenuProps['items'];
   onBack: () => void;
@@ -31,6 +32,7 @@ const PostDetailTopBar: FC<PostDetailTopBarProps> = ({
   avatarFrameUrl,
   createdAt,
   followed,
+  followDisabled,
   isOwner,
   moreMenu,
   onBack,
@@ -78,7 +80,11 @@ const PostDetailTopBar: FC<PostDetailTopBarProps> = ({
       </div>
 
       {!isOwner ? (
-        <FollowButton followed={followed} onClick={onFollow} />
+        <FollowButton
+          followed={followed}
+          disabled={followDisabled}
+          onClick={onFollow}
+        />
       ) : null}
 
       <div className="post-detail-top-bar__actions">

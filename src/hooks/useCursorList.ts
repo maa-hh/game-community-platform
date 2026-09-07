@@ -56,10 +56,13 @@ export function useCursorList<T>({
     enabled && !skipInitialFetch && !cache,
   );
   const [loadingMore, setLoadingMore] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [hasMore, setHasMore] = useState(cache?.hasMore ?? initialHasMore);
   const cursorRef = useRef<string | undefined>(cache?.cursor ?? initialCursor);
   const fetchRef = useRef(fetchBatch);
   const requestSeqRef = useRef(0);
+  const refreshSeqRef = useRef(0);
+  const hasLoadedRef = useRef(Boolean(cache));
   // 当前 state 对应的键。切换筛选的第一帧不得渲染上一份列表。
   const [resolvedCacheKey, setResolvedCacheKey] = useState(cacheKey);
   const cacheInvalidatedRef = useRef(false);
@@ -80,7 +83,7 @@ export function useCursorList<T>({
       cacheInvalidatedRef.current ||
       loading ||
       loadingMore ||
-      items.length === 0
+      !hasLoadedRef.current
     )
       return;
     setPageDataCache(cacheKey, {
@@ -112,28 +115,27 @@ export function useCursorList<T>({
   );
 
   const loadBatch = useCallback(
-    async (cursor: string | undefined, append: boolean) => {
+    async (cursor: string | undefined, append: boolean, silent = false) => {
       if (!enabled) return;
       const requestSeq = ++requestSeqRef.current;
       if (append) {
         setLoadingMore(true);
-      } else {
+      } else if (!silent) {
         setLoading(true);
       }
       try {
         const batch = await fetchRef.current(cursor, pageSize);
         if (requestSeq !== requestSeqRef.current) return;
         applyBatch(batch, append);
+        hasLoadedRef.current = true;
       } catch {
         if (requestSeq !== requestSeqRef.current) return;
-        if (!append) {
-          setItems([]);
-          setHasMore(false);
-          cursorRef.current = undefined;
-        }
+        // 刷新失败时保留旧列表，避免用户点击刷新后页面先变空。
         throw new Error('cursor-list-load-failed');
       } finally {
         if (requestSeq !== requestSeqRef.current) return;
+        // silent 只控制是否显示加载过程，不影响请求结束后的状态收敛。
+        // 否则静默刷新会让首屏请求留下的 loading 永远保持为 true。
         setLoading(false);
         setLoadingMore(false);
       }
@@ -141,11 +143,23 @@ export function useCursorList<T>({
     [applyBatch, enabled, pageSize],
   );
 
-  const reload = useCallback(async () => {
-    cursorRef.current = undefined;
-    setHasMore(true);
-    await loadBatch(undefined, false);
-  }, [loadBatch]);
+  const reload = useCallback(
+    async (silent = false) => {
+      const refreshSeq = ++refreshSeqRef.current;
+      setRefreshing(true);
+      // 刷新会废弃正在进行的加载更多请求，避免旧请求被作废后
+      // 没有机会再清理 loadingMore。
+      setLoadingMore(false);
+      cursorRef.current = undefined;
+      setHasMore(true);
+      try {
+        await loadBatch(undefined, false, silent);
+      } finally {
+        if (refreshSeq === refreshSeqRef.current) setRefreshing(false);
+      }
+    },
+    [loadBatch],
+  );
 
   const loadMore = useCallback(async () => {
     if (!hasMore || loading || loadingMore) return;
@@ -158,9 +172,11 @@ export function useCursorList<T>({
     setResolvedCacheKey(cacheKey);
 
     if (!enabled) {
+      hasLoadedRef.current = false;
       setItems([]);
       setHasMore(true);
       setLoading(false);
+      setRefreshing(false);
       cursorRef.current = undefined;
       return;
     }
@@ -171,19 +187,24 @@ export function useCursorList<T>({
         ? getPageDataCache<CursorListCache<T>>(cacheKey)
         : undefined;
     if (cachedForKey) {
+      hasLoadedRef.current = true;
       setItems(cachedForKey.items);
       setHasMore(cachedForKey.hasMore);
       setLoading(false);
       setLoadingMore(false);
+      setRefreshing(false);
       cursorRef.current = cachedForKey.cursor;
       return;
     }
     if (skipInitialFetch) {
+      hasLoadedRef.current = false;
       setLoading(false);
       setLoadingMore(false);
       return;
     }
-    setItems([]);
+    const keepVisibleItems = invalidated && resolvedCacheKey === cacheKey;
+    hasLoadedRef.current = false;
+    if (!keepVisibleItems) setItems([]);
     setLoading(true);
     setLoadingMore(false);
     cursorRef.current = undefined;
@@ -214,6 +235,7 @@ export function useCursorList<T>({
     items: keyChanged ? [] : items,
     loading: keyChanged ? enabled : loading,
     loadingMore: keyChanged ? false : loadingMore,
+    refreshing: keyChanged ? false : refreshing,
     hasMore: keyChanged ? true : hasMore,
     reload,
     loadMore,

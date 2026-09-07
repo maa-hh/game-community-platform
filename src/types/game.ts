@@ -103,6 +103,8 @@ export interface IGameReviewReply {
   accountId: number;
   username?: string;
   avatar?: string;
+  replyToAccountId?: number;
+  replyToNickname?: string;
   content: string;
   likeCount?: number;
   liked?: boolean;

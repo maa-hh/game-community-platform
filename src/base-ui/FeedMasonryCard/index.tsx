@@ -14,7 +14,7 @@ import { getFeedCardMediaCssVars } from '@/utils/feedCardCoverLayout';
 import { resolvePostDisplayTags } from '@/utils/categoryTag';
 import { resolvePostType } from '@/utils/postType';
 import { formatCount } from '@/utils/formatCount';
-import { buildReturnNavigationState } from '@/utils/returnNavigation';
+import { buildGameDetailNavigationState } from '@/utils/detailNavigation';
 
 import './style.less';
 
@@ -81,7 +81,11 @@ const FeedMasonryCard: FC<IFeedMasonryCardProps> = ({
         icon: tag.iconUrl,
         variant: 'game',
         to: `/game/${tag.appId}`,
-        state: buildReturnNavigationState(location),
+        state: buildGameDetailNavigationState(location, {
+          appId: tag.appId,
+          name: tag.name,
+          coverUrl: tag.iconUrl,
+        }),
         onClick: (event) => event.stopPropagation(),
       });
     });
@@ -177,6 +181,7 @@ const FeedMasonryCard: FC<IFeedMasonryCardProps> = ({
               kind="like"
               count={item.likeCount}
               active={item.liked}
+              disabled={item.likePending}
               size="sm"
               className="feed-masonry-card__action"
               stopPropagation
@@ -186,6 +191,7 @@ const FeedMasonryCard: FC<IFeedMasonryCardProps> = ({
               kind="favorite"
               count={item.favoriteCount}
               active={item.favorited}
+              disabled={item.favoritePending}
               size="sm"
               className="feed-masonry-card__action"
               stopPropagation

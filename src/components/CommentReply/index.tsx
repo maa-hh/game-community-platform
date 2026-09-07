@@ -63,19 +63,22 @@ const CommentReply: FC<IProps> = ({
               />
             </span>
           )}
-          <span>{reply.createdAt}</span>
+          <span>{reply.pending ? '发送中…' : reply.createdAt}</span>
         </header>
         <ClampText text={reply.content} />
-        <CommentOps
-          liked={reply.liked}
-          likeCount={reply.likeCount}
-          isMine={isMine}
-          onLike={onLike}
-          onReply={onReply}
-          onReport={onReport}
-          onDelete={onDelete}
-          deleteTitle="删除回复？"
-        />
+        {reply.pending ? null : (
+          <CommentOps
+            liked={reply.liked}
+            likeCount={reply.likeCount}
+            likePending={reply.likePending}
+            isMine={isMine}
+            onLike={onLike}
+            onReply={onReply}
+            onReport={onReport}
+            onDelete={onDelete}
+            deleteTitle="删除回复？"
+          />
+        )}
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import React, { memo, useEffect, useState } from 'react';
 import type { FC } from 'react';
 import { Progress } from 'antd';
 
@@ -10,32 +10,69 @@ import './style.less';
 
 const ArticleProgressBanner: FC = () => {
   const poll = useArticleProgressPoll();
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (poll.visible && poll.items.length <= 2) {
+      setExpanded(false);
+    }
+  }, [poll.items.length, poll.visible]);
 
   if (!poll.visible) return null;
+
+  const shouldCollapse = poll.items.length > 2;
+  const visibleItems =
+    shouldCollapse && !expanded ? poll.items.slice(0, 2) : poll.items;
 
   return (
     <div className="article-progress-banner" role="status" aria-live="polite">
       <div className="article-progress-banner__inner">
-        <div className="article-progress-banner__meta">
-          <span className="article-progress-banner__title">
-            《{poll.title}》{articleStatusLabel(poll.status)}
-          </span>
-          <span className="article-progress-banner__stage">{poll.stage}</span>
+        <div className="article-progress-banner__items">
+          {visibleItems.map((item) => (
+            <div className="article-progress-banner__item" key={item.articleId}>
+              <div className="article-progress-banner__meta">
+                <span className="article-progress-banner__title">
+                  《{item.title}》{articleStatusLabel(item.status)}
+                </span>
+                <span className="article-progress-banner__stage">
+                  {item.stage}
+                </span>
+              </div>
+              {item.showUploadPercent ? (
+                <Progress
+                  className="article-progress-banner__bar"
+                  percent={item.uploadPercent}
+                  showInfo
+                  status="active"
+                  strokeColor="var(--color-primary)"
+                  size="small"
+                />
+              ) : item.showUploadComplete ? (
+                <Progress
+                  className="article-progress-banner__bar"
+                  percent={100}
+                  showInfo={false}
+                  status="success"
+                  size="small"
+                />
+              ) : item.showAuditWaiting ? (
+                <div
+                  className="article-progress-banner__bar article-progress-banner__bar--audit"
+                  aria-hidden
+                />
+              ) : null}
+            </div>
+          ))}
         </div>
-        {poll.showUploadPercent ? (
-          <Progress
-            className="article-progress-banner__bar"
-            percent={poll.uploadPercent}
-            showInfo
-            status="active"
-            strokeColor="var(--color-primary)"
-            size="small"
-          />
-        ) : poll.showAuditWaiting ? (
-          <div
-            className="article-progress-banner__bar article-progress-banner__bar--audit"
-            aria-hidden
-          />
+        {shouldCollapse ? (
+          <button
+            className="article-progress-banner__toggle"
+            type="button"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((value) => !value)}
+          >
+            {expanded ? '收起' : `展开全部（${poll.items.length}）`}
+          </button>
         ) : null}
       </div>
     </div>

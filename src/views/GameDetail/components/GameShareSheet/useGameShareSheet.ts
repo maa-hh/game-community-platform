@@ -14,6 +14,10 @@ import {
   buildGameDetailPageUrl,
   buildShareGameCopyText,
 } from '@/utils/shareUrl';
+import { communityFeedCacheKey } from '@/hooks/usePostInteraction';
+import { invalidatePageDataCache } from '@/hooks/pageDataCache';
+import { invalidateProfileDataCaches } from '@/utils/profileDataCache';
+import { PROFILE_DATA_DOMAIN } from '@/types/profileRealtime';
 
 import type { IGameShareSheetProps } from './types';
 
@@ -33,7 +37,7 @@ export function useGameShareSheet({
   onClose,
   onReposted,
 }: IGameShareSheetProps) {
-  const { requireLogin } = useRequireLogin();
+  const { requireLogin, user } = useRequireLogin();
   const [repostOpen, setRepostOpen] = useState(false);
   const [shareTitle, setShareTitle] = useState('');
   const [shareContent, setShareContent] = useState('');
@@ -91,6 +95,8 @@ export function useGameShareSheet({
         content: resolveShareContent(shareContent, defaultShareContent),
       });
       message.success('已分享为动态');
+      invalidatePageDataCache(communityFeedCacheKey(user?.accountId));
+      invalidateProfileDataCaches(user?.accountId, [PROFILE_DATA_DOMAIN.POSTS]);
       onReposted?.(newId);
       setShareTitle('');
       setShareContent('');

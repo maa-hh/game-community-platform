@@ -33,7 +33,12 @@ const ListEndHint = forwardRef<HTMLDivElement, IListEndHintProps>(
         className={`list-end-hint${className ? ` ${className}` : ''}`}
         aria-hidden={hasMore && !loadingMore}
       >
-        {loadingMore ? <Spin size="small" /> : null}
+        {loadingMore ? (
+          <>
+            <Spin size="small" />
+            <span className="list-end-hint__loading-text">正在加载更多</span>
+          </>
+        ) : null}
         {!hasMore && !loadingMore ? (
           <Text type="secondary">{endText}</Text>
         ) : null}

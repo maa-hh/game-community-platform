@@ -214,7 +214,11 @@ const HeaderSearch: FC<HeaderSearchProps> = ({
       >
         <Input
           allowClear
-          onPressEnter={() => submit()}
+          onPressEnter={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            submit();
+          }}
           placeholder={search.placeholder}
           className="app-header__search-input"
           suffix={

@@ -2,10 +2,10 @@ import type { FeedItemData, MainTabKey, ProfileStats } from '@/types/profile';
 
 /** 本地演示数据（统计 / 关注列表 mock） */
 export const MOCK_STATS: ProfileStats = {
-  following: 128,
-  followers: 2560,
-  likes: 18920,
-  favorites: 346,
+  following: 0,
+  followers: 0,
+  likes: 0,
+  favorites: 0,
 };
 export const MOCK_FOLLOW_USERS = [
   {

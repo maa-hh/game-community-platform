@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Button,
   Empty,
@@ -136,6 +142,8 @@ function ShopPage() {
   const [loadingBackpack, setLoadingBackpack] = useState(!initialBackpackCache);
   const [exchangingId, setExchangingId] = useState<number | null>(null);
   const [actingCode, setActingCode] = useState<string | null>(null);
+  const storeRequestIdRef = useRef(0);
+  const backpackRequestIdRef = useRef(0);
 
   const changeTab = useCallback((next: string) => {
     setTab(next === 'backpack' ? 'backpack' : 'store');
@@ -158,69 +166,129 @@ function ShopPage() {
     }
   }, [pointsCacheKey]);
 
-  const loadStore = useCallback(async () => {
-    setLoadingStore(true);
-    try {
-      const res = await fetchShopItemsApi({ page: 1, size: 100 });
-      if (res.code !== 200) throw new Error(res.message || '加载失败');
-      const nextItems = res.data || [];
-      setItems(nextItems);
-      setPageDataCache(storeCacheKey, nextItems);
-    } catch (error) {
-      message.error(formatApiError('加载商城失败', error));
-    } finally {
-      setLoadingStore(false);
-    }
-  }, [storeCacheKey]);
-
-  const loadBackpack = useCallback(async () => {
-    setLoadingBackpack(true);
-    try {
-      const categoryMap: Partial<Record<ShopCategory, string>> = {
-        avatar_frame: 'AVATAR_FRAME',
-        profile_bg: 'PROFILE_BG',
-        comment_card: 'COMMENT_CARD',
-      };
-      const res = await fetchCosmeticBackpackApi({
-        page: backpackPage,
-        size: backpackPageSize,
-        effectMode: backpackEffectMode,
-        category: categoryMap[backpackCategory],
-        equipped: backpackEquipped,
-        state: backpackState,
-        keyword: backpackKeyword || undefined,
-      });
-      if (res.code !== 200) throw new Error(res.message || '加载失败');
-      const nextItems = res.data || [];
-      const nextTotal = res.total || 0;
-      setBackpack(nextItems);
-      setBackpackTotal(nextTotal);
-      setPageDataCache(backpackCacheKey, {
-        items: nextItems,
-        total: nextTotal,
-      });
-      if (
-        nextItems.length === 0 &&
-        backpackPage > 1 &&
-        nextTotal <= (backpackPage - 1) * backpackPageSize
-      ) {
-        setBackpackPage((page) => Math.max(1, page - 1));
+  const loadStore = useCallback(
+    async (options?: { cache?: boolean }) => {
+      const shouldCache = options?.cache !== false;
+      const requestId = ++storeRequestIdRef.current;
+      setLoadingStore(true);
+      try {
+        const res = await fetchShopItemsApi({ page: 1, size: 100 });
+        if (res.code !== 200) throw new Error(res.message || '加载失败');
+        const nextItems = res.data || [];
+        if (requestId !== storeRequestIdRef.current) return;
+        setItems(nextItems);
+        if (shouldCache) setPageDataCache(storeCacheKey, nextItems);
+      } catch (error) {
+        if (requestId === storeRequestIdRef.current) {
+          message.error(formatApiError('加载商城失败', error));
+        }
+      } finally {
+        if (requestId === storeRequestIdRef.current) setLoadingStore(false);
       }
-    } catch (error) {
-      message.error(formatApiError('加载背包失败', error));
-    } finally {
-      setLoadingBackpack(false);
-    }
-  }, [
-    backpackCategory,
-    backpackEffectMode,
-    backpackEquipped,
-    backpackKeyword,
-    backpackPage,
-    backpackPageSize,
-    backpackState,
-    backpackCacheKey,
-  ]);
+    },
+    [storeCacheKey],
+  );
+
+  const loadBackpack = useCallback(
+    async (options?: { cache?: boolean }) => {
+      const shouldCache = options?.cache !== false;
+      const requestId = ++backpackRequestIdRef.current;
+      setLoadingBackpack(true);
+      try {
+        const categoryMap: Partial<Record<ShopCategory, string>> = {
+          avatar_frame: 'AVATAR_FRAME',
+          profile_bg: 'PROFILE_BG',
+          comment_card: 'COMMENT_CARD',
+        };
+        const res = await fetchCosmeticBackpackApi({
+          page: backpackPage,
+          size: backpackPageSize,
+          effectMode: backpackEffectMode,
+          category: categoryMap[backpackCategory],
+          equipped: backpackEquipped,
+          state: backpackState,
+          keyword: backpackKeyword || undefined,
+        });
+        if (res.code !== 200) throw new Error(res.message || '加载失败');
+        const nextItems = res.data || [];
+        const nextTotal = res.total || 0;
+        if (requestId !== backpackRequestIdRef.current) return;
+        setBackpack(nextItems);
+        setBackpackTotal(nextTotal);
+        if (shouldCache) {
+          setPageDataCache(backpackCacheKey, {
+            items: nextItems,
+            total: nextTotal,
+          });
+        }
+        if (
+          nextItems.length === 0 &&
+          backpackPage > 1 &&
+          nextTotal <= (backpackPage - 1) * backpackPageSize
+        ) {
+          setBackpackPage((page) => Math.max(1, page - 1));
+        }
+      } catch (error) {
+        if (requestId === backpackRequestIdRef.current) {
+          message.error(formatApiError('加载背包失败', error));
+        }
+      } finally {
+        if (requestId === backpackRequestIdRef.current) {
+          setLoadingBackpack(false);
+        }
+      }
+    },
+    [
+      backpackCategory,
+      backpackEffectMode,
+      backpackEquipped,
+      backpackKeyword,
+      backpackPage,
+      backpackPageSize,
+      backpackState,
+      backpackCacheKey,
+    ],
+  );
+
+  const refreshAfterExchange = useCallback(
+    async (cosmeticCode: string, orderStatus: number) => {
+      const grantPending = orderStatus === SHOP_ORDER_STATUS.PAID;
+      notifyCosmeticUpdated(accountId);
+
+      // PAID 代表积分已扣除但权益仍在异步发放。不要把发放前的空背包/旧
+      // 商城结果再次写入缓存，否则后续切换分类会持续命中这个旧快照。
+      await Promise.all([
+        loadStore({ cache: !grantPending }),
+        loadBackpack({ cache: !grantPending }),
+      ]);
+
+      if (!grantPending) return;
+
+      // Outbox/Kafka 发放通常很快完成；短暂轮询让购买成功后的背包能自动
+      // 收敛到最新状态，不要求用户手动大刷新。
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        if (attempt > 0) {
+          await new Promise<void>((resolve) => {
+            window.setTimeout(resolve, 500);
+          });
+        }
+        const res = await fetchCosmeticBackpackApi({
+          page: 1,
+          size: 1,
+          keyword: cosmeticCode,
+        });
+        const delivered =
+          res.code === 200 &&
+          (res.data || []).some((item) => item.cosmeticCode === cosmeticCode);
+        if (!delivered) continue;
+
+        notifyCosmeticUpdated(accountId);
+        await Promise.all([loadStore(), loadBackpack()]);
+        return;
+      }
+    },
+    [accountId, loadBackpack, loadStore],
+  );
 
   useEffect(() => {
     const cachedPoints = getPageDataCache<number>(pointsCacheKey);
@@ -299,7 +367,7 @@ function ShopPage() {
             ? '已装备，个人主页背景已更新'
             : '已装备，装扮已生效',
       );
-      notifyCosmeticUpdated();
+      notifyCosmeticUpdated(accountId);
       void loadBackpack();
       void loadStore();
     } catch (error) {
@@ -358,8 +426,9 @@ function ShopPage() {
       const nextPoints = Number(res.data.pointsBalance);
       setPoints(nextPoints);
       setPageDataCache(pointsCacheKey, nextPoints);
-      void loadStore();
-      void loadBackpack();
+      void refreshAfterExchange(item.cosmeticCode, orderStatus).catch(
+        () => undefined,
+      );
     } catch (error) {
       message.error(formatApiError('兑换失败', error));
     } finally {
@@ -374,7 +443,7 @@ function ShopPage() {
       const res = await unequipCosmeticApi({ slot: item.slot });
       if (res.code !== 200) throw new Error(res.message || '卸下失败');
       message.success('已卸下');
-      notifyCosmeticUpdated();
+      notifyCosmeticUpdated(accountId);
       void loadBackpack();
       void loadStore();
     } catch (error) {
@@ -390,6 +459,7 @@ function ShopPage() {
       const res = await consumeCosmeticApi({ code: item.cosmeticCode });
       if (res.code !== 200) throw new Error(res.message || '使用失败');
       message.success('已使用');
+      notifyCosmeticUpdated(accountId);
       void loadBackpack();
     } catch (error) {
       message.error(formatApiError('使用失败', error));

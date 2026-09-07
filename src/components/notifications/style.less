@@ -39,6 +39,15 @@
   }
 }
 
+.notification-category-panel__refreshing {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
 .notification-post-cover {
   display: inline-flex;
   flex-shrink: 0;
@@ -52,6 +61,18 @@
 
   .post-cover-thumb {
     pointer-events: none;
+  }
+
+  &__game-image {
+    display: block;
+    width: 56px;
+    height: auto;
+    max-height: 75px;
+    border-radius: 8px;
+    object-fit: contain;
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-drag: none;
   }
 }
 
@@ -85,6 +106,10 @@
     > .notification-item-card__nickname-link
       + .notification-item-card__action-line,
     > .notification-item-card__nickname + .notification-item-card__action-line {
+      margin-top: 4px;
+    }
+
+    > .notification-item-card__action-line + .notification-item-card__content {
       margin-top: 4px;
     }
   }
@@ -231,6 +256,16 @@
     -webkit-line-clamp: 1;
     -webkit-box-orient: vertical;
     overflow: hidden;
+  }
+
+  &__reply-preview {
+    margin: 8px 0 0;
+    padding-left: 8px;
+    border-left: 2px solid var(--color-primary);
+    color: var(--color-text-secondary);
+    font-size: 13px;
+    line-height: 1.45;
+    word-break: break-word;
   }
 
   &__actions {

@@ -30,7 +30,12 @@ import type {
 import type { GameReviewSort } from '@/types/game';
 import { formatApiError } from '@/utils/apiError';
 import { useAppSelector } from '@/store';
-import { getPageDataCache, setPageDataCache } from '@/hooks/pageDataCache';
+import {
+  getPageDataCache,
+  invalidatePageDataCache,
+  setPageDataCache,
+} from '@/hooks/pageDataCache';
+import { usePageRefresh } from '@/hooks/usePageRefresh';
 
 type GameDetailPayload = IGameDetail & {
   averageScore?: number;
@@ -109,13 +114,21 @@ function parseGameTab(value: string | null): GameDetailTabKey {
   return 'intro';
 }
 
-export function useGameDetail(appId: number) {
+export function useGameDetail(
+  appId: number,
+  previewDetail?: IGameDetail | null,
+) {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = parseGameTab(searchParams.get('tab'));
   const discussionPageRef = useRef(1);
   const accountId = useAppSelector((state) => state.auth.user?.accountId);
+  const isLoggedIn = Boolean(accountId);
   const gameCacheKey = `${appId}:${accountId ?? 'anonymous'}`;
+  const invalidateGameCache = useCallback(() => {
+    invalidatePageDataCache(gameCacheKey);
+  }, [gameCacheKey]);
   const cached = getPageDataCache<GameDetailCache>(gameCacheKey);
+  const initialDetail = cached?.detail ?? previewDetail ?? null;
 
   const setActiveTab = useCallback(
     (tab: GameDetailTabKey) => {
@@ -135,9 +148,7 @@ export function useGameDetail(appId: number) {
     [setSearchParams],
   );
 
-  const [detail, setDetail] = useState<IGameDetail | null>(
-    cached?.detail ?? null,
-  );
+  const [detail, setDetail] = useState<IGameDetail | null>(initialDetail);
   const [ratingStats, setRatingStats] = useState<IGameRatingStats | null>(
     cached?.ratingStats ?? null,
   );
@@ -154,9 +165,9 @@ export function useGameDetail(appId: number) {
     cached?.myReviewLoaded ? cached.myReview : null,
   );
   const [myReviewLoading, setMyReviewLoading] = useState(false);
-  const [detailLoading, setDetailLoading] = useState(!cached?.detail);
+  const [detailLoading, setDetailLoading] = useState(!initialDetail);
   const [detailRefreshing, setDetailRefreshing] = useState(
-    Boolean(cached?.detail && !isGameDetailReady(cached.detail)),
+    Boolean(initialDetail && !isGameDetailReady(initialDetail)),
   );
   const [detailError, setDetailError] = useState<string | null>(null);
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
@@ -172,6 +183,16 @@ export function useGameDetail(appId: number) {
     null,
   );
   const detailPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setDetail(initialDetail);
+    setRatingStats(cached?.ratingStats ?? null);
+    setDetailError(null);
+    setDetailLoading(!initialDetail);
+    setDetailRefreshing(
+      Boolean(initialDetail && !isGameDetailReady(initialDetail)),
+    );
+  }, [appId, cached?.ratingStats, initialDetail]);
 
   const fetchBatch = useCallback(
     async (cursor: string | undefined, size: number) => {
@@ -204,20 +225,20 @@ export function useGameDetail(appId: number) {
         return true;
       }
       const cachedGame = getPageDataCache<GameDetailCache>(gameCacheKey);
-      if (
-        !force &&
-        cachedGame?.detail &&
-        isGameDetailReady(cachedGame.detail)
-      ) {
-        setDetail(cachedGame.detail);
-        setRatingStats(cachedGame.ratingStats ?? null);
+      const fallbackDetail = cachedGame?.detail ?? previewDetail ?? null;
+      if (!force && fallbackDetail && isGameDetailReady(fallbackDetail)) {
+        setDetail(fallbackDetail);
+        setRatingStats(cachedGame?.ratingStats ?? null);
         setDetailError(null);
         setDetailLoading(false);
         setDetailRefreshing(false);
         return true;
       }
-      if (!silent && !cachedGame?.detail) setDetailLoading(true);
-      if (!silent) setDetailError(null);
+      if (!silent) {
+        if (!fallbackDetail) setDetailLoading(true);
+        else setDetailRefreshing(true);
+        setDetailError(null);
+      }
       try {
         const res = await fetchGameDetailApi(appId);
         const game = res.data as GameDetailPayload;
@@ -243,25 +264,29 @@ export function useGameDetail(appId: number) {
         return ready;
       } catch (err) {
         if (!silent) {
-          if (!cachedGame?.detail) setDetail(null);
-          setDetailError(formatApiError('加载游戏详情失败', err));
+          if (!fallbackDetail) {
+            setDetail(null);
+            setDetailError(formatApiError('加载游戏详情失败', err));
+          } else {
+            setDetailError(null);
+          }
           setDetailRefreshing(false);
         }
-        return isGameDetailReady(cachedGame?.detail);
+        return isGameDetailReady(fallbackDetail);
       } finally {
         if (!silent) setDetailLoading(false);
       }
     },
-    [appId, gameCacheKey],
+    [appId, gameCacheKey, previewDetail],
   );
 
   const loadReviews = useCallback(
-    async (page = 1) => {
+    async (page = 1, force = false) => {
       if (!Number.isFinite(appId) || appId <= 0) return;
       const existing = getPageDataCache<GameDetailCache>(gameCacheKey);
       const cacheKey = `${reviewSort}:${page}`;
       const cachedPage = existing?.reviews.get(cacheKey);
-      if (cachedPage) {
+      if (!force && cachedPage) {
         setReviews(cachedPage.items);
         setReviewsPage(page);
         setReviewsTotal(cachedPage.total);
@@ -301,90 +326,110 @@ export function useGameDetail(appId: number) {
     [appId, gameCacheKey, reviewSort],
   );
 
-  const loadMyReview = useCallback(async () => {
-    if (!Number.isFinite(appId) || appId <= 0) return;
-    const existing = getPageDataCache<GameDetailCache>(gameCacheKey);
-    if (existing?.myReviewLoaded) {
-      setMyReview(existing.myReview);
-      setMyReviewLoading(false);
-      return;
-    }
-    setMyReviewLoading(true);
-    try {
-      const res = await fetchMyGameReviewApi(appId);
-      setMyReview(res.data ?? null);
-      const nextCache = getPageDataCache<GameDetailCache>(gameCacheKey) ?? {
-        reviews: new Map(),
-        followed: undefined,
-        myReviewLoaded: false,
-        myReview: null,
-        steamStatsLoaded: false,
-        steamStats: null,
-      };
-      nextCache.myReviewLoaded = true;
-      nextCache.myReview = res.data ?? null;
-      setPageDataCache(gameCacheKey, nextCache);
-    } catch {
-      setMyReview(null);
-    } finally {
-      setMyReviewLoading(false);
-    }
-  }, [appId, gameCacheKey]);
+  const loadMyReview = useCallback(
+    async (force = false) => {
+      if (!isLoggedIn || !Number.isFinite(appId) || appId <= 0) {
+        setMyReview(null);
+        setMyReviewLoading(false);
+        return;
+      }
+      const existing = getPageDataCache<GameDetailCache>(gameCacheKey);
+      if (!force && existing?.myReviewLoaded) {
+        setMyReview(existing.myReview);
+        setMyReviewLoading(false);
+        return;
+      }
+      setMyReviewLoading(true);
+      try {
+        const res = await fetchMyGameReviewApi(appId);
+        setMyReview(res.data ?? null);
+        const nextCache = getPageDataCache<GameDetailCache>(gameCacheKey) ?? {
+          reviews: new Map(),
+          followed: undefined,
+          myReviewLoaded: false,
+          myReview: null,
+          steamStatsLoaded: false,
+          steamStats: null,
+        };
+        nextCache.myReviewLoaded = true;
+        nextCache.myReview = res.data ?? null;
+        setPageDataCache(gameCacheKey, nextCache);
+      } catch {
+        // 刷新失败时保留旧评价，避免页面先变成未评价状态。
+      } finally {
+        setMyReviewLoading(false);
+      }
+    },
+    [appId, gameCacheKey, isLoggedIn],
+  );
 
-  const loadFollowStatus = useCallback(async () => {
-    if (!Number.isFinite(appId) || appId <= 0) return;
-    const existing = getPageDataCache<GameDetailCache>(gameCacheKey);
-    if (existing?.followed !== undefined) {
-      setFollowed(existing.followed);
-      return;
-    }
-    try {
-      const res = await checkGameFollowApi(appId);
-      setFollowed(Boolean(res.data));
-      const nextCache = getPageDataCache<GameDetailCache>(gameCacheKey) ?? {
-        reviews: new Map(),
-        followed: undefined,
-        myReviewLoaded: false,
-        myReview: null,
-        steamStatsLoaded: false,
-        steamStats: null,
-      };
-      nextCache.followed = Boolean(res.data);
-      setPageDataCache(gameCacheKey, nextCache);
-    } catch {
-      setFollowed(false);
-    }
-  }, [appId, gameCacheKey]);
+  const loadFollowStatus = useCallback(
+    async (force = false) => {
+      if (!isLoggedIn || !Number.isFinite(appId) || appId <= 0) {
+        setFollowed(false);
+        return;
+      }
+      const existing = getPageDataCache<GameDetailCache>(gameCacheKey);
+      if (!force && existing?.followed !== undefined) {
+        setFollowed(existing.followed);
+        return;
+      }
+      try {
+        const res = await checkGameFollowApi(appId);
+        setFollowed(Boolean(res.data));
+        const nextCache = getPageDataCache<GameDetailCache>(gameCacheKey) ?? {
+          reviews: new Map(),
+          followed: undefined,
+          myReviewLoaded: false,
+          myReview: null,
+          steamStatsLoaded: false,
+          steamStats: null,
+        };
+        nextCache.followed = Boolean(res.data);
+        setPageDataCache(gameCacheKey, nextCache);
+      } catch {
+        // 状态刷新失败时保留旧状态。
+      }
+    },
+    [appId, gameCacheKey, isLoggedIn],
+  );
 
-  const loadSteamStats = useCallback(async () => {
-    if (!Number.isFinite(appId) || appId <= 0) return;
-    const existing = getPageDataCache<GameDetailCache>(gameCacheKey);
-    if (existing?.steamStatsLoaded) {
-      setSteamStats(existing.steamStats);
-      setSteamStatsLoading(false);
-      return;
-    }
-    setSteamStatsLoading(true);
-    try {
-      const res = await fetchSteamGameStatsApi(appId);
-      setSteamStats(res.data ?? null);
-      const nextCache = getPageDataCache<GameDetailCache>(gameCacheKey) ?? {
-        reviews: new Map(),
-        followed: undefined,
-        myReviewLoaded: false,
-        myReview: null,
-        steamStatsLoaded: false,
-        steamStats: null,
-      };
-      nextCache.steamStatsLoaded = true;
-      nextCache.steamStats = res.data ?? null;
-      setPageDataCache(gameCacheKey, nextCache);
-    } catch {
-      setSteamStats(null);
-    } finally {
-      setSteamStatsLoading(false);
-    }
-  }, [appId, gameCacheKey]);
+  const loadSteamStats = useCallback(
+    async (force = false) => {
+      if (!isLoggedIn || !Number.isFinite(appId) || appId <= 0) {
+        setSteamStats(null);
+        setSteamStatsLoading(false);
+        return;
+      }
+      const existing = getPageDataCache<GameDetailCache>(gameCacheKey);
+      if (!force && existing?.steamStatsLoaded) {
+        setSteamStats(existing.steamStats);
+        setSteamStatsLoading(false);
+        return;
+      }
+      setSteamStatsLoading(true);
+      try {
+        const res = await fetchSteamGameStatsApi(appId);
+        setSteamStats(res.data ?? null);
+        const nextCache = getPageDataCache<GameDetailCache>(gameCacheKey) ?? {
+          reviews: new Map(),
+          followed: undefined,
+          myReviewLoaded: false,
+          myReview: null,
+          steamStatsLoaded: false,
+          steamStats: null,
+        };
+        nextCache.steamStatsLoaded = true;
+        nextCache.steamStats = res.data ?? null;
+        setPageDataCache(gameCacheKey, nextCache);
+      } catch {
+        // 数据刷新失败时保留旧统计。
+      } finally {
+        setSteamStatsLoading(false);
+      }
+    },
+    [appId, gameCacheKey, isLoggedIn],
+  );
 
   const pollSteamAchievementStats = useCallback(async () => {
     if (!Number.isFinite(appId) || appId <= 0) return;
@@ -450,7 +495,7 @@ export function useGameDetail(appId: number) {
   );
 
   const syncSteamAchievements = useCallback(async () => {
-    if (!Number.isFinite(appId) || appId <= 0) return;
+    if (!isLoggedIn || !Number.isFinite(appId) || appId <= 0) return;
     setSteamAchievementSyncing(true);
     try {
       const res = await syncSteamGameAchievementsApi(appId);
@@ -466,7 +511,7 @@ export function useGameDetail(appId: number) {
       message.error(formatApiError('提交成就同步失败', err));
       setSteamAchievementSyncing(false);
     }
-  }, [appId, gameCacheKey, pollSteamAchievementStats]);
+  }, [appId, gameCacheKey, isLoggedIn, pollSteamAchievementStats]);
 
   const toggleFollow = useCallback(async () => {
     if (!Number.isFinite(appId) || appId <= 0) return;
@@ -485,19 +530,25 @@ export function useGameDetail(appId: number) {
         if (cachedGame) cachedGame.followed = true;
         message.success('已加入我的游戏');
       }
+      if (accountId != null) {
+        invalidatePageDataCache(`games:mine:${accountId}`);
+      }
     } catch (err) {
       message.error(formatApiError('操作失败', err));
     } finally {
       setFollowLoading(false);
     }
-  }, [appId, followed, gameCacheKey]);
+  }, [accountId, appId, followed, gameCacheKey]);
 
-  const loadStatsAndSyncAchievements = useCallback(async () => {
-    await loadSteamStats();
-    const current =
-      getPageDataCache<GameDetailCache>(gameCacheKey)?.steamStats ?? null;
-    void maybeSyncSteamAchievements(current);
-  }, [gameCacheKey, loadSteamStats, maybeSyncSteamAchievements]);
+  const loadStatsAndSyncAchievements = useCallback(
+    async (force = false) => {
+      await loadSteamStats(force);
+      const current =
+        getPageDataCache<GameDetailCache>(gameCacheKey)?.steamStats ?? null;
+      void maybeSyncSteamAchievements(current);
+    },
+    [gameCacheKey, loadSteamStats, maybeSyncSteamAchievements],
+  );
 
   useEffect(() => {
     let disposed = false;
@@ -517,9 +568,9 @@ export function useGameDetail(appId: number) {
     };
 
     const hasCachedDetail = Boolean(
-      getPageDataCache<GameDetailCache>(gameCacheKey)?.detail,
+      getPageDataCache<GameDetailCache>(gameCacheKey)?.detail ?? previewDetail,
     );
-    void loadDetail({ force: true, silent: hasCachedDetail }).then((ready) => {
+    void loadDetail({ force: false, silent: hasCachedDetail }).then((ready) => {
       if (!disposed && !ready) schedulePoll(0);
     });
     void loadFollowStatus();
@@ -528,7 +579,34 @@ export function useGameDetail(appId: number) {
       if (detailPollRef.current) clearTimeout(detailPollRef.current);
       detailPollRef.current = null;
     };
-  }, [gameCacheKey, loadDetail, loadFollowStatus]);
+  }, [gameCacheKey, loadDetail, loadFollowStatus, previewDetail]);
+
+  const refreshPage = useCallback(async () => {
+    const tasks: Promise<unknown>[] = [
+      loadDetail({ force: true }),
+      loadFollowStatus(true),
+    ];
+    if (activeTab === 'reviews') {
+      tasks.push(loadReviews(1, true), loadMyReview(true));
+    }
+    if (activeTab === 'stats') {
+      tasks.push(loadStatsAndSyncAchievements(true));
+    }
+    if (activeTab === 'discuss') {
+      tasks.push(discussions.reload());
+    }
+    await Promise.all(tasks);
+  }, [
+    activeTab,
+    discussions,
+    loadDetail,
+    loadFollowStatus,
+    loadMyReview,
+    loadReviews,
+    loadStatsAndSyncAchievements,
+  ]);
+
+  usePageRefresh(refreshPage, activeTab !== 'discuss');
 
   useEffect(() => {
     if (activeTab === 'reviews') {
@@ -559,14 +637,13 @@ export function useGameDetail(appId: number) {
         message.success('评价已保存');
         const cachedGame = getPageDataCache<GameDetailCache>(gameCacheKey);
         if (cachedGame) {
-          cachedGame.detail = undefined;
           cachedGame.myReviewLoaded = false;
           cachedGame.reviews.delete('latest:1');
           cachedGame.reviews.delete('hot:1');
         }
         await loadMyReview();
         await loadReviews(1);
-        await loadDetail();
+        await loadDetail({ force: true });
       } catch (err) {
         message.error(formatApiError('保存评价失败', err));
       } finally {
@@ -619,8 +696,10 @@ export function useGameDetail(appId: number) {
     detailRefreshing,
     detailError,
     reviewSubmitting,
+    refreshPage,
     saveMyReview,
     removeMyReview,
+    invalidateGameCache,
     followed,
     followLoading,
     toggleFollow,
@@ -633,6 +712,7 @@ export function useGameDetail(appId: number) {
       items: discussions.items,
       loading: discussions.loading,
       loadingMore: discussions.loadingMore,
+      refreshing: discussions.refreshing,
       hasMore: discussions.hasMore,
       sentinelRef: discussions.sentinelRef,
       reload: discussions.reload,

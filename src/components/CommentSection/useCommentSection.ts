@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { message } from 'antd';
 
 import { useReportModal } from '@/hooks/useReportModal';
+import { useOptimisticAction } from '@/hooks/useOptimisticAction';
 import type { PostComment, PostReply } from '@/types/post';
 import {
   createCommentApi,
@@ -12,6 +13,9 @@ import {
 } from '@/service/social';
 import { useRequireLogin } from '@/hooks/useRequireLogin';
 import { formatApiError } from '@/utils/apiError';
+import { REPLY_PAGE_SIZE } from '@/components/CommentItem/config';
+import { invalidateProfileDataCaches } from '@/utils/profileDataCache';
+import { PROFILE_DATA_DOMAIN } from '@/types/profileRealtime';
 
 import type { ICommentSectionProps, ReplyTarget } from './types';
 
@@ -19,14 +23,14 @@ export function useCommentSection({
   articleId,
   comments,
   onChange,
+  onCommentCountChange,
   highlight,
 }: ICommentSectionProps) {
-  const { user, requireLogin, openAuth } = useRequireLogin();
+  const { user, requireLogin } = useRequireLogin();
   const { reportOpen, reportTarget, openReport, closeReport } =
     useReportModal();
   const [draft, setDraft] = useState('');
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const [expandedReplyIds, setExpandedReplyIds] = useState<
     Record<string, boolean>
   >({});
@@ -34,6 +38,8 @@ export function useCommentSection({
     Record<string, boolean>
   >({});
   const highlightAppliedRef = useRef('');
+  const optimisticIdRef = useRef(0);
+  const { run: runOptimisticAction, isPending } = useOptimisticAction();
 
   const mutateComments = useCallback(
     (updater: (prev: PostComment[]) => PostComment[]) => {
@@ -69,33 +75,45 @@ export function useCommentSection({
     const snapshot = { liked: current.liked, likeCount: current.likeCount };
     const next = !current.liked;
 
-    mutateComments((prev) =>
-      prev.map((c) =>
-        c.id === commentId
-          ? {
-              ...c,
-              liked: next,
-              likeCount: Math.max(0, c.likeCount + (next ? 1 : -1)),
-            }
-          : c,
-      ),
-    );
-
-    try {
-      const res = await toggleCommentLikeApi(articleId, commentId, next);
-      mutateComments((prev) =>
-        prev.map((c) =>
-          c.id === commentId
-            ? { ...c, liked: res.data.liked, likeCount: res.data.likeCount }
-            : c,
-        ),
-      );
-    } catch (err) {
-      mutateComments((prev) =>
-        prev.map((c) => (c.id === commentId ? { ...c, ...snapshot } : c)),
-      );
-      message.error(formatApiError('操作失败', err));
-    }
+    await runOptimisticAction(`comment-like:${commentId}`, {
+      apply: () => {
+        mutateComments((prev) =>
+          prev.map((c) =>
+            c.id === commentId
+              ? {
+                  ...c,
+                  liked: next,
+                  likeCount: Math.max(0, c.likeCount + (next ? 1 : -1)),
+                  likePending: true,
+                }
+              : c,
+          ),
+        );
+      },
+      request: () => toggleCommentLikeApi(articleId, commentId, next),
+      commit: (res) => {
+        mutateComments((prev) =>
+          prev.map((c) =>
+            c.id === commentId
+              ? {
+                  ...c,
+                  liked: res.data.liked,
+                  likeCount: res.data.likeCount,
+                  likePending: false,
+                }
+              : c,
+          ),
+        );
+      },
+      rollback: (err) => {
+        mutateComments((prev) =>
+          prev.map((c) =>
+            c.id === commentId ? { ...c, ...snapshot, likePending: false } : c,
+          ),
+        );
+        message.error(formatApiError('操作失败', err));
+      },
+    });
   };
 
   const handleReplyLike = async (commentId: string, replyId: string) => {
@@ -108,57 +126,72 @@ export function useCommentSection({
     const snapshot = { liked: reply.liked, likeCount: reply.likeCount };
     const next = !reply.liked;
 
-    mutateComments((prev) =>
-      prev.map((c) => {
-        if (c.id !== commentId) return c;
-        return {
-          ...c,
-          replies: c.replies.map((r) =>
-            r.id === replyId
-              ? {
-                  ...r,
-                  liked: next,
-                  likeCount: Math.max(0, r.likeCount + (next ? 1 : -1)),
-                }
-              : r,
-          ),
-        };
-      }),
-    );
-
-    try {
-      const res = await toggleReplyLikeApi(articleId, commentId, replyId, next);
-      mutateComments((prev) =>
-        prev.map((c) => {
-          if (c.id !== commentId) return c;
-          return {
-            ...c,
-            replies: c.replies.map((r) =>
-              r.id === replyId
-                ? {
-                    ...r,
-                    liked: res.data.liked,
-                    likeCount: res.data.likeCount,
-                  }
-                : r,
-            ),
-          };
-        }),
-      );
-    } catch (err) {
-      mutateComments((prev) =>
-        prev.map((c) => {
-          if (c.id !== commentId) return c;
-          return {
-            ...c,
-            replies: c.replies.map((r) =>
-              r.id === replyId ? { ...r, ...snapshot } : r,
-            ),
-          };
-        }),
-      );
-      message.error(formatApiError('操作失败', err));
-    }
+    await runOptimisticAction(`reply-like:${replyId}`, {
+      apply: () => {
+        mutateComments((prev) =>
+          prev.map((c) => {
+            if (c.id !== commentId) return c;
+            return {
+              ...c,
+              replies: c.replies.map((r) =>
+                r.id === replyId
+                  ? {
+                      ...r,
+                      liked: next,
+                      likeCount: Math.max(0, r.likeCount + (next ? 1 : -1)),
+                      likePending: true,
+                    }
+                  : r,
+              ),
+            };
+          }),
+        );
+      },
+      request: () =>
+        toggleReplyLikeApi(
+          articleId,
+          commentId,
+          replyId,
+          next,
+          snapshot.likeCount,
+        ),
+      commit: (res) => {
+        mutateComments((prev) =>
+          prev.map((c) => {
+            if (c.id !== commentId) return c;
+            return {
+              ...c,
+              replies: c.replies.map((r) =>
+                r.id === replyId
+                  ? {
+                      ...r,
+                      liked: res.data.liked,
+                      likeCount: res.data.likeCount,
+                      likePending: false,
+                    }
+                  : r,
+              ),
+            };
+          }),
+        );
+      },
+      rollback: (err) => {
+        mutateComments((prev) =>
+          prev.map((c) => {
+            if (c.id !== commentId) return c;
+            return {
+              ...c,
+              replies: c.replies.map((r) =>
+                r.id === replyId
+                  ? { ...r, ...snapshot, likePending: false }
+                  : r,
+              ),
+            };
+          }),
+        );
+        message.error(formatApiError('操作失败', err));
+      },
+    });
   };
 
   const insertReplyLocal = (
@@ -189,51 +222,129 @@ export function useCommentSection({
 
   const submitComment = async () => {
     if (!requireLogin() || !me) return;
+    if (isPending('comment-create') || isPending('reply-create')) return;
     const content = draft.trim();
     if (!content) {
       message.warning('请输入内容');
       return;
     }
-    setSubmitting(true);
-    try {
-      const res = await createCommentApi(articleId, content, me);
-      mutateComments((prev) => [res.data, ...prev]);
-      setDraft('');
-      message.success('发布成功');
-    } catch (err) {
-      message.error(formatApiError('发布失败', err));
-    } finally {
-      setSubmitting(false);
-    }
+    const tempId = `optimistic-comment-${++optimisticIdRef.current}`;
+    const optimisticComment: PostComment = {
+      id: tempId,
+      accountId: me.accountId,
+      nickname: me.nickname,
+      avatar: me.avatar,
+      content,
+      likeCount: 0,
+      liked: false,
+      replyCount: 0,
+      createdAt: '发送中…',
+      replies: [],
+      pending: true,
+    };
+    setDraft('');
+    await runOptimisticAction('comment-create', {
+      apply: () => {
+        mutateComments((prev) => [optimisticComment, ...prev]);
+        onCommentCountChange?.(1);
+      },
+      request: () => createCommentApi(articleId, content, me),
+      commit: (res) => {
+        mutateComments((prev) =>
+          prev.map((comment) => (comment.id === tempId ? res.data : comment)),
+        );
+        invalidateProfileDataCaches(me?.accountId, [
+          PROFILE_DATA_DOMAIN.COMMENTS,
+        ]);
+        message.success('发布成功');
+      },
+      rollback: (err) => {
+        mutateComments((prev) =>
+          prev.filter((comment) => comment.id !== tempId),
+        );
+        onCommentCountChange?.(-1);
+        message.error(formatApiError('发布失败', err));
+      },
+    });
   };
 
   const submitReply = async (content: string) => {
     if (!requireLogin() || !me || !replyTarget) return;
-    setSubmitting(true);
-    try {
-      const res = await createReplyApi(
-        articleId,
-        replyTarget.commentId,
-        content,
-        {
-          accountId: replyTarget.accountId,
-          nickname: replyTarget.nickname,
-        },
-        me,
-        replyTarget.afterReplyId,
-      );
-      insertReplyLocal(
-        replyTarget.commentId,
-        res.data,
-        replyTarget.afterReplyId,
-      );
-      setReplyTarget(null);
-      message.success('回复成功');
-    } catch (err) {
-      message.error(formatApiError('回复失败', err));
-    } finally {
-      setSubmitting(false);
-    }
+    if (isPending('comment-create') || isPending('reply-create')) return;
+
+    const target = replyTarget;
+    const tempId = `optimistic-reply-${++optimisticIdRef.current}`;
+    const optimisticReply: PostReply = {
+      id: tempId,
+      accountId: me.accountId,
+      nickname: me.nickname,
+      avatar: me.avatar,
+      replyToAccountId: target.accountId,
+      replyToNickname: target.nickname,
+      content,
+      likeCount: 0,
+      liked: false,
+      createdAt: '发送中…',
+      pending: true,
+    };
+    setReplyTarget(null);
+    await runOptimisticAction('reply-create', {
+      apply: () => {
+        insertReplyLocal(
+          target.commentId,
+          optimisticReply,
+          target.afterReplyId,
+        );
+        onCommentCountChange?.(1);
+      },
+      request: () =>
+        createReplyApi(
+          articleId,
+          target.commentId,
+          content,
+          {
+            accountId: target.accountId,
+            nickname: target.nickname,
+          },
+          me,
+          target.afterReplyId,
+        ),
+      commit: (res) => {
+        mutateComments((prev) =>
+          prev.map((comment) =>
+            comment.id === target.commentId
+              ? {
+                  ...comment,
+                  replies: comment.replies.map((reply) =>
+                    reply.id === tempId ? res.data : reply,
+                  ),
+                }
+              : comment,
+          ),
+        );
+        invalidateProfileDataCaches(me?.accountId, [
+          PROFILE_DATA_DOMAIN.COMMENTS,
+        ]);
+        message.success('回复成功');
+      },
+      rollback: (err) => {
+        mutateComments((prev) =>
+          prev.map((comment) =>
+            comment.id === target.commentId
+              ? {
+                  ...comment,
+                  replyCount: Math.max(0, comment.replyCount - 1),
+                  replies: comment.replies.filter(
+                    (reply) => reply.id !== tempId,
+                  ),
+                }
+              : comment,
+          ),
+        );
+        onCommentCountChange?.(-1);
+        message.error(formatApiError('回复失败', err));
+      },
+    });
   };
 
   const onReport = (targetType: 'comment' | 'reply', targetId: string) => {
@@ -269,28 +380,30 @@ export function useCommentSection({
 
       setReplyLoadingIds((prev) => ({ ...prev, [commentId]: true }));
       try {
-        const pageSize = 20;
+        const pageSize = REPLY_PAGE_SIZE;
         const isExpand = mode === 'expand';
-        const requestPage = isExpand
-          ? 1
-          : Math.floor(comment.replies.length / pageSize) + 1;
-        const requestSize = isExpand
-          ? Math.min(Math.max(comment.replyCount, 1), 100)
-          : pageSize;
+        const requestPage = isExpand ? 1 : (comment.replyPage ?? 0) + 1;
 
         const res = await fetchPostRepliesPageApi(
           commentId,
           requestPage,
-          requestSize,
+          pageSize,
         );
         const batch = res.data || [];
         const serverTotal = Number(res.total ?? comment.replyCount);
-        const fetchedAll = batch.length < requestSize;
+        const fetchedAll = batch.length < pageSize;
 
         mutateComments((prev) =>
           prev.map((c) => {
             if (c.id !== commentId) return c;
-            const merged = isExpand ? batch : [...c.replies, ...batch];
+            const pendingReplies = c.replies.filter((reply) => reply.pending);
+            const seededReplies =
+              isExpand && !c.replyPage
+                ? c.replies.filter((reply) => !reply.pending)
+                : [];
+            const merged = isExpand
+              ? [...pendingReplies, ...seededReplies, ...batch]
+              : [...c.replies, ...batch];
             const seen = new Set<string>();
             const replies = merged.filter((reply) => {
               if (seen.has(reply.id)) return false;
@@ -303,6 +416,8 @@ export function useCommentSection({
             return {
               ...c,
               replies,
+              replyPage: Number(res.page ?? requestPage),
+              replyPageSize: pageSize,
               replyCount,
             };
           }),
@@ -327,18 +442,17 @@ export function useCommentSection({
       ...prev,
       [commentId]: nextExpanded,
     }));
-    if (
-      nextExpanded &&
-      comment &&
-      comment.replies.length < comment.replyCount
-    ) {
+    if (nextExpanded && comment && !comment.replyPage) {
       await loadReplies(commentId, 'expand');
     }
   };
 
   const loadMoreReplies = async (commentId: string) => {
     const comment = comments.find((c) => c.id === commentId);
-    if (!comment || comment.replies.length >= comment.replyCount) return;
+    const pageSize = comment?.replyPageSize ?? REPLY_PAGE_SIZE;
+    if (!comment || (comment.replyPage ?? 0) * pageSize >= comment.replyCount) {
+      return;
+    }
     await loadReplies(commentId, 'more');
   };
 
@@ -353,7 +467,7 @@ export function useCommentSection({
       if (!comment) return;
       highlightAppliedRef.current = token;
       setExpandedReplyIds((prev) => ({ ...prev, [commentId]: true }));
-      if (comment.replies.length < comment.replyCount) {
+      if (!comment.replyPage) {
         await loadReplies(commentId, 'expand');
       }
       window.setTimeout(() => {
@@ -374,7 +488,7 @@ export function useCommentSection({
     setDraft,
     replyTarget,
     setReplyTarget,
-    submitting,
+    submitting: isPending('comment-create') || isPending('reply-create'),
     expandedReplyIds,
     me,
     submitComment,
@@ -388,7 +502,6 @@ export function useCommentSection({
     handleCommentLike,
     handleReplyLike,
     requireLogin,
-    openAuth,
     reportOpen,
     reportTarget,
     closeReport,

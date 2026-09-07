@@ -12,6 +12,8 @@ import {
 } from '@/service/steam';
 import type { ISteamGameItem, ISteamProfile } from '@/types/game';
 import { formatApiError } from '@/utils/apiError';
+import { getPageDataCache, setPageDataCache } from '@/hooks/pageDataCache';
+import { usePageRefresh } from '@/hooks/usePageRefresh';
 
 import type { ISteamSectionProps } from './types';
 
@@ -21,6 +23,12 @@ type LibrarySyncCursor = {
   page: number;
   syncId?: string;
 };
+
+interface SteamSectionCache {
+  profile: ISteamProfile | null;
+  library: ISteamGameItem[];
+  libraryPrivate: boolean;
+}
 
 /** 没有同步时间或同步时间超过 24 小时，就在进入个人资料时懒同步。 */
 function isLibraryStale(librarySyncedAt?: string) {
@@ -37,43 +45,69 @@ export function useSteamSection({
   readOnly = false,
 }: Pick<ISteamSectionProps, 'targetAccountId' | 'readOnly'> = {}) {
   const isOtherView = readOnly && targetAccountId != null;
+  const cacheKey = `steam-section:${targetAccountId ?? 'self'}`;
+  const cached = getPageDataCache<SteamSectionCache>(cacheKey);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cached);
   const [binding, setBinding] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<{
     processed: number;
     total: number;
   } | null>(null);
-  const [profile, setProfile] = useState<ISteamProfile | null>(null);
-  const [library, setLibrary] = useState<ISteamGameItem[]>([]);
-  const [libraryPrivate, setLibraryPrivate] = useState(false);
+  const [profile, setProfile] = useState<ISteamProfile | null>(
+    cached?.profile ?? null,
+  );
+  const [library, setLibrary] = useState<ISteamGameItem[]>(
+    cached?.library ?? [],
+  );
+  const [libraryPrivate, setLibraryPrivate] = useState(
+    cached?.libraryPrivate ?? false,
+  );
+  const loadedRef = useRef(Boolean(cached));
   const syncingRef = useRef(false);
   const pendingSyncRef = useRef<LibrarySyncCursor | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    if (!loadedRef.current) setLoading(true);
     setLibraryPrivate(false);
     try {
       const profileRes = isOtherView
         ? await fetchUserSteamProfileByAccountApi(targetAccountId)
         : await fetchSteamProfileApi();
       const steamProfile = profileRes.data;
+      loadedRef.current = true;
       setProfile(steamProfile);
       if (!steamProfile?.steamId) {
         setLibrary([]);
+        setPageDataCache(cacheKey, {
+          profile: steamProfile,
+          library: [],
+          libraryPrivate: false,
+        });
         return;
       }
       if (isOtherView && steamProfile.libraryPublic === false) {
         setLibrary([]);
         setLibraryPrivate(true);
+        setPageDataCache(cacheKey, {
+          profile: steamProfile,
+          library: [],
+          libraryPrivate: true,
+        });
         return;
       }
       try {
         const libraryRes = isOtherView
           ? await fetchUserSteamLibraryByAccountApi(targetAccountId)
           : await fetchSteamLibraryApi();
-        setLibrary(libraryRes.data || []);
+        const nextLibrary = libraryRes.data || [];
+        setLibrary(nextLibrary);
+        setPageDataCache(cacheKey, {
+          profile: steamProfile,
+          library: nextLibrary,
+          libraryPrivate: false,
+        });
       } catch (libraryErr) {
         setLibrary([]);
         if (isOtherView) {
@@ -88,35 +122,45 @@ export function useSteamSection({
         );
       }
     } catch (err) {
-      setProfile(null);
-      setLibrary([]);
       if (!isOtherView) {
         message.error(formatApiError('加载 Steam 信息失败', err));
       }
     } finally {
       setLoading(false);
     }
-  }, [isOtherView, targetAccountId]);
+  }, [cacheKey, isOtherView, targetAccountId]);
 
   useEffect(() => {
+    if (cached) return;
     void load();
-  }, [load]);
+  }, [cached, load]);
 
-  const bindSteam = useCallback(async () => {
-    setBinding(true);
-    try {
-      const res = await fetchSteamAuthUrlApi();
-      const url = res.data?.url;
-      if (!url) {
-        message.error('获取授权地址失败');
-        return;
-      }
-      window.location.assign(url);
-    } catch (err) {
-      message.error(formatApiError('绑定 Steam 失败', err));
-    } finally {
-      setBinding(false);
-    }
+  usePageRefresh(() => load(), true);
+
+  const bindSteam = useCallback(() => {
+    Modal.confirm({
+      title: '确认绑定 Steam？',
+      content:
+        '请确认你已有 Steam 账号，并且当前环境可以正常登录 Steam。确认后将跳转至 Steam 授权页面。',
+      okText: '确认并继续',
+      cancelText: '取消',
+      onOk: async () => {
+        setBinding(true);
+        try {
+          const res = await fetchSteamAuthUrlApi();
+          const url = res.data?.url;
+          if (!url) {
+            message.error('获取授权地址失败');
+            return;
+          }
+          window.location.assign(url);
+        } catch (err) {
+          message.error(formatApiError('绑定 Steam 失败', err));
+        } finally {
+          setBinding(false);
+        }
+      },
+    });
   }, []);
 
   const syncLibrary = useCallback(async () => {
@@ -196,13 +240,19 @@ export function useSteamSection({
           message.success('已解绑 Steam');
           setProfile(null);
           setLibrary([]);
+          setPageDataCache(cacheKey, {
+            profile: null,
+            library: [],
+            libraryPrivate: false,
+          });
+          window.dispatchEvent(new CustomEvent('steam-profile-changed'));
         } catch (err) {
           message.error(formatApiError('解绑失败', err));
           throw err;
         }
       },
     });
-  }, []);
+  }, [cacheKey]);
 
   const bound = Boolean(profile?.steamId || profile?.bound);
 

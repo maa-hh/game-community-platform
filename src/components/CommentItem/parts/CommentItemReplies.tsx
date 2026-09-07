@@ -5,7 +5,7 @@ import { Spin } from 'antd';
 
 import CommentReply from '@/components/CommentReply';
 
-import { REPLY_PREVIEW_COUNT } from '../config';
+import { REPLY_PAGE_SIZE, REPLY_PREVIEW_COUNT } from '../config';
 import type { ICommentItemProps } from '../types';
 
 const CommentItemReplies: FC<
@@ -39,13 +39,15 @@ const CommentItemReplies: FC<
   if (comment.replyCount <= 0 && comment.replies.length === 0) return null;
 
   const loadedCount = comment.replies.length;
+  const replyPageSize = comment.replyPageSize || REPLY_PAGE_SIZE;
   const totalReplies =
     loadedCount >= comment.replyCount ? loadedCount : comment.replyCount;
   const showAll = expanded || loadedCount <= REPLY_PREVIEW_COUNT;
   const visibleReplies = showAll
     ? comment.replies
     : comment.replies.slice(0, REPLY_PREVIEW_COUNT);
-  const hasMoreReplies = loadedCount < comment.replyCount;
+  const hasMoreReplies =
+    (comment.replyPage || 0) * replyPageSize < comment.replyCount;
   const canExpand =
     !expanded &&
     (totalReplies > REPLY_PREVIEW_COUNT ||
@@ -75,8 +77,8 @@ const CommentItemReplies: FC<
           isMine={myAccountId === reply.accountId}
           onLike={() => onReplyLike(reply.id)}
           onReply={() => onReplyToReply(reply)}
-          onReport={() => onReplyReport(reply)}
-          onDelete={() => onReplyDelete(reply)}
+          onReport={onReplyReport ? () => onReplyReport(reply) : undefined}
+          onDelete={onReplyDelete ? () => onReplyDelete(reply) : undefined}
           decoration={getReplyDecoration?.(reply.accountId)}
         />
       ))}

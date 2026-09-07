@@ -1,9 +1,12 @@
 import { useCallback } from 'react';
 import { message } from 'antd';
 
+import { useOptimisticAction } from '@/hooks/useOptimisticAction';
 import { useRequireLogin } from '@/hooks/useRequireLogin';
+import { usePostInteractionActions } from '@/hooks/usePostInteraction';
 import { togglePostLikeApi } from '@/service/social';
 import { formatApiError } from '@/utils/apiError';
+import { PROFILE_DATA_DOMAIN } from '@/types/profileRealtime';
 
 export interface PostLikeState {
   liked: boolean;
@@ -17,32 +20,79 @@ export function usePostLikeAction(
   readState: () => PostLikeState,
 ) {
   const { requireLogin } = useRequireLogin();
+  const {
+    updateInteraction,
+    invalidateCommunityFeed,
+    invalidateProfileInteractionCaches,
+  } = usePostInteractionActions();
+  const { run: runOptimisticAction, isPending } = useOptimisticAction();
 
   return useCallback(async () => {
     if (!articleId || !requireLogin()) return;
+    if (isPending('post-like')) return;
 
     const snapshot = readState();
     const nextLiked = !snapshot.liked;
-    applyState({
-      liked: nextLiked,
-      likeCount: Math.max(0, snapshot.likeCount + (nextLiked ? 1 : -1)),
-    });
-
-    try {
-      const res = await togglePostLikeApi(articleId, nextLiked);
-      if (
-        res.data.liked !== nextLiked ||
-        res.data.likeCount !==
-          Math.max(0, snapshot.likeCount + (nextLiked ? 1 : -1))
-      ) {
+    const nextLikeCount = Math.max(
+      0,
+      snapshot.likeCount + (nextLiked ? 1 : -1),
+    );
+    await runOptimisticAction('post-like', {
+      apply: () => {
         applyState({
+          liked: nextLiked,
+          likeCount: nextLikeCount,
+        });
+        updateInteraction(articleId, {
+          liked: nextLiked,
+          likeCount: nextLikeCount,
+          likePending: true,
+        });
+      },
+      request: () => togglePostLikeApi(articleId, nextLiked),
+      commit: (res) => {
+        if (
+          res.data.liked !== nextLiked ||
+          res.data.likeCount !== nextLikeCount
+        ) {
+          applyState({
+            liked: res.data.liked,
+            likeCount: res.data.likeCount,
+          });
+        }
+        updateInteraction(articleId, {
           liked: res.data.liked,
           likeCount: res.data.likeCount,
+          likePending: false,
         });
-      }
-    } catch (err) {
-      applyState(snapshot);
-      message.error(formatApiError('点赞失败', err));
-    }
-  }, [applyState, articleId, readState, requireLogin]);
+        invalidateCommunityFeed();
+        invalidateProfileInteractionCaches([
+          PROFILE_DATA_DOMAIN.LIKED,
+          PROFILE_DATA_DOMAIN.RECEIVED,
+        ]);
+      },
+      rollback: (err) => {
+        applyState({
+          liked: snapshot.liked,
+          likeCount: snapshot.likeCount,
+        });
+        updateInteraction(articleId, {
+          liked: snapshot.liked,
+          likeCount: snapshot.likeCount,
+          likePending: false,
+        });
+        message.error(formatApiError('点赞失败', err));
+      },
+    });
+  }, [
+    applyState,
+    articleId,
+    invalidateCommunityFeed,
+    invalidateProfileInteractionCaches,
+    isPending,
+    readState,
+    requireLogin,
+    runOptimisticAction,
+    updateInteraction,
+  ]);
 }

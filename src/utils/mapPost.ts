@@ -475,6 +475,8 @@ export function mapReply(raw: IReplyRaw): PostReply {
 export function mapComment(
   raw: ICommentRaw,
   replies: PostReply[] = [],
+  replyPage = 0,
+  replyPageSize = 20,
 ): PostComment {
   const accountId = raw.accountId;
   return {
@@ -486,6 +488,8 @@ export function mapComment(
     likeCount: Number(raw.likeCount || 0),
     liked: Boolean(raw.liked),
     replyCount: Math.max(Number(raw.replyCount ?? 0), replies.length),
+    replyPage: replies.length > 0 ? replyPage || 1 : 0,
+    replyPageSize,
     createdAt: formatDateTime(raw.createTime),
     replies,
   };

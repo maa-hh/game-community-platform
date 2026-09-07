@@ -16,6 +16,7 @@
     "antd": "^6.5.1",
     "axios": "^1.18.1",
     "dplayer": "^1.27.1",
+    "http-proxy": "^1.18.1",
     "masonic": "^4.1.0",
     "normalize.css": "^8.0.1",
     "react": "^19.2.7",
@@ -34,6 +35,7 @@
   "scripts": {
     "start": "craco start",
     "build": "craco build",
+    "serve:production": "node scripts/serve-production.js",
     "test": "craco test",
     "eject": "react-scripts eject",
     "lint": "eslint src --ext .ts,.tsx,.js,.jsx --max-warnings=0",

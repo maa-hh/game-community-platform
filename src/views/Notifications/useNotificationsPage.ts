@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { App } from 'antd';
 
 import { useAppDispatch, useAppSelector } from '@/store';
 import {
   fetchCategoryMessagesAction,
   fetchNotificationBootstrapAction,
+  fetchNotificationMetaAction,
   markCategoryReadAction,
-  resetAllCategoryMessages,
-  setActiveNotificationCategory,
 } from '@/store/modules/notification';
 import { isAuthenticated } from '@/utils/storage';
 import { useAuthModal } from '@/hooks/useAuthModal';
 import { formatApiError } from '@/utils/apiError';
+import { usePageRefresh } from '@/hooks/usePageRefresh';
+import { useActiveRouteView } from '@/hooks/useActiveRouteView';
 import type { NotificationCategoryKey } from '@/types/notification';
 import { NOTIFICATION_CATEGORY_LIST } from '@/views/Notifications/constants';
 
@@ -28,34 +29,89 @@ const emptyMessages = {
 export function useNotificationsPage() {
   const dispatch = useAppDispatch();
   const { message } = App.useApp();
+  const location = useLocation();
   const navigate = useNavigate();
   const { openAuth } = useAuthModal();
-  const { summary, categories, categoryMessages } = useAppSelector(
-    (state) => state.notification,
-  );
+  const isActiveRoute = useActiveRouteView();
+  const {
+    summary,
+    categories,
+    categoryMessages,
+    categoryRefreshRequired,
+    metaLoaded,
+    summaryLoading,
+  } = useAppSelector((state) => state.notification);
   const [expandedKey, setExpandedKey] =
     useState<NotificationCategoryKey | null>(null);
   const markingCategoryRef = useRef<NotificationCategoryKey | null>(null);
+  const notificationEntryKeyRef = useRef<string | null>(null);
+
+  const refreshNotifications = useCallback(
+    async (refreshAllCategories = false) => {
+      const categoriesToRefresh = NOTIFICATION_CATEGORY_LIST.map(
+        (config) => config.key,
+      ).filter((key) => {
+        const bucket = categoryMessages[key];
+        return Boolean(
+          refreshAllCategories ||
+          categoryRefreshRequired[key] ||
+          (bucket?.loaded && !bucket.loading && !bucket.loadingMore),
+        );
+      });
+
+      await Promise.all([
+        dispatch(
+          metaLoaded
+            ? fetchNotificationMetaAction()
+            : fetchNotificationBootstrapAction(),
+        ).unwrap(),
+        ...categoriesToRefresh.map((category) =>
+          dispatch(fetchCategoryMessagesAction({ category })).unwrap(),
+        ),
+      ]);
+    },
+    [categoryMessages, categoryRefreshRequired, dispatch, metaLoaded],
+  );
 
   useEffect(() => {
+    if (!isActiveRoute) return;
     if (!isAuthenticated()) {
       openAuth('login');
       return;
     }
-    dispatch(resetAllCategoryMessages());
-    void dispatch(fetchNotificationBootstrapAction());
-  }, [dispatch, openAuth]);
+    // MainLayout 会缓存页面实例，不能只依赖首次挂载；每次真正进入消息页都刷新。
+    if (notificationEntryKeyRef.current === location.key) return;
+    notificationEntryKeyRef.current = location.key;
+    void refreshNotifications(true).catch((err) => {
+      message.error(formatApiError('刷新通知失败', err));
+    });
+  }, [isActiveRoute, location.key, message, openAuth, refreshNotifications]);
 
+  /** 只有已展开且已加载的分类，才消费 SSE 的刷新标记并请求列表。 */
   useEffect(() => {
-    dispatch(setActiveNotificationCategory(expandedKey));
-    return () => {
-      dispatch(setActiveNotificationCategory(null));
-    };
-  }, [dispatch, expandedKey]);
+    if (!isActiveRoute || !expandedKey) return;
+    const bucket = categoryMessages[expandedKey];
+    if (
+      !categoryRefreshRequired[expandedKey] ||
+      !bucket?.loaded ||
+      bucket.loading ||
+      bucket.error
+    ) {
+      return;
+    }
+
+    void dispatch(fetchCategoryMessagesAction({ category: expandedKey }));
+  }, [
+    categoryMessages,
+    categoryRefreshRequired,
+    dispatch,
+    expandedKey,
+    isActiveRoute,
+  ]);
 
   /** 分类保持展开时自动已读（含 SSE 推送新通知、列表 refetch 后） */
   useEffect(() => {
-    if (!expandedKey) return;
+    if (!isActiveRoute || !expandedKey) return;
     const bucket = categoryMessages[expandedKey];
     if (!bucket?.loaded || bucket.loading) return;
 
@@ -73,7 +129,7 @@ export function useNotificationsPage() {
         markingCategoryRef.current = null;
       }
     });
-  }, [expandedKey, categoryMessages, categories, dispatch]);
+  }, [expandedKey, categoryMessages, categories, dispatch, isActiveRoute]);
 
   const toggleCategory = useCallback(
     async (key: NotificationCategoryKey) => {
@@ -88,14 +144,18 @@ export function useNotificationsPage() {
       }
 
       setExpandedKey(key);
+      const bucket = categoryMessages[key];
+      if (bucket?.loaded && !bucket.error) return;
       try {
         await dispatch(fetchCategoryMessagesAction({ category: key })).unwrap();
       } catch (err) {
         message.error(formatApiError('加载通知失败', err));
       }
     },
-    [dispatch, expandedKey, message, openAuth],
+    [categoryMessages, dispatch, expandedKey, message, openAuth],
   );
+
+  usePageRefresh(refreshNotifications, true);
 
   const loadMore = useCallback(
     (key: NotificationCategoryKey) => {
@@ -123,6 +183,7 @@ export function useNotificationsPage() {
 
   return {
     summary,
+    summaryLoading,
     panels,
     toggleCategory,
     loadMore,

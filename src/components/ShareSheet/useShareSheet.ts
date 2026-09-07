@@ -11,6 +11,10 @@ import {
 } from '@/utils/shareRepost';
 import { buildShareCopyText, buildSharePostUrl } from '@/utils/shareUrl';
 import { formatApiError } from '@/utils/apiError';
+import { communityFeedCacheKey } from '@/hooks/usePostInteraction';
+import { invalidatePageDataCache } from '@/hooks/pageDataCache';
+import { invalidateProfileDataCaches } from '@/utils/profileDataCache';
+import { PROFILE_DATA_DOMAIN } from '@/types/profileRealtime';
 
 import type { IShareSheetProps } from './types';
 
@@ -92,6 +96,7 @@ export function useShareSheet({
     if (!user?.accountId) return;
     try {
       const res = await recordShareApi(articleId);
+      invalidatePageDataCache(communityFeedCacheKey(user.accountId));
       onShared?.(res.data.shareCount);
     } catch (err) {
       message.error(formatApiError('分享记录失败', err));
@@ -129,6 +134,8 @@ export function useShareSheet({
         },
       });
       message.success('已转发为动态');
+      invalidatePageDataCache(communityFeedCacheKey(user.accountId));
+      invalidateProfileDataCaches(user.accountId, [PROFILE_DATA_DOMAIN.POSTS]);
       onShared?.(res.data.refShareCount);
       onReposted?.(res.data.post.id);
       setRepostTitle('');

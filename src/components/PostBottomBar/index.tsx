@@ -15,13 +15,14 @@ const PostBottomBar: FC<IPostBottomBarProps> = ({
   shareCount,
   liked,
   favorited,
+  likeDisabled,
+  favoriteDisabled,
   submitting,
   className,
   onLike,
   onFavorite,
   onShare,
   onComment,
-  onFocusComment,
 }) => {
   const { draft, setDraft, send } = usePostBottomBar(onComment);
 
@@ -32,7 +33,6 @@ const PostBottomBar: FC<IPostBottomBarProps> = ({
         submitting={submitting}
         onDraftChange={setDraft}
         onSend={send}
-        onFocusComment={onFocusComment}
       />
       <PostBottomActions
         likeCount={likeCount}
@@ -40,6 +40,8 @@ const PostBottomBar: FC<IPostBottomBarProps> = ({
         shareCount={shareCount}
         liked={liked}
         favorited={favorited}
+        likeDisabled={likeDisabled}
+        favoriteDisabled={favoriteDisabled}
         onLike={onLike}
         onFavorite={onFavorite}
         onShare={onShare}

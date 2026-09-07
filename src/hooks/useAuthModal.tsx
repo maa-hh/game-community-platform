@@ -2,10 +2,14 @@ import React, {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
 } from 'react';
 import type { AuthMode } from '@/components/auth/constants';
+import { useAppDispatch } from '@/store';
+import { logout } from '@/store/modules/auth';
+import { AUTH_REQUIRED_EVENT } from '@/utils/authEvents';
 
 interface AuthModalContextValue {
   open: boolean;
@@ -18,6 +22,7 @@ interface AuthModalContextValue {
 const AuthModalContext = createContext<AuthModalContextValue | null>(null);
 
 export function AuthModalProvider({ children }: { children: React.ReactNode }) {
+  const dispatch = useAppDispatch();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<AuthMode>('login');
 
@@ -29,6 +34,17 @@ export function AuthModalProvider({ children }: { children: React.ReactNode }) {
   const closeAuth = useCallback(() => {
     setOpen(false);
   }, []);
+
+  useEffect(() => {
+    const handleAuthRequired = () => {
+      dispatch(logout());
+      openAuth('login');
+    };
+
+    window.addEventListener(AUTH_REQUIRED_EVENT, handleAuthRequired);
+    return () =>
+      window.removeEventListener(AUTH_REQUIRED_EVENT, handleAuthRequired);
+  }, [dispatch, openAuth]);
 
   const value = useMemo(
     () => ({ open, mode, openAuth, closeAuth, setMode }),

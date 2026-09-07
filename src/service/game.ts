@@ -270,10 +270,20 @@ export function fetchGameReviewRepliesApi(
   });
 }
 
-export function addGameReviewReplyApi(reviewId: string, content: string) {
+export function addGameReviewReplyApi(
+  reviewId: string,
+  content: string,
+  options: { replyToReplyId?: string } = {},
+) {
   return hyRequest.post<IDataType<string>>({
     url: `/social/game-reviews/${reviewId}/replies`,
-    data: { content },
+    data: { content, replyToReplyId: options.replyToReplyId },
+  });
+}
+
+export function deleteGameReviewReplyApi(replyId: string) {
+  return hyRequest.delete<IDataType<null>>({
+    url: `/social/game-reviews/replies/${replyId}`,
   });
 }
 

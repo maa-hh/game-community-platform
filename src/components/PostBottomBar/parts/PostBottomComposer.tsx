@@ -7,7 +7,6 @@ interface PostBottomComposerProps {
   submitting?: boolean;
   onDraftChange: (value: string) => void;
   onSend: () => void;
-  onFocusComment?: () => void;
 }
 
 const PostBottomComposer: FC<PostBottomComposerProps> = ({
@@ -15,7 +14,6 @@ const PostBottomComposer: FC<PostBottomComposerProps> = ({
   submitting,
   onDraftChange,
   onSend,
-  onFocusComment,
 }) => (
   <div className="post-bottom-bar__composer">
     <Input
@@ -24,9 +22,10 @@ const PostBottomComposer: FC<PostBottomComposerProps> = ({
       placeholder="说点什么…"
       maxLength={2000}
       allowClear
-      onFocus={onFocusComment}
       onPressEnter={(e) => {
         if (e.nativeEvent.isComposing) return;
+        e.preventDefault();
+        e.stopPropagation();
         onSend();
       }}
     />

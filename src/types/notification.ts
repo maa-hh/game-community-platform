@@ -20,6 +20,9 @@ export const NOTIFICATION_EVENT = {
   ARTICLE_AUDIT_PASSED: 16,
   ARTICLE_AUDIT_HUMAN_REVIEW: 17,
   DANMAKU_COMMENT: 18,
+  GAME_REVIEW_REPLY: 20,
+  GAME_REVIEW_LIKE: 21,
+  GAME_REVIEW_REPLY_LIKE: 22,
 } as const;
 
 export const NOTIFICATION_ROUTE = {
@@ -29,6 +32,7 @@ export const NOTIFICATION_ROUTE = {
   REPLY: 3,
   USER: 4,
   DANMAKU: 5,
+  GAME_REVIEW: 6,
 } as const;
 
 export type NotificationCategoryKey =
@@ -49,6 +53,9 @@ export interface INotificationMessage {
   actorAvatar?: string;
   articleId?: number;
   articlePublicId?: string;
+  gameAppId?: number;
+  gameReviewId?: string;
+  gameReviewReplyId?: string;
   commentId?: number;
   replyId?: number;
   danmakuId?: number;
@@ -61,10 +68,16 @@ export interface INotificationMessage {
   articleCoverUrl?: string;
   /** 帖子标题（无封面时生成海报） */
   articleTitle?: string;
+  /** 游戏评分通知对应的游戏封面与名称 */
+  gameCoverUrl?: string;
+  gameTitle?: string;
   /** 与首页信息流同款的封面解析源 */
   articleCoverSource?: PostCoverSource;
   /** 评论/回复正文 */
   contentText?: string;
+  /** 评论/回复当前用户点赞状态与总点赞数（由通知补全阶段写入） */
+  liked?: boolean;
+  likeCount?: number;
   /** 当前用户是否已关注通知触发者 */
   actorFollowed?: boolean;
   routeType?: number;
@@ -86,4 +99,5 @@ export interface INotificationCategorySummary {
 export interface INotificationSummary {
   unreadNotificationCount: number;
   feedUnread: boolean;
+  feedUnreadCount: number;
 }

@@ -44,6 +44,7 @@ const VideoPlayer: FC<VideoPlayerProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const playerRef = useRef<DPlayer | null>(null);
+  const picRef = useRef(pic);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const loopEnabledRef = useRef(loop);
   const dragState = useRef<{
@@ -60,6 +61,8 @@ const VideoPlayer: FC<VideoPlayerProps> = ({
   const [offset, setOffset] = useState({ left: 24, top: 96 });
   const [controlHost, setControlHost] = useState<HTMLElement | null>(null);
   const [overlayHost, setOverlayHost] = useState<HTMLElement | null>(null);
+
+  picRef.current = pic;
 
   const seekBy = useCallback((delta: number) => {
     const dp = playerRef.current;
@@ -117,7 +120,7 @@ const VideoPlayer: FC<VideoPlayerProps> = ({
       playbackSpeed: SPEED_OPTIONS,
       video: {
         url,
-        pic,
+        pic: picRef.current,
         type: 'auto',
       },
     });
@@ -225,7 +228,15 @@ const VideoPlayer: FC<VideoPlayerProps> = ({
       playerRef.current = null;
       dp.destroy();
     };
-  }, [url, pic, autoplay, muted, loop]);
+  }, [url, autoplay, muted]);
+
+  // 详情回填可能只补齐封面地址。更新 poster 即可，不能因此销毁并重建
+  // DPlayer，否则正在播放的视频会回到 0 秒。
+  useEffect(() => {
+    const video = playerRef.current?.video;
+    if (!video) return;
+    video.poster = pic || '';
+  }, [pic]);
 
   useEffect(() => {
     loopEnabledRef.current = loop;

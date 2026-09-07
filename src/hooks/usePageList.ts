@@ -46,10 +46,13 @@ export function usePageList<T>({
   const [total, setTotal] = useState(cached?.total ?? 0);
   const [loading, setLoading] = useState(enabled && !cached);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [hasMore, setHasMore] = useState(cached?.hasMore ?? true);
   const fetchRef = useRef(fetchPage);
   const requestSeqRef = useRef(0);
+  const refreshSeqRef = useRef(0);
   const cacheInvalidatedRef = useRef(false);
+  const hasLoadedRef = useRef(Boolean(cached));
   const [cacheVersion, setCacheVersion] = useState(0);
   // 当前 state 所属缓存键，避免关键词切换时短暂展示上一份结果。
   const [resolvedCacheKey, setResolvedCacheKey] = useState(cacheKey);
@@ -75,7 +78,7 @@ export function usePageList<T>({
       cacheInvalidatedRef.current ||
       loading ||
       loadingMore ||
-      items.length === 0
+      !hasLoadedRef.current
     )
       return;
     setPageDataCache(cacheKey, { items, page, total, hasMore });
@@ -104,6 +107,7 @@ export function usePageList<T>({
         if (requestSeq !== requestSeqRef.current) return;
         const list = res.data || [];
         const nextTotal = Number(res.total ?? 0);
+        hasLoadedRef.current = true;
         setTotal(nextTotal);
         setPage(nextPage);
         setItems((prev) => {
@@ -113,11 +117,7 @@ export function usePageList<T>({
         });
       } catch {
         if (requestSeq !== requestSeqRef.current) return;
-        if (!append) {
-          setItems([]);
-          setTotal(0);
-          setHasMore(false);
-        }
+        // 刷新失败时保留旧列表，避免用户点击刷新后页面先变空。
         throw new Error('page-list-load-failed');
       } finally {
         if (requestSeq !== requestSeqRef.current) return;
@@ -129,8 +129,14 @@ export function usePageList<T>({
   );
 
   const reload = useCallback(async () => {
+    const refreshSeq = ++refreshSeqRef.current;
+    setRefreshing(true);
     setHasMore(true);
-    await loadPage(1, false);
+    try {
+      await loadPage(1, false);
+    } finally {
+      if (refreshSeq === refreshSeqRef.current) setRefreshing(false);
+    }
   }, [loadPage]);
 
   const loadMore = useCallback(async () => {
@@ -144,10 +150,12 @@ export function usePageList<T>({
     setResolvedCacheKey(cacheKey);
 
     if (!enabled) {
+      hasLoadedRef.current = false;
       setItems([]);
       setPage(1);
       setTotal(0);
       setHasMore(true);
+      setRefreshing(false);
       return;
     }
     // 关键词切换时必须继续执行 reset/load，不能只更新 key 后直接 return，
@@ -160,18 +168,24 @@ export function usePageList<T>({
         ? getPageDataCache<PageListCache<T>>(cacheKey)
         : undefined;
     if (cachedForKey) {
+      hasLoadedRef.current = true;
       setItems(cachedForKey.items);
       setPage(cachedForKey.page);
       setTotal(cachedForKey.total);
       setHasMore(cachedForKey.hasMore);
       setLoading(false);
       setLoadingMore(false);
+      setRefreshing(false);
       return;
     }
-    setItems([]);
-    setPage(1);
-    setTotal(0);
-    setHasMore(true);
+    const keepVisibleItems = invalidated && resolvedCacheKey === cacheKey;
+    hasLoadedRef.current = false;
+    if (!keepVisibleItems) {
+      setItems([]);
+      setPage(1);
+      setTotal(0);
+      setHasMore(true);
+    }
     void loadPage(1, false).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- resetDeps 由调用方控制
   }, [cacheKey, cacheVersion, enabled, pageSize, ...resetDeps]);
@@ -194,6 +208,7 @@ export function usePageList<T>({
     total: keyChanged ? 0 : total,
     loading: keyChanged ? enabled : loading,
     loadingMore: keyChanged ? false : loadingMore,
+    refreshing: keyChanged ? false : refreshing,
     hasMore: keyChanged ? true : hasMore,
     reload,
     loadMore,

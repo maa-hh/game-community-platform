@@ -72,7 +72,7 @@ ComponentName/
 | Hook                                               | 用途               |
 | -------------------------------------------------- | ------------------ |
 | `useRequireLogin`                                  | 未登录打开登录弹窗 |
-| `useAuthModal` / `useTheme` / `useProfileAuditSse` | 全局 UI / SSE      |
+| `useAuthModal` / `useTheme` / `useNotificationSse`   | 全局 UI / SSE      |
 
 ---
 

@@ -3,10 +3,14 @@ import { BASE_URL } from '@/service/config';
 
 /** OG 分享落地页根地址（网关），默认同 REACT_APP_BASE_URL */
 function shareBaseUrl(): string {
+  const currentOrigin =
+    typeof window !== 'undefined' && window.location.origin
+      ? window.location.origin
+      : '';
   const raw =
     process.env.REACT_APP_SHARE_BASE_URL?.trim() ||
     BASE_URL.trim() ||
-    'http://localhost:8080';
+    currentOrigin;
   return raw.replace(/\/$/, '');
 }
 

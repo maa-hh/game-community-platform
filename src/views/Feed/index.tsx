@@ -1,12 +1,13 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Segmented } from 'antd';
 
 import PostFeedList from '@/components/PostFeedList';
+import type { LatestPostItem } from '@/types/post';
 
 import { feedEmptyText, feedTypeTabs, type FeedTypeFilter } from './config';
 import { useFeedPage } from './useFeedPage';
-import { buildReturnNavigationState } from '@/utils/returnNavigation';
+import { buildPostDetailNavigationState } from '@/utils/detailNavigation';
 
 import './style.less';
 
@@ -23,12 +24,21 @@ function Feed() {
     items,
     loading,
     loadingMore,
+    refreshing,
     hasMore,
     sentinelRef,
     loadFeed,
     handleLike,
     handleFavorite,
   } = useFeedPage(activeType);
+  const handleItemClick = useCallback(
+    (item: LatestPostItem) => {
+      navigate(`/post/${item.id}`, {
+        state: buildPostDetailNavigationState(location, item),
+      });
+    },
+    [location, navigate],
+  );
 
   return (
     <div className="feed-page">
@@ -50,14 +60,11 @@ function Feed() {
       <PostFeedList
         items={items}
         loading={loading}
+        refreshing={refreshing}
         emptyText={feedEmptyText[activeType]}
         layout="masonry"
-        onRefresh={() => void loadFeed()}
-        onItemClick={(id) =>
-          navigate(`/post/${id}`, {
-            state: buildReturnNavigationState(location),
-          })
-        }
+        onRefresh={loadFeed}
+        onItemClick={handleItemClick}
         onLikeClick={handleLike}
         onFavoriteClick={handleFavorite}
         infinite={{

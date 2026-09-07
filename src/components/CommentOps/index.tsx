@@ -13,6 +13,7 @@ import './style.less';
 const CommentOps: FC<CommentOpsProps> = ({
   liked,
   likeCount,
+  likePending,
   isMine,
   size = 'sm',
   onLike,
@@ -28,11 +29,12 @@ const CommentOps: FC<CommentOpsProps> = ({
         size={size}
         count={likeCount}
         active={liked}
+        disabled={likePending}
         stopPropagation
         onClick={onLike}
       />
       <StatAction kind="reply" size={size} onClick={onReply} />
-      {!isMine && (
+      {!isMine && onReport && (
         <button
           type="button"
           className="comment-ops__icon"
@@ -42,7 +44,7 @@ const CommentOps: FC<CommentOpsProps> = ({
           <FlagOutlined />
         </button>
       )}
-      {isMine && (
+      {isMine && onDelete && (
         <button
           type="button"
           className="comment-ops__text"

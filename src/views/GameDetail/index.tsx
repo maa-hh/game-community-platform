@@ -1,5 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from 'react-router-dom';
 import {
   Button,
   Empty,
@@ -29,6 +34,7 @@ import {
   buildReturnNavigationState,
   canGoBackInApp,
 } from '@/utils/returnNavigation';
+import { readGameDetailPreview } from '@/utils/detailNavigation';
 
 import GameDetailTopBar from './components/GameDetailTopBar';
 import GameIntroPanel from './components/GameIntroPanel';
@@ -52,9 +58,14 @@ const TAB_ITEMS: { key: GameDetailTabKey; label: string }[] = [
 function GameDetail() {
   const location = useLocation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { appId: appIdParam = '' } = useParams();
   const appId = Number(appIdParam);
   const { requireLogin, isLoggedIn } = useRequireLogin();
+  const gamePreview = useMemo(
+    () => readGameDetailPreview(location.state, appId),
+    [appId, location.state],
+  );
 
   const {
     activeTab,
@@ -75,8 +86,10 @@ function GameDetail() {
     detailRefreshing,
     detailError,
     reviewSubmitting,
+    refreshPage,
     saveMyReview,
     removeMyReview,
+    invalidateGameCache,
     followed,
     followLoading,
     toggleFollow,
@@ -85,7 +98,32 @@ function GameDetail() {
     steamAchievementSyncing,
     syncSteamAchievements,
     discussions,
-  } = useGameDetail(appId);
+  } = useGameDetail(appId, gamePreview);
+
+  const highlightedReviewId = searchParams.get('reviewId') || undefined;
+  const highlightedReplyId = searchParams.get('replyId') || undefined;
+
+  useEffect(() => {
+    if (
+      activeTab !== 'reviews' ||
+      !highlightedReviewId ||
+      reviewsLoading ||
+      reviews.some((review) => review.reviewId === highlightedReviewId) ||
+      reviewsTotal <= reviewsPage * reviewPageSize
+    ) {
+      return;
+    }
+    void loadReviews(reviewsPage + 1);
+  }, [
+    activeTab,
+    highlightedReviewId,
+    loadReviews,
+    reviewPageSize,
+    reviews,
+    reviewsLoading,
+    reviewsPage,
+    reviewsTotal,
+  ]);
 
   const [score, setScore] = useState(8);
   const [reviewContent, setReviewContent] = useState('');
@@ -132,6 +170,7 @@ function GameDetail() {
   };
 
   const handleSaveReview = async () => {
+    if (reviewSubmitting) return;
     if (!requireLogin()) return;
     if (score < 1) {
       message.warning('请选择 1–10 分');
@@ -142,7 +181,7 @@ function GameDetail() {
 
   const handleDiscussRefresh = async () => {
     try {
-      await discussions.reload();
+      await refreshPage();
     } catch {
       message.error(formatApiError('加载讨论失败', new Error()));
     }
@@ -330,7 +369,14 @@ function GameDetail() {
                       rows={4}
                       value={reviewContent}
                       onChange={(event) => setReviewContent(event.target.value)}
-                      placeholder="写下你的游玩体验（可选）"
+                      onPressEnter={(event) => {
+                        if (event.shiftKey || event.nativeEvent.isComposing) {
+                          return;
+                        }
+                        event.preventDefault();
+                        void handleSaveReview();
+                      }}
+                      placeholder="写下你的游玩体验（Enter 提交，Shift+Enter 换行）"
                       maxLength={2000}
                       showCount
                       disabled={reviewSubmitting}
@@ -370,22 +416,42 @@ function GameDetail() {
                     onChange={setReviewSort}
                   />
                 </div>
-                {reviewsLoading ? (
+                {reviewsLoading && reviews.length === 0 ? (
                   <div className="game-detail__review-loading">
                     <Spin />
                   </div>
-                ) : reviews.length > 0 ? (
-                  <div className="game-detail__review-items">
-                    {reviews.map((item) => (
-                      <GameReviewItem
-                        key={item.reviewId}
-                        review={item}
-                        onRequireLogin={requireLogin}
-                      />
-                    ))}
-                  </div>
                 ) : (
-                  <Empty description="暂无评价" />
+                  <>
+                    {reviewsLoading ? (
+                      <div
+                        className="game-detail__review-refreshing"
+                        role="status"
+                      >
+                        <Spin size="small" />
+                        <span>正在更新评价</span>
+                      </div>
+                    ) : null}
+                    {reviews.length > 0 ? (
+                      <div className="game-detail__review-items">
+                        {reviews.map((item) => (
+                          <GameReviewItem
+                            key={item.reviewId}
+                            review={item}
+                            onRequireLogin={requireLogin}
+                            onChanged={invalidateGameCache}
+                            highlighted={item.reviewId === highlightedReviewId}
+                            highlightReplyId={
+                              item.reviewId === highlightedReviewId
+                                ? highlightedReplyId
+                                : undefined
+                            }
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <Empty description="暂无评价" />
+                    )}
+                  </>
                 )}
                 {reviewsTotal > reviewPageSize ? (
                   <Pagination
@@ -419,11 +485,15 @@ function GameDetail() {
             panelClassName="feed-panel--embedded"
             items={discussions.items}
             loading={discussions.loading}
+            refreshing={discussions.refreshing}
             emptyText="暂无讨论，来发第一条吧"
             onRefresh={handleDiscussRefresh}
-            onItemClick={(id) =>
-              navigate(`/post/${id}`, {
-                state: buildReturnNavigationState(location),
+            onItemClick={(item) =>
+              navigate(`/post/${item.id}`, {
+                state: {
+                  ...buildReturnNavigationState(location),
+                  postPreview: item,
+                },
               })
             }
             onLikeClick={discussions.handleLike}

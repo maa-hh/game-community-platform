@@ -29,7 +29,8 @@ export function useAuthModalContent() {
     (state) => state.auth,
   );
   const locationState = (location.state as ILoginLocationState | null) || null;
-  const redirectFromRef = useRef(locationState?.from || '/community');
+  const currentPath = `${location.pathname}${location.search}${location.hash}`;
+  const redirectFromRef = useRef(locationState?.from || currentPath);
   const lastAuthModeRef = useRef<'login' | 'register'>('login');
   const [authTip, setAuthTip] = useState('');
 
@@ -40,20 +41,22 @@ export function useAuthModalContent() {
       setAuthTip(tip);
       message.warning(tip);
     }
-    redirectFromRef.current = locationState?.from || '/community';
-  }, [open, locationState?.from, locationState?.tip]);
+    redirectFromRef.current = locationState?.from || currentPath;
+  }, [currentPath, open, locationState?.from, locationState?.tip]);
 
   useEffect(() => {
     if (!successRedirecting) return;
 
     dispatch(setSuccessRedirecting(false));
     closeAuth();
-    navigate(redirectFromRef.current, { replace: true });
+    if (redirectFromRef.current !== currentPath) {
+      navigate(redirectFromRef.current, { replace: true });
+    }
     message.success(
       lastAuthModeRef.current === 'register' ? '注册成功' : '登录成功',
       3,
     );
-  }, [successRedirecting, dispatch, navigate, closeAuth]);
+  }, [currentPath, successRedirecting, dispatch, navigate, closeAuth]);
 
   const handleModeChange = (value: string | number) => {
     if (value === 'reset') return;

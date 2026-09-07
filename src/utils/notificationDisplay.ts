@@ -45,6 +45,12 @@ export function getNotificationActionText(
       return '回复了你';
     case NOTIFICATION_EVENT.DANMAKU_COMMENT:
       return '发了弹幕';
+    case NOTIFICATION_EVENT.GAME_REVIEW_REPLY:
+      return '回复了你的游戏评价';
+    case NOTIFICATION_EVENT.GAME_REVIEW_LIKE:
+      return '赞了你的游戏评价';
+    case NOTIFICATION_EVENT.GAME_REVIEW_REPLY_LIKE:
+      return '赞了你的评价回复';
     default:
       return '';
   }
@@ -109,6 +115,9 @@ export function resolveNotificationContent(item: INotificationMessage): string {
   if (item.eventType === NOTIFICATION_EVENT.DANMAKU_COMMENT) {
     return item.resultText?.trim() || '';
   }
+  if (item.eventType === NOTIFICATION_EVENT.GAME_REVIEW_REPLY) {
+    return item.resultText?.trim() || item.contentText?.trim() || '';
+  }
   if (item.contentText?.trim()) return item.contentText.trim();
 
   const text = item.previewText?.trim() || '';
@@ -127,5 +136,9 @@ export function resolveNotificationQuote(item: INotificationMessage): string {
 export function resolveNotificationCoverTitle(
   item: INotificationMessage,
 ): string {
-  return item.articleTitle?.trim() || '帖子';
+  return (
+    item.articleTitle?.trim() ||
+    item.gameTitle?.trim() ||
+    (item.gameAppId ? `游戏 ${item.gameAppId}` : '帖子')
+  );
 }

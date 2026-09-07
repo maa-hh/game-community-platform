@@ -16,6 +16,8 @@ export interface IFeedPanelProps {
   masonry?: ReactNode;
   /** 首屏加载中（列表为空时） */
   loading?: boolean;
+  /** 已有内容时的主动/静默刷新中状态，不替换已有内容。 */
+  refreshing?: boolean;
   /** 点击刷新 */
   onRefresh?: () => void | Promise<void>;
   className?: string;

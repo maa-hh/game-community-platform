@@ -17,10 +17,10 @@ import { useRequireLogin } from '@/hooks/useRequireLogin';
 interface IGameSearchModalProps {
   open: boolean;
   onClose: () => void;
-  onAdded?: () => void;
+  onChanged?: () => void;
 }
 
-function GameSearchModal({ open, onClose, onAdded }: IGameSearchModalProps) {
+function GameSearchModal({ open, onClose, onChanged }: IGameSearchModalProps) {
   const { requireLogin } = useRequireLogin();
   const [keyword, setKeyword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -82,8 +82,8 @@ function GameSearchModal({ open, onClose, onAdded }: IGameSearchModalProps) {
         await followGameApi(game.appId, 'manual');
         setFollowedMap((prev) => ({ ...prev, [game.appId]: true }));
         message.success('已加入我的游戏');
-        onAdded?.();
       }
+      onChanged?.();
     } catch (err) {
       message.error(formatApiError('操作失败', err));
     } finally {

@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Spin } from 'antd';
 
 import NotificationCategoryPanel from '@/components/notifications/NotificationCategoryPanel';
 import PageSubTopBar from '@/base-ui/PageSubTopBar';
@@ -10,7 +11,7 @@ import './style.less';
 
 function Notifications() {
   const navigate = useNavigate();
-  const { panels, toggleCategory, loadMore, handleNavigate } =
+  const { panels, summaryLoading, toggleCategory, loadMore, handleNavigate } =
     useNotificationsPage();
 
   const goBack = useCallback(() => {
@@ -25,7 +26,11 @@ function Notifications() {
     <div className="notifications-page">
       <div className="notifications-page__top-dock">
         <div className="notifications-page__align-track">
-          <PageSubTopBar title="消息通知" onBack={goBack} />
+          <PageSubTopBar
+            title="消息通知"
+            onBack={goBack}
+            extra={summaryLoading ? <Spin size="small" /> : undefined}
+          />
         </div>
       </div>
 

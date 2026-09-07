@@ -74,7 +74,12 @@ const HeaderActions: FC<HeaderActionsProps> = ({
 
       {loggedIn ? (
         <>
-          <Badge dot={notificationUnread > 0} offset={[-2, 2]}>
+          <Badge
+            className="app-header__notification-badge"
+            count={notificationUnread}
+            overflowCount={99}
+            offset={[-4, 3]}
+          >
             <Button
               type="text"
               className="app-header__mail-btn"

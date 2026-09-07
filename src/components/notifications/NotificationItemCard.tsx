@@ -1,5 +1,5 @@
 import React from 'react';
-import type { FC } from 'react';
+import type { FC, KeyboardEvent, MouseEvent } from 'react';
 
 import NotificationCommentItem from '@/components/notifications/parts/NotificationCommentItem';
 import NotificationFollowItem from '@/components/notifications/parts/NotificationFollowItem';
@@ -14,16 +14,38 @@ import './style.less';
 interface NotificationItemCardProps {
   item: INotificationMessage;
   onNavigate?: (path: string) => void;
+  followed?: boolean;
+  onFollowedChange?: (accountId: number, followed: boolean) => void;
+}
+
+/** 卡片可点击时，内部按钮/链接应保留自己的交互，不触发卡片跳转。 */
+function isNestedInteractiveTarget(
+  target: EventTarget | null,
+  currentTarget: EventTarget,
+): boolean {
+  if (!(target instanceof Element)) return false;
+
+  const interactiveTarget = target.closest(
+    'button, a, input, textarea, select, [role="button"]',
+  );
+  return Boolean(interactiveTarget && interactiveTarget !== currentTarget);
 }
 
 const NotificationItemCard: FC<NotificationItemCardProps> = ({
   item,
   onNavigate,
+  followed,
+  onFollowedChange,
 }) => {
   const variant = resolveNotificationItemVariant(item);
   const link = buildNotificationLink(item);
 
-  const handleNavigate = () => {
+  const handleNavigate = (
+    event?: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>,
+  ) => {
+    if (event && isNestedInteractiveTarget(event.target, event.currentTarget)) {
+      return;
+    }
     if (!link) return;
     onNavigate?.(link);
   };
@@ -44,7 +66,7 @@ const NotificationItemCard: FC<NotificationItemCardProps> = ({
       onKeyDown={
         isClickable
           ? (event) => {
-              if (event.key === 'Enter') handleNavigate();
+              if (event.key === 'Enter') handleNavigate(event);
             }
           : undefined
       }
@@ -58,7 +80,13 @@ const NotificationItemCard: FC<NotificationItemCardProps> = ({
         />
       ) : null}
 
-      {variant === 'follow' ? <NotificationFollowItem item={item} /> : null}
+      {variant === 'follow' ? (
+        <NotificationFollowItem
+          item={item}
+          followed={followed}
+          onFollowedChange={onFollowedChange}
+        />
+      ) : null}
 
       {variant === 'comment' ? (
         <NotificationCommentItem

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { getUserSimpleByAccountIdApi } from '@/service/account';
+import { getPageDataCache, setPageDataCache } from '@/hooks/pageDataCache';
 import { useAppSelector } from '@/store';
 
 export interface ProfileViewUser {
@@ -33,6 +34,13 @@ export function useProfileView() {
     }
 
     let cancelled = false;
+    const cacheKey = `profile-user:${accountIdParam}`;
+    const cachedUser = getPageDataCache<ProfileViewUser>(cacheKey);
+    if (cachedUser) {
+      setViewUser(cachedUser);
+      setLoading(false);
+      return undefined;
+    }
     // accountId 变化时先清掉旧资料，避免请求期间短暂显示上一位用户的横幅。
     setViewUser(null);
     setLoading(true);
@@ -41,16 +49,16 @@ export function useProfileView() {
       try {
         const res = await getUserSimpleByAccountIdApi(accountIdParam);
         if (!cancelled) {
-          setViewUser(
-            res.data
-              ? {
-                  accountId: res.data.accountId,
-                  username: res.data.username,
-                  avatar: res.data.avatar,
-                  signature: res.data.signature,
-                }
-              : null,
-          );
+          const nextUser = res.data
+            ? {
+                accountId: res.data.accountId,
+                username: res.data.username,
+                avatar: res.data.avatar,
+                signature: res.data.signature,
+              }
+            : null;
+          setViewUser(nextUser);
+          if (nextUser) setPageDataCache(cacheKey, nextUser);
         }
       } finally {
         if (!cancelled) setLoading(false);

@@ -13,7 +13,8 @@ import {
 
 import type { ISteamSectionProps } from './types';
 import { useSteamSection } from './useSteamSection';
-import { buildReturnNavigationState } from '@/utils/returnNavigation';
+import { buildGameDetailNavigationState } from '@/utils/detailNavigation';
+import type { IGameListItem } from '@/types/game';
 
 import './style.less';
 
@@ -113,7 +114,11 @@ const SteamSection: FC<ISteamSectionProps> = ({
                     className="steam-section__game"
                     onClick={() =>
                       navigate(`/game/${game.appId}`, {
-                        state: buildReturnNavigationState(location),
+                        state: buildGameDetailNavigationState(location, {
+                          appId: game.appId,
+                          name: game.name,
+                          coverUrl: game.coverUrl,
+                        } satisfies IGameListItem),
                       })
                     }
                     title={game.name}
@@ -143,7 +148,11 @@ const SteamSection: FC<ISteamSectionProps> = ({
                           onClick={(event) => {
                             event.stopPropagation();
                             navigate(`/game/${game.appId}?tab=stats`, {
-                              state: buildReturnNavigationState(location),
+                              state: buildGameDetailNavigationState(location, {
+                                appId: game.appId,
+                                name: game.name,
+                                coverUrl: game.coverUrl,
+                              } satisfies IGameListItem),
                             });
                           }}
                         >

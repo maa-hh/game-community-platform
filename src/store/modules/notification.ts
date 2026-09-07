@@ -4,6 +4,7 @@ import {
   fetchNotificationCategorySummariesApi,
   fetchNotificationMessagesApi,
   fetchNotificationSummaryApi,
+  markFeedReadApi,
   markNotificationCategoryReadApi,
   type INotificationCategorySummary,
   type INotificationMessage,
@@ -11,7 +12,6 @@ import {
 } from '@/service/notification';
 import type { NotificationCategoryKey } from '@/types/notification';
 import type { IPageResult } from '@/service/types';
-import { resolveNotificationCategory } from '@/utils/notificationCategory';
 import { enrichNotificationMessages } from '@/utils/enrichNotificationMessages';
 
 interface CategoryMessagesState {
@@ -32,13 +32,17 @@ interface NotificationState {
     Record<NotificationCategoryKey, CategoryMessagesState>
   >;
   summaryLoading: boolean;
-  /** 通知页当前展开的分类（用于 SSE 与已读逻辑协同） */
-  activeCategory: NotificationCategoryKey | null;
+  metaLoaded: boolean;
+  /** 防止 SSE 到达后，被更早发起但更晚返回的元数据请求覆盖。 */
+  realtimeRevision: number;
+  /** SSE 只标记分类有更新，由通知页决定是否刷新。 */
+  categoryRefreshRequired: Partial<Record<NotificationCategoryKey, boolean>>;
 }
 
 const emptySummary: INotificationSummary = {
   unreadNotificationCount: 0,
   feedUnread: false,
+  feedUnreadCount: 0,
 };
 
 const initialCategoryMessages = (): CategoryMessagesState => ({
@@ -56,39 +60,55 @@ const initialState: NotificationState = {
   categories: [],
   categoryMessages: {},
   summaryLoading: false,
-  activeCategory: null,
+  metaLoaded: false,
+  realtimeRevision: 0,
+  categoryRefreshRequired: {},
 };
 
 export const fetchNotificationSummaryAction = createAsyncThunk(
   'notification/fetchSummary',
-  async () => fetchNotificationSummaryApi(),
+  async (_, { getState }) => {
+    const state = getState() as { notification: NotificationState };
+    const realtimeRevision = state.notification.realtimeRevision;
+    const summary = await fetchNotificationSummaryApi();
+    return { summary, realtimeRevision };
+  },
 );
 
 export const fetchNotificationCategoriesAction = createAsyncThunk(
   'notification/fetchCategories',
-  async () => fetchNotificationCategorySummariesApi(),
+  async (_, { getState }) => {
+    const state = getState() as { notification: NotificationState };
+    const realtimeRevision = state.notification.realtimeRevision;
+    const categories = await fetchNotificationCategorySummariesApi();
+    return { categories, realtimeRevision };
+  },
 );
 
 export const fetchNotificationBootstrapAction = createAsyncThunk(
   'notification/bootstrap',
-  async () => {
+  async (_, { getState }) => {
+    const state = getState() as { notification: NotificationState };
+    const realtimeRevision = state.notification.realtimeRevision;
     const [summary, categories] = await Promise.all([
       fetchNotificationSummaryApi(),
       fetchNotificationCategorySummariesApi(),
     ]);
-    return { summary, categories };
+    return { summary, categories, realtimeRevision };
   },
 );
 
 /** 仅刷新汇总与分类未读，不清空已展开列表 */
 export const fetchNotificationMetaAction = createAsyncThunk(
   'notification/meta',
-  async () => {
+  async (_, { getState }) => {
+    const state = getState() as { notification: NotificationState };
+    const realtimeRevision = state.notification.realtimeRevision;
     const [summary, categories] = await Promise.all([
       fetchNotificationSummaryApi(),
       fetchNotificationCategorySummariesApi(),
     ]);
-    return { summary, categories };
+    return { summary, categories, realtimeRevision };
   },
 );
 
@@ -125,22 +145,22 @@ export const fetchCategoryMessagesAction = createAsyncThunk(
 
 export const markCategoryReadAction = createAsyncThunk(
   'notification/markCategoryRead',
-  async (category: NotificationCategoryKey) => {
+  async (category: NotificationCategoryKey, { getState }) => {
+    const state = getState() as { notification: NotificationState };
+    const realtimeRevision = state.notification.realtimeRevision;
     const summary = await markNotificationCategoryReadApi(category);
     const categories = await fetchNotificationCategorySummariesApi();
-    return { category, summary, categories };
+    return { category, summary, categories, realtimeRevision };
   },
 );
 
-/** 分类已展开时，SSE 到达后强制拉最新列表，避免展示延迟/回放旧通知 */
-export const refetchCategoryIfLoadedAction = createAsyncThunk(
-  'notification/refetchCategoryIfLoaded',
-  async (category: NotificationCategoryKey, { getState, dispatch }) => {
+export const markFeedReadAction = createAsyncThunk(
+  'notification/markFeedRead',
+  async (_, { getState }) => {
     const state = getState() as { notification: NotificationState };
-    const bucket = state.notification.categoryMessages[category];
-    if (!bucket?.loaded) return { category, skipped: true as const };
-    await dispatch(fetchCategoryMessagesAction({ category })).unwrap();
-    return { category, skipped: false as const };
+    const realtimeRevision = state.notification.realtimeRevision;
+    const summary = await markFeedReadApi();
+    return { summary, realtimeRevision };
   },
 );
 
@@ -150,6 +170,23 @@ const notificationSlice = createSlice({
   reducers: {
     setNotificationSummary(state, action: { payload: INotificationSummary }) {
       state.summary = action.payload;
+      state.realtimeRevision += 1;
+    },
+    patchNotificationSummary(
+      state,
+      action: { payload: Partial<INotificationSummary> },
+    ) {
+      state.summary = { ...state.summary, ...action.payload };
+      state.realtimeRevision += 1;
+    },
+    incrementNotificationUnread(state) {
+      state.summary.unreadNotificationCount += 1;
+      state.realtimeRevision += 1;
+    },
+    incrementFeedUnread(state) {
+      state.summary.feedUnread = true;
+      state.summary.feedUnreadCount += 1;
+      state.realtimeRevision += 1;
     },
     patchCategoryUnread(
       state,
@@ -170,39 +207,26 @@ const notificationSlice = createSlice({
     resetAllCategoryMessages(state) {
       state.categoryMessages = {};
     },
-    setActiveNotificationCategory(
-      state,
-      action: { payload: NotificationCategoryKey | null },
-    ) {
-      state.activeCategory = action.payload;
+    resetNotificationState() {
+      return initialState;
     },
-    receiveRealtimeNotification(
+    markCategoryRefreshRequired(
       state,
       action: {
         payload: {
-          message: INotificationMessage;
-          summary?: INotificationSummary;
+          category: NotificationCategoryKey;
         };
       },
     ) {
-      const { message, summary } = action.payload;
-      if (summary) {
-        state.summary = summary;
+      const { category } = action.payload;
+      state.categoryRefreshRequired[category] = true;
+      state.realtimeRevision += 1;
+      const categorySummary = state.categories.find(
+        (item) => item.category === category,
+      );
+      if (categorySummary) {
+        categorySummary.unreadCount += 1;
       }
-
-      const category = resolveNotificationCategory(message.eventType);
-      if (!category) return;
-
-      const bucket =
-        state.categoryMessages[category] ?? initialCategoryMessages();
-      if (bucket.loaded) {
-        const exists = bucket.items.some((item) => item.id === message.id);
-        if (!exists) {
-          bucket.items = [message, ...bucket.items];
-          bucket.total += 1;
-        }
-      }
-      state.categoryMessages[category] = bucket;
     },
   },
   extraReducers: (builder) => {
@@ -212,21 +236,45 @@ const notificationSlice = createSlice({
       })
       .addCase(fetchNotificationSummaryAction.fulfilled, (state, action) => {
         state.summaryLoading = false;
-        state.summary = action.payload;
+        if (action.payload.realtimeRevision === state.realtimeRevision) {
+          state.summary = action.payload.summary;
+        }
       })
       .addCase(fetchNotificationSummaryAction.rejected, (state) => {
         state.summaryLoading = false;
       })
+      .addCase(fetchNotificationBootstrapAction.pending, (state) => {
+        state.summaryLoading = true;
+      })
       .addCase(fetchNotificationBootstrapAction.fulfilled, (state, action) => {
-        state.summary = action.payload.summary;
-        state.categories = action.payload.categories;
+        state.summaryLoading = false;
+        if (action.payload.realtimeRevision === state.realtimeRevision) {
+          state.summary = action.payload.summary;
+          state.categories = action.payload.categories;
+          state.metaLoaded = true;
+        }
+      })
+      .addCase(fetchNotificationBootstrapAction.rejected, (state) => {
+        state.summaryLoading = false;
+      })
+      .addCase(fetchNotificationMetaAction.pending, (state) => {
+        state.summaryLoading = true;
       })
       .addCase(fetchNotificationMetaAction.fulfilled, (state, action) => {
-        state.summary = action.payload.summary;
-        state.categories = action.payload.categories;
+        state.summaryLoading = false;
+        if (action.payload.realtimeRevision === state.realtimeRevision) {
+          state.summary = action.payload.summary;
+          state.categories = action.payload.categories;
+          state.metaLoaded = true;
+        }
+      })
+      .addCase(fetchNotificationMetaAction.rejected, (state) => {
+        state.summaryLoading = false;
       })
       .addCase(fetchNotificationCategoriesAction.fulfilled, (state, action) => {
-        state.categories = action.payload;
+        if (action.payload.realtimeRevision === state.realtimeRevision) {
+          state.categories = action.payload.categories;
+        }
       })
       .addCase(fetchCategoryMessagesAction.pending, (state, action) => {
         const category = action.meta.arg.category;
@@ -234,6 +282,7 @@ const notificationSlice = createSlice({
           state.categoryMessages[category] ?? initialCategoryMessages();
         bucket.loading = !action.meta.arg.append;
         bucket.loadingMore = Boolean(action.meta.arg.append);
+        bucket.error = false;
         state.categoryMessages[category] = bucket;
       })
       .addCase(fetchCategoryMessagesAction.fulfilled, (state, action) => {
@@ -248,6 +297,7 @@ const notificationSlice = createSlice({
         bucket.loadingMore = false;
         bucket.loaded = true;
         bucket.error = false;
+        delete state.categoryRefreshRequired[category];
         state.categoryMessages[category] = bucket;
       })
       .addCase(fetchCategoryMessagesAction.rejected, (state, action) => {
@@ -261,8 +311,10 @@ const notificationSlice = createSlice({
         state.categoryMessages[category] = bucket;
       })
       .addCase(markCategoryReadAction.fulfilled, (state, action) => {
-        state.summary = action.payload.summary;
-        state.categories = action.payload.categories;
+        if (action.payload.realtimeRevision === state.realtimeRevision) {
+          state.summary = action.payload.summary;
+          state.categories = action.payload.categories;
+        }
         const bucket = state.categoryMessages[action.payload.category];
         if (bucket) {
           bucket.items = bucket.items.map((item) => ({
@@ -270,17 +322,25 @@ const notificationSlice = createSlice({
             readStatus: 1,
           }));
         }
+      })
+      .addCase(markFeedReadAction.fulfilled, (state, action) => {
+        if (action.payload.realtimeRevision === state.realtimeRevision) {
+          state.summary = action.payload.summary;
+        }
       });
   },
 });
 
 export const {
   setNotificationSummary,
+  patchNotificationSummary,
+  incrementNotificationUnread,
+  incrementFeedUnread,
   patchCategoryUnread,
   resetCategoryMessages,
   resetAllCategoryMessages,
-  setActiveNotificationCategory,
-  receiveRealtimeNotification,
+  resetNotificationState,
+  markCategoryRefreshRequired,
 } = notificationSlice.actions;
 
 export default notificationSlice.reducer;

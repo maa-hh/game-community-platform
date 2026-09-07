@@ -27,6 +27,7 @@ import {
 } from '@/utils/storage';
 import { formatApiError } from '@/utils/apiError';
 import { resetAuthRefreshState } from '@/service/request';
+import { clearPostInteractions } from './postInteraction';
 
 function getErrorMessage(error: unknown, prefix: string): string {
   return formatApiError(prefix, error);
@@ -113,6 +114,7 @@ export const logoutAction = createAsyncThunk(
       // 网络失败也清本地，避免脏会话
     }
     dispatch(logout());
+    dispatch(clearPostInteractions());
   },
 );
 

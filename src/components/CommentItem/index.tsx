@@ -34,6 +34,7 @@ const CommentItem: FC<ICommentItemProps> = ({
   onReplyDelete,
   decoration,
   getReplyDecoration,
+  metaExtra,
 }) => {
   const frameAsset = resolveAvatarFrameAsset(
     decoration?.avatarFrame?.code,
@@ -88,19 +89,23 @@ const CommentItem: FC<ICommentItemProps> = ({
               showAvatar={false}
               size={0}
             />
-            <span>{comment.createdAt}</span>
+            {metaExtra}
+            <span>{comment.pending ? '发送中…' : comment.createdAt}</span>
           </header>
           <ClampText text={comment.content} />
-          <CommentOps
-            liked={comment.liked}
-            likeCount={comment.likeCount}
-            isMine={myAccountId === comment.accountId}
-            onLike={onLike}
-            onReply={onReply}
-            onReport={onReport}
-            onDelete={onDelete}
-            deleteTitle="删除评论？"
-          />
+          {comment.pending ? null : (
+            <CommentOps
+              liked={comment.liked}
+              likeCount={comment.likeCount}
+              likePending={comment.likePending}
+              isMine={myAccountId === comment.accountId}
+              onLike={onLike}
+              onReply={onReply}
+              onReport={onReport}
+              onDelete={onDelete}
+              deleteTitle="删除评论？"
+            />
+          )}
         </div>
         <CommentItemReplies
           comment={comment}

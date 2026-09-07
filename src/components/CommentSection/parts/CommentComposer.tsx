@@ -9,7 +9,6 @@ const CommentComposer: FC<CommentComposerProps> = ({
   submitting,
   onDraftChange,
   onSubmit,
-  onFocusRequireLogin,
 }) => (
   <div className="comment-section__composer">
     <Input
@@ -18,9 +17,10 @@ const CommentComposer: FC<CommentComposerProps> = ({
       placeholder="说点什么…"
       maxLength={2000}
       allowClear
-      onFocus={onFocusRequireLogin}
       onPressEnter={(e) => {
         if (e.nativeEvent.isComposing) return;
+        e.preventDefault();
+        e.stopPropagation();
         onSubmit();
       }}
     />

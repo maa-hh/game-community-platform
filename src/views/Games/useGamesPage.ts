@@ -14,11 +14,18 @@ import type {
   GameDiscoverSort,
   IGameDiscoverQuery,
   IGameListItem,
+  ISteamProfile,
   IUserGameItem,
 } from '@/types/game';
 import { formatApiError } from '@/utils/apiError';
 import { useAppSelector } from '@/store';
-import { getPageDataCache, setPageDataCache } from '@/hooks/pageDataCache';
+import {
+  getPageDataCache,
+  invalidatePageDataCache,
+  setPageDataCache,
+  subscribePageDataCache,
+} from '@/hooks/pageDataCache';
+import { usePageRefresh } from '@/hooks/usePageRefresh';
 
 export type GamesTabKey = 'mine' | 'discover';
 
@@ -44,6 +51,12 @@ interface GamesDiscoverCache {
   total: number;
 }
 
+interface GamesMineCache {
+  games: IUserGameItem[];
+  steamBound: boolean;
+  steamProfile?: ISteamProfile | null;
+}
+
 function buildDiscoverCacheKey(
   board: GameDiscoverBoard,
   sort: GameDiscoverSort,
@@ -54,11 +67,11 @@ function buildDiscoverCacheKey(
   return `${board}:${sort}:${order}:${page}:${JSON.stringify(filters)}`;
 }
 
-function parseGamesTab(value: string | null): GamesTabKey {
+function parseGamesTab(value: string | null, isLoggedIn: boolean): GamesTabKey {
   if (value && GAMES_TABS.includes(value as GamesTabKey)) {
     return value as GamesTabKey;
   }
-  return 'mine';
+  return isLoggedIn ? 'mine' : 'discover';
 }
 
 function parseDiscoverBoard(value: string | null): GameDiscoverBoard {
@@ -83,12 +96,12 @@ function defaultOrderForSort(sort: GameDiscoverSort): GameDiscoverOrder {
 export function useGamesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const accountId = useAppSelector((state) => state.auth.user?.accountId);
+  const isLoggedIn = Boolean(accountId);
   const mineCacheKey = String(accountId ?? 'anonymous');
-  const initialMineCache = getPageDataCache<{
-    games: IUserGameItem[];
-    steamBound: boolean;
-  }>(`games:mine:${mineCacheKey}`);
-  const activeTab = parseGamesTab(searchParams.get('tab'));
+  const minePageDataCacheKey = `games:mine:${mineCacheKey}`;
+  const initialMineCache =
+    getPageDataCache<GamesMineCache>(minePageDataCacheKey);
+  const activeTab = parseGamesTab(searchParams.get('tab'), isLoggedIn);
   const initialDiscoverBoard = parseDiscoverBoard(searchParams.get('board'));
   const initialDiscoverPage = parseDiscoverPage(searchParams.get('page'));
   const initialDiscoverSort = defaultSortForBoard(initialDiscoverBoard);
@@ -108,11 +121,7 @@ export function useGamesPage() {
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
-          if (tab === 'mine') {
-            next.delete('tab');
-          } else {
-            next.set('tab', tab);
-          }
+          next.set('tab', tab);
           return next;
         },
         { replace: true, preventScrollReset: true },
@@ -120,6 +129,18 @@ export function useGamesPage() {
     },
     [setSearchParams],
   );
+
+  useEffect(() => {
+    if (isLoggedIn || searchParams.get('tab')) return;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('tab', 'discover');
+        return next;
+      },
+      { replace: true, preventScrollReset: true },
+    );
+  }, [isLoggedIn, searchParams, setSearchParams]);
 
   const [myGames, setMyGames] = useState<IUserGameItem[]>(
     initialMineCache?.games ?? [],
@@ -130,7 +151,17 @@ export function useGamesPage() {
   const [steamBound, setSteamBound] = useState(
     initialMineCache?.steamBound ?? false,
   );
+  const [steamProfile, setSteamProfile] = useState<ISteamProfile | null>(
+    initialMineCache?.steamProfile ?? null,
+  );
   const [importing, setImporting] = useState(false);
+  const [mineCacheVersion, setMineCacheVersion] = useState(0);
+
+  useEffect(() => {
+    return subscribePageDataCache(minePageDataCacheKey, () => {
+      setMineCacheVersion((version) => version + 1);
+    });
+  }, [minePageDataCacheKey]);
 
   const [discoverItems, setDiscoverItems] = useState<IGameListItem[]>(
     initialDiscoverCache?.items ?? [],
@@ -154,26 +185,54 @@ export function useGamesPage() {
   );
   const discoverLoadSeqRef = useRef(0);
 
+  usePageRefresh(
+    () =>
+      activeTab === 'mine'
+        ? loadMyGames()
+        : loadDiscover({
+            board: discoverBoard,
+            sort: discoverSort,
+            order: discoverOrder,
+            filters: discoverFilters,
+            page: discoverPage,
+          }),
+    Boolean(isLoggedIn || activeTab === 'discover'),
+  );
+
   const loadMyGames = useCallback(async () => {
+    if (!isLoggedIn) {
+      setMyGames([]);
+      setSteamBound(false);
+      setSteamProfile(null);
+      setMyLoading(false);
+      return;
+    }
     setMyLoading(true);
     try {
       const [profileRes, gamesRes] = await Promise.all([
         fetchSteamProfileApi().catch(() => ({ data: null })),
         fetchMyFollowedGamesApi(),
       ]);
-      setSteamBound(Boolean(profileRes.data?.steamId));
+      const profile = profileRes.data;
+      const bound = Boolean(profile?.steamId || profile?.bound);
+      setSteamProfile(profile);
+      setSteamBound(bound);
       setMyGames(gamesRes.data || []);
-      setPageDataCache(`games:mine:${mineCacheKey}`, {
+      setPageDataCache<GamesMineCache>(minePageDataCacheKey, {
         games: gamesRes.data || [],
-        steamBound: Boolean(profileRes.data?.steamId),
+        steamBound: bound,
+        steamProfile: profile,
       });
     } catch (err) {
-      setMyGames([]);
       message.error(formatApiError('加载我的游戏失败', err));
     } finally {
       setMyLoading(false);
     }
-  }, [mineCacheKey]);
+  }, [isLoggedIn, minePageDataCacheKey]);
+
+  const invalidateMineCache = useCallback(() => {
+    invalidatePageDataCache(minePageDataCacheKey);
+  }, [minePageDataCacheKey]);
 
   const loadDiscover = useCallback(
     async (options?: {
@@ -231,8 +290,6 @@ export function useGamesPage() {
         }
       } catch (err) {
         if (loadSeq !== discoverLoadSeqRef.current) return;
-        setDiscoverItems([]);
-        setDiscoverTotal(0);
         message.error(formatApiError('加载游戏列表失败', err));
       } finally {
         if (loadSeq === discoverLoadSeqRef.current) {
@@ -244,20 +301,41 @@ export function useGamesPage() {
   );
 
   useEffect(() => {
-    if (activeTab === 'mine') {
-      const cachedMine = getPageDataCache<{
-        games: IUserGameItem[];
-        steamBound: boolean;
-      }>(`games:mine:${mineCacheKey}`);
+    if (activeTab === 'mine' && isLoggedIn) {
+      const cachedMine = getPageDataCache<GamesMineCache>(minePageDataCacheKey);
       if (cachedMine) {
         setMyGames(cachedMine.games);
         setSteamBound(cachedMine.steamBound);
+        setSteamProfile(cachedMine.steamProfile ?? null);
         setMyLoading(false);
+        // 兼容没有 Steam 资料缓存的旧页面缓存，补一次资料请求以显示头像。
+        if (cachedMine.steamProfile === undefined) {
+          void loadMyGames();
+        }
         return;
       }
       void loadMyGames();
     }
-  }, [activeTab, loadMyGames, mineCacheKey]);
+  }, [
+    activeTab,
+    isLoggedIn,
+    loadMyGames,
+    mineCacheVersion,
+    minePageDataCacheKey,
+  ]);
+
+  useEffect(() => {
+    if (!isLoggedIn) return undefined;
+    const reloadSteamProfile = () => {
+      invalidateMineCache();
+    };
+    window.addEventListener('steam-bind-success', reloadSteamProfile);
+    window.addEventListener('steam-profile-changed', reloadSteamProfile);
+    return () => {
+      window.removeEventListener('steam-bind-success', reloadSteamProfile);
+      window.removeEventListener('steam-profile-changed', reloadSteamProfile);
+    };
+  }, [invalidateMineCache, isLoggedIn]);
 
   useEffect(() => {
     if (activeTab === 'discover') {
@@ -275,15 +353,6 @@ export function useGamesPage() {
         setDiscoverPage(cached.page);
         setDiscoverTotal(cached.total);
         setDiscoverLoading(false);
-        // 缓存只用于首屏占位，后台立即重新读取目录，
-        // 让价格、Steam 评价人数等懒更新字段在任务完成后能同步到卡片。
-        void loadDiscover({
-          board: discoverBoard,
-          sort: discoverSort,
-          order: discoverOrder,
-          filters: discoverFilters,
-          page: discoverPage,
-        });
         return;
       }
       void loadDiscover();
@@ -306,13 +375,13 @@ export function useGamesPage() {
       message.success(
         count > 0 ? `已导入 ${count} 款游戏` : '没有可导入的新游戏',
       );
-      await loadMyGames();
+      invalidateMineCache();
     } catch (err) {
       message.error(formatApiError('导入失败', err));
     } finally {
       setImporting(false);
     }
-  }, [loadMyGames]);
+  }, [invalidateMineCache]);
 
   const changeDiscoverBoard = useCallback(
     (board: GameDiscoverBoard) => {
@@ -401,8 +470,10 @@ export function useGamesPage() {
     myGames,
     myLoading,
     steamBound,
+    steamProfile,
     importing,
     loadMyGames,
+    invalidateMineCache,
     importSteam,
     discoverItems,
     discoverLoading,
@@ -418,6 +489,5 @@ export function useGamesPage() {
     changeDiscoverOrder,
     changeDiscoverFilters,
     changeDiscoverPage,
-    reloadDiscover: () => loadDiscover(),
   };
 }

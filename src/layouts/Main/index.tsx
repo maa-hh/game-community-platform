@@ -1,10 +1,4 @@
-import React, {
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import React, { useCallback, useContext, useRef, useState } from 'react';
 import {
   UNSAFE_LocationContext as LocationContext,
   UNSAFE_RouteContext as RouteContext,
@@ -16,8 +10,12 @@ import {
 import { useAppSelector } from '@/store';
 import PageTools from '@/components/PageTools';
 import { clearPageDataCache } from '@/hooks/pageDataCache';
+import { ActiveRouteViewContext } from '@/hooks/useActiveRouteView';
 import { isPrimaryNavigationState } from '@/utils/primaryNavigation';
-import { PAGE_REFRESH_EVENT } from '@/utils/pageRefresh';
+import {
+  PAGE_REFRESH_EVENT,
+  type PageRefreshEventDetail,
+} from '@/utils/pageRefresh';
 
 import './style.less';
 
@@ -50,19 +48,9 @@ function MainLayout() {
   const accessSequenceRef = useRef(0);
   const cacheAccountScopeRef = useRef(accountScope);
   const primaryNavigationEntryRef = useRef<string | null>(null);
-  const refreshTimerRef = useRef<number | undefined>(undefined);
   const [refreshing, setRefreshing] = useState(false);
   const [, setRenderRevision] = useState(0);
   const [standaloneRenderVersion, setStandaloneRenderVersion] = useState(0);
-
-  useEffect(
-    () => () => {
-      if (refreshTimerRef.current != null) {
-        window.clearTimeout(refreshTimerRef.current);
-      }
-    },
-    [],
-  );
 
   // 登录态变化后不能继续复用上一个账号的列表实例。
   if (cacheAccountScopeRef.current !== accountScope) {
@@ -136,7 +124,14 @@ function MainLayout() {
     setRefreshing(true);
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
 
-    const refreshEvent = new Event(PAGE_REFRESH_EVENT, { cancelable: true });
+    const tasks: Promise<unknown>[] = [];
+    const detail: PageRefreshEventDetail = {
+      track: (task) => tasks.push(task),
+    };
+    const refreshEvent = new CustomEvent(PAGE_REFRESH_EVENT, {
+      cancelable: true,
+      detail,
+    });
     const handledByPage = !window.dispatchEvent(refreshEvent);
 
     if (!handledByPage) {
@@ -149,12 +144,9 @@ function MainLayout() {
       }
     }
 
-    if (refreshTimerRef.current != null) {
-      window.clearTimeout(refreshTimerRef.current);
-    }
-    refreshTimerRef.current = window.setTimeout(() => {
+    void Promise.allSettled(tasks).finally(() => {
       setRefreshing(false);
-    }, 400);
+    });
   }, [keepAlive, refreshing, routeCacheKey]);
 
   return (
@@ -173,7 +165,9 @@ function MainLayout() {
               >
                 <LocationContext.Provider value={view.locationContext}>
                   <RouteContext.Provider value={view.routeContext}>
-                    {view.element}
+                    <ActiveRouteViewContext.Provider value={active}>
+                      {view.element}
+                    </ActiveRouteViewContext.Provider>
                   </RouteContext.Provider>
                 </LocationContext.Provider>
               </div>
@@ -184,7 +178,9 @@ function MainLayout() {
               key={`${routeCacheKey}:${standaloneRenderVersion}`}
               className="main-layout__route-view main-layout__route-view--active"
             >
-              {outlet}
+              <ActiveRouteViewContext.Provider value>
+                {outlet}
+              </ActiveRouteViewContext.Provider>
             </div>
           ) : null}
         </div>

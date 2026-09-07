@@ -58,6 +58,7 @@ export function useHotRankPage() {
     initialCachedItems ?? [],
   );
   const [loading, setLoading] = useState(!initialCachedItems);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const periodKey = formatPeriodKey(board, periodDate);
@@ -96,6 +97,7 @@ export function useHotRankPage() {
   const loadRank = useCallback(
     async (options?: { refresh?: boolean; silent?: boolean }) => {
       const seq = ++loadSeqRef.current;
+      setRefreshing(true);
       if (!options?.silent) {
         setLoading(true);
         setError(null);
@@ -115,10 +117,10 @@ export function useHotRankPage() {
       } catch (err) {
         if (seq !== loadSeqRef.current) return;
         setError(err instanceof Error ? err.message : '加载热榜失败');
-        setItems([]);
       } finally {
-        if (seq === loadSeqRef.current && !options?.silent) {
-          setLoading(false);
+        if (seq === loadSeqRef.current) {
+          setRefreshing(false);
+          if (!options?.silent) setLoading(false);
         }
       }
     },
@@ -130,8 +132,10 @@ export function useHotRankPage() {
     if (cachedItems) {
       setItems(cachedItems);
       setLoading(false);
+      setRefreshing(false);
+      return;
     }
-    void loadRank({ refresh: isLiveDaily, silent: Boolean(cachedItems) });
+    void loadRank({ refresh: false });
   }, [board, cacheKey, categoryId, periodKey, isLiveDaily, loadRank]);
 
   useEffect(() => {
@@ -259,6 +263,7 @@ export function useHotRankPage() {
     categories,
     items,
     loading,
+    refreshing,
     error,
     loadRank,
     handleLike,

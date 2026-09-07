@@ -67,6 +67,15 @@ export interface IChunkUploadStatus {
   previewUrl?: string;
 }
 
+export type ChunkUploadBizType = 'video' | 'cover' | 'image';
+
+export interface IChunkUploadOptions {
+  articleId?: number;
+  signal?: AbortSignal;
+  onUploadId?: (uploadId: string) => void;
+  bizType?: ChunkUploadBizType;
+}
+
 export interface IArticleSavePayload {
   id?: string;
   title: string;
@@ -126,6 +135,40 @@ export interface IArticleProgress {
   uploadPercent?: number | null;
   uploadStatus?: string | null;
   activeUploadIds?: string[];
+}
+
+/**
+ * 文章对外只使用 publicId。纯数字 ID 是数据库主键，不能进入作者侧请求链路。
+ */
+export function assertArticlePublicId(value: unknown): string {
+  if (typeof value !== 'string') {
+    throw new Error('文章 ID 协议异常：保存接口未返回公开 ID');
+  }
+
+  const publicId = value.trim();
+  if (!publicId || /^\d+$/.test(publicId)) {
+    throw new Error('文章 ID 协议异常：禁止使用数据库内部 ID');
+  }
+
+  return publicId;
+}
+
+/**
+ * 进度接口的状态字段来自后端 JSON，统一在请求层收敛成前端使用的数值。
+ * 这样即使网关/旧服务版本把数字序列化成字符串，也不会把已发布状态误判成审核中。
+ */
+function normalizeArticleProgress(data: IArticleProgress): IArticleProgress {
+  const status = Number(data.status);
+  const taskStatus =
+    data.taskStatus == null ? data.taskStatus : Number(data.taskStatus);
+
+  return {
+    ...data,
+    articleId: String(data.articleId),
+    status: Number.isFinite(status) ? status : ARTICLE_STATUS.PENDING,
+    taskStatus:
+      taskStatus == null || Number.isFinite(taskStatus) ? taskStatus : null,
+  };
 }
 
 export function listCategoriesApi(page = 1, size = 50) {
@@ -193,7 +236,7 @@ export function abortChunkUploadApi(uploadId: string) {
 export function bindChunkUploadApi(uploadId: string, publicId: string) {
   return hyRequest.post<IDataType<null>>({
     url: '/file/upload/bind',
-    data: { uploadId, articleId: publicId },
+    data: { uploadId, articleId: assertArticlePublicId(publicId) },
   });
 }
 
@@ -205,16 +248,20 @@ export function getChunkUploadStatusApi(uploadId: string) {
 
 export function saveArticleApi(payload: IArticleSavePayload) {
   const { id: publicId, ...body } = payload;
-  if (publicId) {
-    return hyRequest.put<IDataType<string>>({
-      url: `/article/${publicId}`,
-      data: body,
-    });
-  }
-  return hyRequest.post<IDataType<string>>({
-    url: '/article',
-    data: body,
-  });
+  const request = publicId
+    ? hyRequest.put<IDataType<string>>({
+        url: `/article/${publicId}`,
+        data: body,
+      })
+    : hyRequest.post<IDataType<string>>({
+        url: '/article',
+        data: body,
+      });
+
+  return request.then((res) => ({
+    ...res,
+    data: assertArticlePublicId(res.data),
+  }));
 }
 
 export function submitArticleAuditApi(id: string) {
@@ -291,6 +338,9 @@ export function getArticleDetailApi(id: string) {
         contentHtml?: string;
         contentParagraphs?: Record<string, string>;
         imageUrls?: string[];
+        imageRefs?: string[];
+        coverRef?: string;
+        videoRef?: string;
         refArticleId?: string;
         gameTags?: IArticleEditDetail['gameTags'];
         refArticle?: {
@@ -318,6 +368,10 @@ export type IArticleEditDetail = IArticleItem & {
   contentHtml?: string;
   contentParagraphs?: Record<string, string>;
   imageUrls?: string[];
+  /** 作者编辑非发布内容时的持久化媒体引用；预览地址在 imageUrls/coverUrl 中。 */
+  imageRefs?: string[];
+  coverRef?: string;
+  videoRef?: string;
   refArticleId?: string;
   gameTags?: Array<{
     appId: number;
@@ -378,9 +432,11 @@ export function listArticlesByIdsApi(ids: string[]) {
 }
 
 export function getArticleProgressApi(id: string) {
-  return hyRequest.get<IDataType<IArticleProgress>>({
-    url: `/article/${id}/progress`,
-  });
+  return hyRequest
+    .get<IDataType<IArticleProgress>>({
+      url: `/article/${id}/progress`,
+    })
+    .then((res) => ({ ...res, data: normalizeArticleProgress(res.data) }));
 }
 
 export function articleStatusLabel(status: number): string {
@@ -401,16 +457,13 @@ export function articleStatusLabel(status: number): string {
 }
 
 /**
- * 视频分片上传：展示进度，支持 AbortSignal 取消并 abort 服务端会话
+ * 文件分片上传：单个请求只携带一个分片，避免大文件或多文件聚合请求触发网关 502。
+ * 支持按文件 MD5 复用服务端会话，因此网络失败后重新保存可以继续上传已完成分片。
  */
-export async function uploadVideoWithProgress(
+export async function uploadFileWithProgress(
   file: File,
   onProgress: (percent: number) => void,
-  options?: {
-    articleId?: number;
-    signal?: AbortSignal;
-    onUploadId?: (uploadId: string) => void;
-  },
+  options?: IChunkUploadOptions,
 ): Promise<IMediaUpload> {
   const fileMd5 = await calculateFileMd5(file, options?.signal);
   if (options?.signal?.aborted) {
@@ -420,8 +473,8 @@ export async function uploadVideoWithProgress(
     fileName: file.name,
     fileSize: file.size,
     fileMd5,
-    contentType: file.type || 'video/mp4',
-    bizType: 'video',
+    contentType: file.type || 'application/octet-stream',
+    bizType: options?.bizType || 'video',
     articleId: options?.articleId,
   });
   const { uploadId, chunkSize, totalChunks, uploadedChunks } = initRes.data;
@@ -468,4 +521,16 @@ export async function uploadVideoWithProgress(
   const merged = await mergeChunkUploadApi(uploadId);
   onProgress(100);
   return merged.data;
+}
+
+/** 视频分片上传：保留原有调用入口。 */
+export function uploadVideoWithProgress(
+  file: File,
+  onProgress: (percent: number) => void,
+  options?: Omit<IChunkUploadOptions, 'bizType'>,
+): Promise<IMediaUpload> {
+  return uploadFileWithProgress(file, onProgress, {
+    ...options,
+    bizType: 'video',
+  });
 }

@@ -11,11 +11,11 @@ export interface ArticleProgressTask {
 }
 
 interface ArticleProgressState {
-  task: ArticleProgressTask | null;
+  tasks: ArticleProgressTask[];
 }
 
 const initialState: ArticleProgressState = {
-  task: null,
+  tasks: [],
 };
 
 const articleProgressSlice = createSlice({
@@ -32,7 +32,7 @@ const articleProgressSlice = createSlice({
       }>,
     ) {
       const { articleId, title, kind, progress } = action.payload;
-      state.task = {
+      const nextTask: ArticleProgressTask = {
         articleId,
         title,
         kind,
@@ -45,13 +45,34 @@ const articleProgressSlice = createSlice({
             auditStageText: kind === 'audit' ? '排队审核中' : undefined,
           } as IArticleProgress),
       };
+      const existingTaskIndex = state.tasks.findIndex(
+        (task) => String(task.articleId) === String(articleId),
+      );
+      if (existingTaskIndex >= 0) {
+        state.tasks[existingTaskIndex] = nextTask;
+      } else {
+        state.tasks.push(nextTask);
+      }
     },
     updateArticleProgress(state, action: PayloadAction<IArticleProgress>) {
-      if (!state.task) return;
-      state.task.progress = action.payload;
+      const task = state.tasks.find(
+        (item) => String(item.articleId) === String(action.payload.articleId),
+      );
+      if (task) {
+        task.progress = action.payload;
+      }
     },
-    clearArticleProgressTrack(state) {
-      state.task = null;
+    clearArticleProgressTrack(
+      state,
+      action: PayloadAction<string | undefined>,
+    ) {
+      if (action.payload === undefined) {
+        state.tasks = [];
+        return;
+      }
+      state.tasks = state.tasks.filter(
+        (task) => String(task.articleId) !== String(action.payload),
+      );
     },
   },
 });

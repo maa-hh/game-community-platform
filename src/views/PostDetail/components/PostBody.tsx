@@ -23,6 +23,31 @@ interface IProps {
   danmakuReportResetKey?: number;
 }
 
+/**
+ * 详情请求会补回统计、作者关注状态等字段，这些变化不需要重建正文区。
+ * 尤其是视频帖，正文区跳过这类更新可以让播放器继续复用原来的实例。
+ */
+function areBodyPostsEqual(
+  previous: PostDetailData,
+  next: PostDetailData,
+): boolean {
+  if (previous === next) return true;
+  return (
+    previous.id === next.id &&
+    previous.postType === next.postType &&
+    previous.title === next.title &&
+    previous.content === next.content &&
+    previous.contentHtml === next.contentHtml &&
+    previous.coverUrl === next.coverUrl &&
+    previous.videoUrl === next.videoUrl &&
+    JSON.stringify(previous.images) === JSON.stringify(next.images) &&
+    JSON.stringify(previous.bodyImages) === JSON.stringify(next.bodyImages) &&
+    JSON.stringify(previous.tags) === JSON.stringify(next.tags) &&
+    JSON.stringify(previous.gameTags) === JSON.stringify(next.gameTags) &&
+    JSON.stringify(previous.refPost) === JSON.stringify(next.refPost)
+  );
+}
+
 function extractHtmlImages(html: string): string[] {
   const urls: string[] = [];
   const re = /<img[^>]+src=["']([^"']+)["']/gi;
@@ -209,4 +234,12 @@ const PostBody: FC<IProps> = ({
   );
 };
 
-export default memo(PostBody);
+export default memo(PostBody, (previous, next) => {
+  return (
+    previous.muted === next.muted &&
+    previous.targetDanmakuId === next.targetDanmakuId &&
+    previous.danmakuReportResetKey === next.danmakuReportResetKey &&
+    previous.onReportDanmaku === next.onReportDanmaku &&
+    areBodyPostsEqual(previous.post, next.post)
+  );
+});

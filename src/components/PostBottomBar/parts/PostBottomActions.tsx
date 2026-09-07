@@ -9,6 +9,8 @@ interface PostBottomActionsProps {
   shareCount: number;
   liked: boolean;
   favorited: boolean;
+  likeDisabled?: boolean;
+  favoriteDisabled?: boolean;
   onLike: () => void;
   onFavorite: () => void;
   onShare: () => void;
@@ -20,16 +22,25 @@ const PostBottomActions: FC<PostBottomActionsProps> = ({
   shareCount,
   liked,
   favorited,
+  likeDisabled,
+  favoriteDisabled,
   onLike,
   onFavorite,
   onShare,
 }) => (
   <div className="post-bottom-bar__actions">
-    <StatAction kind="like" count={likeCount} active={liked} onClick={onLike} />
+    <StatAction
+      kind="like"
+      count={likeCount}
+      active={liked}
+      disabled={likeDisabled}
+      onClick={onLike}
+    />
     <StatAction
       kind="favorite"
       count={favoriteCount}
       active={favorited}
+      disabled={favoriteDisabled}
       onClick={onFavorite}
     />
     <StatAction kind="share" count={shareCount} onClick={onShare} />

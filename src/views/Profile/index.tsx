@@ -32,11 +32,17 @@ import ProfileUserLink from '@/components/ProfileUserLink';
 import ReportModal from '@/components/ReportModal';
 import { useReportModal } from '@/hooks/useReportModal';
 import { useRequireLogin } from '@/hooks/useRequireLogin';
+import { usePageRefresh } from '@/hooks/usePageRefresh';
+import { useOptimisticAction } from '@/hooks/useOptimisticAction';
+import { useProfileFollowingSync } from '@/hooks/useProfileFollowingSync';
 import { formatApiError } from '@/utils/apiError';
 
 import { useAppDispatch, useAppSelector } from '@/store';
 import { fetchCurrentUserAction } from '@/store/modules/auth';
+import { clearProfileDataDirty } from '@/store/modules/profileRealtime';
+import { getPageDataCache, setPageDataCache } from '@/hooks/pageDataCache';
 import { FIELD_AUDIT, isFieldBusy } from '@/service/types';
+import type { IUserCard } from '@/service/types';
 import ProfileFeed from '@/components/profile/ProfileFeed';
 import ProfileUserListModal, {
   type ProfileUserListType,
@@ -44,6 +50,8 @@ import ProfileUserListModal, {
 import {
   checkBlockByAccountApi,
   checkFollowByAccountApi,
+  fetchFollowersListApi,
+  fetchFollowingListApi,
   fetchProfileSocialStatsByAccountApi,
   toggleBlockByAccountApi,
   toggleFollowByAccountApi,
@@ -72,8 +80,27 @@ import {
 } from '@/views/Profile/constants';
 
 import './style.less';
+import {
+  EMPTY_PROFILE_DATA_DOMAINS,
+  PROFILE_DATA_DOMAIN,
+} from '@/types/profileRealtime';
 
 const { Text } = Typography;
+const PROFILE_USER_LIST_PAGE_SIZE = 20;
+
+function cacheProfileUserList(
+  type: ProfileUserListType,
+  result: { data?: IUserCard[]; total?: number },
+) {
+  const items = result.data ?? [];
+  const total = Number(result.total ?? 0);
+  setPageDataCache(`profile-users:${type}`, {
+    items,
+    page: 1,
+    total,
+    hasMore: items.length > 0 && items.length < total,
+  });
+}
 
 function parseProfileMainTab(value: string | null): MainTabKey {
   return MAIN_TABS.some((tab) => tab.key === value)
@@ -134,26 +161,155 @@ function Profile() {
   const [userListOpen, setUserListOpen] = useState(false);
   const [userListType, setUserListType] =
     useState<ProfileUserListType>('following');
+  const [profileRefreshing, setProfileRefreshing] = useState(false);
   const feedAnchorRef = useRef<HTMLDivElement | null>(null);
+  const userListRefreshRef = useRef<(() => Promise<void>) | null>(null);
   const [feedTransitionHeight, setFeedTransitionHeight] = useState(0);
   const { isSelf, isOther, viewUser, loading: viewLoading } = useProfileView();
+  const profileAccountId = isOther ? viewUser?.accountId : user?.accountId;
+  const profileDirtyDomains = useAppSelector((state) =>
+    profileAccountId
+      ? (state.profileRealtime.dirtyByAccount[String(profileAccountId)] ??
+        EMPTY_PROFILE_DATA_DOMAINS)
+      : EMPTY_PROFILE_DATA_DOMAINS,
+  );
   const { requireLogin } = useRequireLogin();
   const { reportOpen, reportTarget, openReport, closeReport } =
     useReportModal();
   const [followed, setFollowed] = useState(false);
   const [blocked, setBlocked] = useState(false);
+  const { run: runOptimisticAction, isPending } = useOptimisticAction();
+  const syncProfileFollowing = useProfileFollowingSync();
 
   useEffect(() => {
+    if (user?.accountId) return;
     void dispatch(fetchCurrentUserAction());
-  }, [dispatch]);
+  }, [dispatch, user?.accountId]);
 
   useEffect(() => {
-    const targetAccountId = isOther ? viewUser?.accountId : user?.accountId;
+    if (
+      !isSelf ||
+      !user?.accountId ||
+      !profileDirtyDomains.includes(PROFILE_DATA_DOMAIN.BASE)
+    ) {
+      return;
+    }
+    void dispatch(fetchCurrentUserAction())
+      .unwrap()
+      .then(() => {
+        dispatch(
+          clearProfileDataDirty({
+            accountId: user.accountId,
+            domains: [PROFILE_DATA_DOMAIN.BASE],
+          }),
+        );
+      })
+      .catch(() => undefined);
+  }, [dispatch, isSelf, profileDirtyDomains, user?.accountId]);
+
+  useEffect(() => {
+    const targetAccountId = profileAccountId;
     if (!targetAccountId) return;
-    void fetchProfileSocialStatsByAccountApi(Number(targetAccountId)).then(
-      setStats,
-    );
-  }, [isOther, user?.accountId, viewUser?.accountId]);
+    const cacheKey = `profile-stats:${targetAccountId}`;
+    const cachedStats = getPageDataCache<ProfileStats>(cacheKey);
+    const statsDirty = profileDirtyDomains.includes(PROFILE_DATA_DOMAIN.STATS);
+    if (cachedStats && !statsDirty) {
+      setStats(cachedStats);
+      return;
+    }
+    let cancelled = false;
+    void fetchProfileSocialStatsByAccountApi(Number(targetAccountId))
+      .then((nextStats) => {
+        if (!cancelled) {
+          setStats(nextStats);
+          setPageDataCache(cacheKey, nextStats);
+          if (user?.accountId === targetAccountId) {
+            dispatch(
+              clearProfileDataDirty({
+                accountId: targetAccountId,
+                domains: [PROFILE_DATA_DOMAIN.STATS],
+              }),
+            );
+          }
+        }
+      })
+      .catch(() => {
+        // 统计不是进入个人页的必要条件；请求失败时保留上一次结果，避免错误响应把页面刷成一片 0。
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    dispatch,
+    isOther,
+    profileAccountId,
+    profileDirtyDomains,
+    user?.accountId,
+  ]);
+
+  const refreshProfileData = useCallback(async () => {
+    setProfileRefreshing(true);
+    const targetAccountId = isOther ? viewUser?.accountId : user?.accountId;
+    const tasks: Promise<unknown>[] = [];
+    if (!isOther) tasks.push(dispatch(fetchCurrentUserAction()).unwrap());
+    if (!isOther) {
+      tasks.push(
+        Promise.all([
+          fetchFollowingListApi(1, PROFILE_USER_LIST_PAGE_SIZE),
+          fetchFollowersListApi(1, PROFILE_USER_LIST_PAGE_SIZE),
+        ]).then(([following, followers]) => {
+          cacheProfileUserList('following', following);
+          cacheProfileUserList('followers', followers);
+          if (user?.accountId) {
+            dispatch(
+              clearProfileDataDirty({
+                accountId: user.accountId,
+                domains: [
+                  PROFILE_DATA_DOMAIN.FOLLOWING,
+                  PROFILE_DATA_DOMAIN.FOLLOWERS,
+                ],
+              }),
+            );
+          }
+        }),
+      );
+      if (userListOpen && userListRefreshRef.current) {
+        tasks.push(userListRefreshRef.current());
+      }
+    }
+    if (targetAccountId) {
+      tasks.push(
+        fetchProfileSocialStatsByAccountApi(Number(targetAccountId)).then(
+          (nextStats) => {
+            setStats(nextStats);
+            setPageDataCache(`profile-stats:${targetAccountId}`, nextStats);
+            if (!isOther && user?.accountId === targetAccountId) {
+              dispatch(
+                clearProfileDataDirty({
+                  accountId: targetAccountId,
+                  domains: [PROFILE_DATA_DOMAIN.STATS],
+                }),
+              );
+            }
+          },
+        ),
+      );
+    }
+    try {
+      await Promise.all(tasks);
+    } finally {
+      setProfileRefreshing(false);
+    }
+  }, [dispatch, isOther, user?.accountId, userListOpen, viewUser?.accountId]);
+
+  const handleUserListRefreshReady = useCallback(
+    (refresh: (() => Promise<void>) | null) => {
+      userListRefreshRef.current = refresh;
+    },
+    [],
+  );
+
+  usePageRefresh(refreshProfileData, true);
 
   useEffect(() => {
     const tab = searchParams.get('tab');
@@ -394,14 +550,20 @@ function Profile() {
 
   const handleFollowOther = async () => {
     if (!requireLogin() || !viewUser?.accountId) return;
-    try {
-      const next = !followed;
-      await toggleFollowByAccountApi(viewUser.accountId, next);
-      setFollowed(next);
-      message.success(next ? '已关注' : '已取消关注');
-    } catch (err) {
-      message.error(formatApiError('操作失败', err));
-    }
+    if (isPending('profile-follow')) return;
+    const next = !followed;
+    await runOptimisticAction('profile-follow', {
+      apply: () => setFollowed(next),
+      request: () => toggleFollowByAccountApi(viewUser.accountId, next),
+      commit: () => {
+        syncProfileFollowing();
+        message.success(next ? '已关注' : '已取消关注');
+      },
+      rollback: (err) => {
+        setFollowed(!next);
+        message.error(formatApiError('操作失败', err));
+      },
+    });
   };
 
   const handleReportUser = () => {
@@ -428,6 +590,7 @@ function Profile() {
           if (next) {
             setFollowed(false);
           }
+          syncProfileFollowing();
           message.success(next ? '已拉黑' : '已取消拉黑');
         } catch (err) {
           message.error(formatApiError(`${actionText}失败`, err));
@@ -463,6 +626,7 @@ function Profile() {
             }
             extra={
               <div className="profile-page__top-extra">
+                {profileRefreshing ? <Spin size="small" /> : null}
                 {isSelf ? (
                   <>
                     <Button size="small" onClick={() => navigate('/shop')}>
@@ -480,6 +644,7 @@ function Profile() {
                   <>
                     <FollowButton
                       followed={followed}
+                      disabled={isPending('profile-follow')}
                       size="small"
                       onClick={() => void handleFollowOther()}
                     />
@@ -789,6 +954,7 @@ function Profile() {
         open={userListOpen}
         type={userListType}
         onClose={() => setUserListOpen(false)}
+        onRefreshReady={handleUserListRefreshReady}
       />
       {reportTarget ? (
         <ReportModal

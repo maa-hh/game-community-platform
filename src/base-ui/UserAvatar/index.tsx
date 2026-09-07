@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import React, { memo, useEffect, useState } from 'react';
 import type { FC } from 'react';
 import { Avatar } from 'antd';
 
@@ -24,15 +24,25 @@ const UserAvatar: FC<UserAvatarProps> = ({
   const initial = name?.slice(0, 1)?.toUpperCase() || '?';
   const cls = `user-avatar${className ? ` ${className}` : ''}`;
   const imageSrc = src?.trim() || undefined;
+  const [imageError, setImageError] = useState(false);
+
+  useEffect(() => {
+    setImageError(false);
+  }, [imageSrc]);
+
+  const handleImageError = () => {
+    setImageError(true);
+  };
 
   if (variant === 'block') {
-    if (imageSrc) {
+    if (imageSrc && !imageError) {
       return (
         <img
           className={`${cls} user-avatar--block`}
           src={imageSrc}
           alt=""
           style={{ width: size, height: size }}
+          onError={handleImageError}
         />
       );
     }
@@ -51,7 +61,15 @@ const UserAvatar: FC<UserAvatarProps> = ({
   }
 
   return (
-    <Avatar size={size} src={imageSrc} className={cls}>
+    <Avatar
+      size={size}
+      src={imageError ? undefined : imageSrc}
+      className={cls}
+      onError={() => {
+        handleImageError();
+        return false;
+      }}
+    >
       {initial}
     </Avatar>
   );

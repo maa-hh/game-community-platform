@@ -6,7 +6,7 @@ export interface IProps {
   isMine: boolean;
   onLike: () => void;
   onReply: () => void;
-  onReport: () => void;
-  onDelete: () => void;
+  onReport?: () => void;
+  onDelete?: () => void;
   decoration?: IUserDecoration;
 }

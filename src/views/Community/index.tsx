@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { message } from 'antd';
 
 import PostFeedList from '@/components/PostFeedList';
+import type { LatestPostItem } from '@/types/post';
 import { formatApiError } from '@/utils/apiError';
-import { buildReturnNavigationState } from '@/utils/returnNavigation';
+import { buildPostDetailNavigationState } from '@/utils/detailNavigation';
 
 import { useCommunityFeed } from './useCommunityFeed';
 
@@ -17,6 +18,7 @@ function Community() {
     items,
     loading,
     loadingMore,
+    refreshing,
     hasMore,
     sentinelRef,
     reload,
@@ -24,29 +26,32 @@ function Community() {
     handleFavorite,
   } = useCommunityFeed();
 
-  const handleRefresh = async () => {
+  const handleRefresh = useCallback(async () => {
     try {
       await reload();
-    } catch {
-      message.error(formatApiError('加载最新帖失败', new Error()));
+    } catch (error) {
+      message.error(formatApiError('加载最新帖失败', error));
     }
-  };
+  }, [reload]);
+  const handleItemClick = useCallback(
+    (item: LatestPostItem) => {
+      navigate(`/post/${item.id}`, {
+        state: buildPostDetailNavigationState(location, item),
+      });
+    },
+    [location, navigate],
+  );
 
   return (
     <div className="community-page">
       <PostFeedList
         items={items}
         loading={loading}
+        refreshing={refreshing}
         emptyText="暂无帖子"
         layout="masonry"
         onRefresh={handleRefresh}
-        onItemClick={(id) =>
-          navigate(`/post/${id}`, {
-            state: {
-              ...buildReturnNavigationState(location),
-            },
-          })
-        }
+        onItemClick={handleItemClick}
         onLikeClick={handleLike}
         onFavoriteClick={handleFavorite}
         infinite={{

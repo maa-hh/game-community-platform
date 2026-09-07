@@ -4,11 +4,12 @@ export interface IPostBottomBarProps {
   shareCount: number;
   liked: boolean;
   favorited: boolean;
+  likeDisabled?: boolean;
+  favoriteDisabled?: boolean;
   submitting?: boolean;
   className?: string;
   onLike: () => void;
   onFavorite: () => void;
   onShare: () => void;
   onComment: (content: string) => void;
-  onFocusComment?: () => void;
 }

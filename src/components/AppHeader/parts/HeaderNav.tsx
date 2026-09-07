@@ -1,4 +1,5 @@
 import React, { memo } from 'react';
+import { Badge } from 'antd';
 import type { FC } from 'react';
 import { NavLink } from 'react-router-dom';
 
@@ -9,6 +10,7 @@ import type { HeaderNavItem } from '../types';
 interface HeaderNavProps {
   items: HeaderNavItem[];
   loggedIn?: boolean;
+  feedUnreadCount?: number;
 }
 
 function shouldShowNavItem(item: HeaderNavItem, loggedIn: boolean): boolean {
@@ -17,7 +19,11 @@ function shouldShowNavItem(item: HeaderNavItem, loggedIn: boolean): boolean {
   return true;
 }
 
-const HeaderNav: FC<HeaderNavProps> = ({ items, loggedIn = false }) => (
+const HeaderNav: FC<HeaderNavProps> = ({
+  items,
+  loggedIn = false,
+  feedUnreadCount = 0,
+}) => (
   <nav className="app-header__nav">
     {items
       .filter((item) => shouldShowNavItem(item, loggedIn))
@@ -31,7 +37,18 @@ const HeaderNav: FC<HeaderNavProps> = ({ items, loggedIn = false }) => (
             `app-header__link${isActive ? ' is-active' : ''}`
           }
         >
-          {item.label}
+          {item.to === '/feed' ? (
+            <Badge
+              className="app-header__feed-badge"
+              count={feedUnreadCount}
+              overflowCount={99}
+              size="small"
+            >
+              {item.label}
+            </Badge>
+          ) : (
+            item.label
+          )}
         </NavLink>
       ))}
   </nav>

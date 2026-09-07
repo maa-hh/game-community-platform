@@ -8,9 +8,10 @@ import type {
 export interface IPostFeedListProps {
   items: LatestPostItem[];
   loading?: boolean;
+  refreshing?: boolean;
   emptyText?: string;
   onRefresh?: () => void | Promise<void>;
-  onItemClick: (id: string) => void;
+  onItemClick: (item: LatestPostItem) => void;
   onLikeClick?: (item: LatestPostItem) => void;
   onFavoriteClick?: (item: LatestPostItem) => void;
   infinite?: IFeedPanelInfiniteProps;

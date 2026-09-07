@@ -39,6 +39,8 @@ const ReplyPopup: FC<IProps> = ({
         allowClear
         onPressEnter={(e) => {
           if (e.nativeEvent.isComposing) return;
+          e.preventDefault();
+          e.stopPropagation();
           const text = value.trim();
           if (text) onSubmit(text);
         }}

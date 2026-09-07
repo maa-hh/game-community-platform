@@ -30,13 +30,18 @@ const AppHeader: FC = () => {
     openLogin,
     openNotifications,
     notificationUnread,
+    feedUnreadCount,
   } = useHeaderActions();
 
   return (
     <header className="app-header">
       <div className="app-header__inner">
         <HeaderBrand brand={headerBrand} />
-        <HeaderNav items={headerNavItems} loggedIn={loggedIn} />
+        <HeaderNav
+          items={headerNavItems}
+          loggedIn={loggedIn}
+          feedUnreadCount={feedUnreadCount}
+        />
         <HeaderSearch
           search={headerSearch}
           loggedIn={loggedIn}

@@ -4,7 +4,7 @@ import {
   type IArticleProgress,
 } from '@/service/content';
 
-export type ArticleProgressKind = 'audit' | 'draft' | 'unpublish';
+export type ArticleProgressKind = 'audit' | 'draft' | 'upload' | 'unpublish';
 
 export type ArticleProgressStopReason =
   'terminal' | 'human_review' | 'task_failed';
@@ -18,6 +18,7 @@ export interface ArticleProgressBannerView {
   stage: string;
   showUploadPercent: boolean;
   uploadPercent?: number;
+  showUploadComplete: boolean;
   showAuditWaiting: boolean;
 }
 
@@ -69,12 +70,14 @@ export function resolveArticleProgressBanner(
   const uploadPercent = progress?.uploadPercent ?? undefined;
   const showUploadPercent =
     uploading && uploadPercent != null && uploadPercent >= 0;
+  const showUploadComplete = progress?.uploadStatus === 'SAVED';
 
   return {
     stage: resolveArticleProgressStage(progress),
     showUploadPercent,
     uploadPercent: showUploadPercent ? uploadPercent : undefined,
-    showAuditWaiting: !uploading,
+    showUploadComplete,
+    showAuditWaiting: !uploading && !showUploadComplete,
   };
 }
 
@@ -178,6 +181,7 @@ export function getArticleProgressResultMessage(
 
 export function isArticleProgressTerminal(status: number): boolean {
   return (
+    status === ARTICLE_STATUS.DRAFT ||
     status === ARTICLE_STATUS.PUBLISHED ||
     status === ARTICLE_STATUS.REJECTED ||
     status === ARTICLE_STATUS.OFFLINE

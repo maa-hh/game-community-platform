@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 
 import { usePageList } from '@/hooks/usePageList';
+import { REPLY_PAGE_SIZE } from '@/components/CommentItem/config';
 import {
   fetchPostCommentsPageApi,
   fetchPostRepliesPageApi,
@@ -9,7 +10,6 @@ import type { LatestPostItem, PostComment, PostReply } from '@/types/post';
 import type { IGameListItem } from '@/types/game';
 
 const COMMENT_PAGE_SIZE = 20;
-const REPLY_PAGE_SIZE = 20;
 
 export function usePostComments(articleId: string) {
   return usePageList<PostComment>({
@@ -18,7 +18,7 @@ export function usePostComments(articleId: string) {
     resetDeps: [articleId],
     fetchPage: (page, size) =>
       fetchPostCommentsPageApi(articleId, page, size, {
-        replyPreviewSize: 2,
+        replyPageSize: REPLY_PAGE_SIZE,
       }),
   });
 }

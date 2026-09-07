@@ -32,6 +32,7 @@ export interface PostRefCard {
   commentCount?: number;
   likeCount?: number;
   liked?: boolean;
+  likePending?: boolean;
   /** 原帖不可访问（删除/下架/拉取失败） */
   unavailable?: boolean;
   unavailableReason?: PostRefUnavailableReason;
@@ -60,6 +61,7 @@ export interface ContentCardData {
   commentCount?: number;
   likeCount?: number;
   liked?: boolean;
+  likePending?: boolean;
   createdAt?: string;
   /** 热榜名次角标 */
   rank?: number;

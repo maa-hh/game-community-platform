@@ -12,7 +12,7 @@ import {
   unpublishArticleApi,
 } from '@/service/content';
 import { startArticleProgressTrack } from '@/store/modules/articleProgress';
-import { useAppDispatch } from '@/store';
+import { useAppDispatch, useAppSelector } from '@/store';
 import {
   canEditArticle,
   getPublishToggleLabel,
@@ -20,6 +20,7 @@ import {
 } from '@/utils/articleOwnerOps';
 import { getArticleProgressResultMessage } from '@/utils/articleProgressMessage';
 import { formatApiError } from '@/utils/apiError';
+import { invalidateOwnProfilePostCaches } from '@/utils/profileDataCache';
 
 interface UseArticleOwnerActionsOptions {
   onPublished?: () => void;
@@ -40,6 +41,7 @@ export function useArticleOwnerActions(
 ) {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
+  const accountId = useAppSelector((state) => state.auth.user?.accountId);
   const onPublished = options?.onPublished;
   const onUnpublished = options?.onUnpublished;
   const onDeleted = options?.onDeleted;
@@ -60,6 +62,8 @@ export function useArticleOwnerActions(
         okText: '上架',
         cancelText: '再想想',
         onOk: async () => {
+          // 提交后文章进入审核态，草稿快照立即失效；已发布缓存等最终状态确认。
+          invalidateOwnProfilePostCaches(accountId, ['draft']);
           try {
             await submitArticleAuditApi(id);
             dispatch(
@@ -80,7 +84,7 @@ export function useArticleOwnerActions(
         },
       });
     },
-    [dispatch, onPublished],
+    [accountId, dispatch, onPublished],
   );
 
   const unpublish = useCallback(
@@ -104,6 +108,10 @@ export function useArticleOwnerActions(
               'unpublish',
             );
             message.open({ type, content: text, duration: 1 });
+            invalidateOwnProfilePostCaches(
+              accountId,
+              isPublished ? ['published', 'draft'] : ['draft'],
+            );
             onUnpublished?.();
           } catch (err) {
             message.error({
@@ -115,11 +123,11 @@ export function useArticleOwnerActions(
         },
       });
     },
-    [onUnpublished],
+    [accountId, onUnpublished],
   );
 
   const remove = useCallback(
-    (id: string, redirectTo?: string) => {
+    (id: string, redirectTo?: string, status?: number) => {
       Modal.confirm({
         title: '删除内容？',
         content: '将删除文件与元数据，不可恢复。',
@@ -130,6 +138,10 @@ export function useArticleOwnerActions(
           try {
             await deleteArticleApi(id);
             message.success({ content: '已删除', duration: 1 });
+            invalidateOwnProfilePostCaches(
+              accountId,
+              status === ARTICLE_STATUS.PUBLISHED ? ['published'] : ['draft'],
+            );
             onDeleted?.();
             if (redirectTo) navigate(redirectTo, { replace: true });
           } catch (err) {
@@ -142,7 +154,7 @@ export function useArticleOwnerActions(
         },
       });
     },
-    [navigate, onDeleted],
+    [accountId, navigate, onDeleted],
   );
 
   const togglePublish = useCallback(
@@ -186,7 +198,7 @@ export function useArticleOwnerActions(
         key: 'delete',
         label: '删除',
         danger: true,
-        onClick: () => remove(id),
+        onClick: () => remove(id, undefined, status),
       });
 
       return items;
@@ -233,7 +245,7 @@ export function useArticleOwnerActions(
         key: 'delete',
         label: '删除',
         danger: true,
-        onClick: () => remove(id),
+        onClick: () => remove(id, undefined, status),
       });
 
       return items;

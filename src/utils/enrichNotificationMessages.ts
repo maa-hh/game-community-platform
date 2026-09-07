@@ -7,7 +7,7 @@ import { NOTIFICATION_EVENT } from '@/types/notification';
 import { fetchArticlesRawByIds } from '@/utils/hydrateArticleForGameRepost';
 import type { ICommentRaw, IReplyRaw } from '@/utils/mapPost';
 import { buildNotificationCoverSources } from '@/utils/notificationCover';
-import { resolveNotificationCategory } from '@/utils/notificationCategory';
+import { fetchGameRepostMetaMap } from '@/utils/fetchGameRepostMeta';
 import { resolvePostCardTitle, resolvePostCoverMedia } from '@/utils/postCover';
 
 async function fetchCommentRaw(commentId: number): Promise<ICommentRaw | null> {
@@ -32,8 +32,13 @@ async function fetchReplyRaw(replyId: number): Promise<IReplyRaw | null> {
   }
 }
 
-function isCommentCategory(item: INotificationMessage): boolean {
-  return resolveNotificationCategory(item.eventType) === 'comment';
+function isCommentTarget(item: INotificationMessage): boolean {
+  return (
+    item.eventType === NOTIFICATION_EVENT.ARTICLE_COMMENT ||
+    item.eventType === NOTIFICATION_EVENT.COMMENT_REPLY ||
+    item.eventType === NOTIFICATION_EVENT.COMMENT_LIKE ||
+    item.eventType === NOTIFICATION_EVENT.REPLY_LIKE
+  );
 }
 
 /** 批量补全通知：帖子封面、评论正文、关注状态 */
@@ -47,6 +52,14 @@ export async function enrichNotificationMessages(
       items
         .map((item) => item.articlePublicId)
         .filter((id): id is string => Boolean(id)),
+    ),
+  );
+
+  const gameAppIds = Array.from(
+    new Set(
+      items
+        .map((item) => Number(item.gameAppId))
+        .filter((id) => Number.isInteger(id) && id > 0),
     ),
   );
 
@@ -73,7 +86,7 @@ export async function enrichNotificationMessages(
   const commentIds = Array.from(
     new Set(
       items
-        .filter(isCommentCategory)
+        .filter(isCommentTarget)
         .map((item) => item.commentId)
         .filter((id): id is number => id != null && id > 0),
     ),
@@ -84,39 +97,47 @@ export async function enrichNotificationMessages(
       items
         .filter(
           (item) =>
-            isCommentCategory(item) &&
-            item.eventType === NOTIFICATION_EVENT.COMMENT_REPLY,
+            isCommentTarget(item) &&
+            (item.eventType === NOTIFICATION_EVENT.COMMENT_REPLY ||
+              item.eventType === NOTIFICATION_EVENT.REPLY_LIKE),
         )
         .map((item) => item.replyId)
         .filter((id): id is number => id != null && id > 0),
     ),
   );
 
-  const [articles, followResults, commentResults, replyResults, actorUsers] =
-    await Promise.all([
-      fetchArticlesRawByIds(articleIds),
-      Promise.all(
-        followActorAccountIds.map(async (accountId) => {
-          try {
-            const res = await checkFollowByAccountApi(accountId);
-            return [accountId, res.data.followed] as const;
-          } catch {
-            return [accountId, false] as const;
-          }
-        }),
-      ),
-      Promise.all(
-        commentIds.map(async (id) => [id, await fetchCommentRaw(id)] as const),
-      ),
-      Promise.all(
-        replyIds.map(async (id) => [id, await fetchReplyRaw(id)] as const),
-      ),
-      actorAccountIds.length > 0
-        ? getUsersByAccountIdsApi(actorAccountIds)
-            .then((res) => res.data || [])
-            .catch(() => [])
-        : Promise.resolve([]),
-    ]);
+  const [
+    articles,
+    followResults,
+    commentResults,
+    replyResults,
+    actorUsers,
+    gameMetaMap,
+  ] = await Promise.all([
+    fetchArticlesRawByIds(articleIds),
+    Promise.all(
+      followActorAccountIds.map(async (accountId) => {
+        try {
+          const res = await checkFollowByAccountApi(accountId);
+          return [accountId, res.data.followed] as const;
+        } catch {
+          return [accountId, false] as const;
+        }
+      }),
+    ),
+    Promise.all(
+      commentIds.map(async (id) => [id, await fetchCommentRaw(id)] as const),
+    ),
+    Promise.all(
+      replyIds.map(async (id) => [id, await fetchReplyRaw(id)] as const),
+    ),
+    actorAccountIds.length > 0
+      ? getUsersByAccountIdsApi(actorAccountIds)
+          .then((res) => res.data || [])
+          .catch(() => [])
+      : Promise.resolve([]),
+    fetchGameRepostMetaMap(gameAppIds),
+  ]);
 
   const articleMap = new Map(articles.map((row) => [row.publicId, row]));
   const coverSourceMap = await buildNotificationCoverSources(articles);
@@ -145,8 +166,16 @@ export async function enrichNotificationMessages(
     const publicId = item.articlePublicId;
     const article = publicId ? articleMap.get(publicId) : undefined;
 
+    const gameMeta = item.gameAppId
+      ? gameMetaMap[Number(item.gameAppId)]
+      : undefined;
+    if (gameMeta) {
+      next.gameCoverUrl = next.gameCoverUrl || gameMeta.coverUrl;
+      next.gameTitle = next.gameTitle || gameMeta.name;
+    }
+
     if (article) {
-      const coverSource = coverSourceMap.get(article.id);
+      const coverSource = publicId ? coverSourceMap.get(publicId) : undefined;
       if (coverSource) {
         next.articleCoverSource = coverSource;
         next.articleTitle =
@@ -163,21 +192,69 @@ export async function enrichNotificationMessages(
         followMap.get(item.actorAccountId) ?? next.actorFollowed;
     }
 
-    if (!isCommentCategory(item)) return next;
+    if (!isCommentTarget(item)) return next;
 
-    if (item.eventType === NOTIFICATION_EVENT.COMMENT_REPLY && item.replyId) {
+    const isReplyTarget =
+      item.eventType === NOTIFICATION_EVENT.COMMENT_REPLY ||
+      item.eventType === NOTIFICATION_EVENT.REPLY_LIKE;
+
+    if (isReplyTarget && item.replyId) {
       const reply = replyMap.get(item.replyId);
+      const replyAccountId = reply?.accountId;
+      // 历史通知的 actorAccountId 可能因通知服务补全失败而为空，
+      // 但回复详情仍然携带真实的回复作者账号 ID。回复通知必须用
+      // 这个 ID 作为 replyToAccountId，不能让调用方退化成 0。
+      if (
+        item.eventType === NOTIFICATION_EVENT.COMMENT_REPLY &&
+        (!next.actorAccountId || next.actorAccountId <= 0) &&
+        replyAccountId != null &&
+        replyAccountId > 0
+      ) {
+        next.actorAccountId = replyAccountId;
+      }
+      if (item.eventType === NOTIFICATION_EVENT.COMMENT_REPLY) {
+        next.actorUsername =
+          next.actorUsername || reply?.username?.trim() || undefined;
+        next.actorAvatar = next.actorAvatar || reply?.avatar;
+      }
+      if (reply) {
+        next.liked = Boolean(reply.liked);
+        next.likeCount = Number(reply.likeCount ?? 0);
+      }
       if (reply?.content) {
         next.contentText = reply.content;
       }
-      if (!next.resultText?.trim() && item.commentId) {
+      // 回复通知的 resultText 是后端保存的“新回复内容”，不能直接当作
+      // 被回复的原文展示。原文需要根据通知里的 commentId 重新补全。
+      if (
+        item.eventType === NOTIFICATION_EVENT.COMMENT_REPLY &&
+        item.commentId
+      ) {
         const parent = commentMap.get(item.commentId);
-        if (parent?.content) {
-          next.resultText = parent.content;
-        }
+        next.resultText = parent?.content || undefined;
       }
     } else if (item.commentId) {
       const comment = commentMap.get(item.commentId);
+      const commentAccountId = comment?.accountId;
+      // 评论通知同样优先使用评论详情中的作者账号，修复旧通知缺少
+      // actorAccountId 时点击“回复”会带出无效用户 ID 的问题。
+      if (
+        item.eventType === NOTIFICATION_EVENT.ARTICLE_COMMENT &&
+        (!next.actorAccountId || next.actorAccountId <= 0) &&
+        commentAccountId != null &&
+        commentAccountId > 0
+      ) {
+        next.actorAccountId = commentAccountId;
+      }
+      if (item.eventType === NOTIFICATION_EVENT.ARTICLE_COMMENT) {
+        next.actorUsername =
+          next.actorUsername || comment?.username?.trim() || undefined;
+        next.actorAvatar = next.actorAvatar || comment?.avatar;
+      }
+      if (comment) {
+        next.liked = Boolean(comment.liked);
+        next.likeCount = Number(comment.likeCount ?? 0);
+      }
       if (comment?.content) {
         next.contentText = comment.content;
       }

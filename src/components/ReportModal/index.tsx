@@ -125,6 +125,11 @@ const ReportModal: FC<ReportModalProps> = ({
             placeholder="请描述具体问题，便于我们更快处理（选填）"
             maxLength={200}
             showCount
+            onPressEnter={(event) => {
+              if (event.shiftKey || event.nativeEvent.isComposing) return;
+              event.preventDefault();
+              void handleSubmit();
+            }}
           />
         </Form.Item>
       </Form>

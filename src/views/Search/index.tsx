@@ -12,7 +12,11 @@ import {
   useSearchGames,
   useSearchUsers,
 } from '@/hooks/usePagedSocial';
-import { buildReturnNavigationState } from '@/utils/returnNavigation';
+import {
+  buildGameDetailNavigationState,
+  buildPostDetailNavigationState,
+} from '@/utils/detailNavigation';
+import type { LatestPostItem } from '@/types/post';
 
 import './style.less';
 
@@ -94,9 +98,9 @@ function Search() {
   };
 
   const handlePostClick = useCallback(
-    (postId: string) => {
-      navigate(`/post/${postId}`, {
-        state: buildReturnNavigationState(location),
+    (item: LatestPostItem) => {
+      navigate(`/post/${item.id}`, {
+        state: buildPostDetailNavigationState(location, item),
       });
     },
     [location, navigate],
@@ -214,7 +218,11 @@ function Search() {
             <GameCard
               key={game.appId}
               game={game}
-              onClick={() => navigate(`/game/${game.appId}`)}
+              onClick={() =>
+                navigate(`/game/${game.appId}`, {
+                  state: buildGameDetailNavigationState(location, game),
+                })
+              }
             />
           ))}
         </GameMasonryGrid>

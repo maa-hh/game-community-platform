@@ -3,7 +3,7 @@ import type { FC } from 'react';
 import { Spin } from 'antd';
 
 import ListEndHint from '@/base-ui/ListEndHint';
-import { PAGE_REFRESH_EVENT } from '@/utils/pageRefresh';
+import { PAGE_REFRESH_EVENT, type PageRefreshEvent } from '@/utils/pageRefresh';
 
 import type { IFeedPanelProps } from './types';
 import { useFeedPanel } from './useFeedPanel';
@@ -14,6 +14,7 @@ const FeedPanel: FC<IFeedPanelProps> = ({
   children,
   masonry,
   loading = false,
+  refreshing = false,
   onRefresh,
   className,
   empty,
@@ -24,6 +25,7 @@ const FeedPanel: FC<IFeedPanelProps> = ({
   const { handleRefresh } = useFeedPanel(onRefresh);
   const childCount = Children.count(children);
   const hasList = childCount > 0 || Boolean(masonry);
+  const isRefreshing = refreshing || (loading && hasList);
   const itemCount = infinite?.itemCount ?? childCount;
   const isMasonry = listLayout === 'masonry';
 
@@ -39,7 +41,8 @@ const FeedPanel: FC<IFeedPanelProps> = ({
       )
         return;
       event.preventDefault();
-      void handleRefresh();
+      const task = handleRefresh();
+      (event as PageRefreshEvent).detail?.track(task);
     };
 
     window.addEventListener(PAGE_REFRESH_EVENT, refreshVisiblePanel);
@@ -54,7 +57,7 @@ const FeedPanel: FC<IFeedPanelProps> = ({
       className={`feed-panel${className ? ` ${className}` : ''}${
         isMasonry ? ' feed-panel--masonry' : ''
       }`}
-      aria-busy={loading}
+      aria-busy={loading || refreshing}
     >
       {loading && !hasList ? (
         <div className="feed-panel__loading">
@@ -64,7 +67,7 @@ const FeedPanel: FC<IFeedPanelProps> = ({
         <div className="feed-panel__empty">{empty}</div>
       ) : (
         <div className="feed-panel__list">
-          {loading && hasList ? (
+          {isRefreshing ? (
             <div
               className="feed-panel__refreshing"
               role="status"
@@ -74,10 +77,16 @@ const FeedPanel: FC<IFeedPanelProps> = ({
             </div>
           ) : null}
           {isMasonry ? (masonry ?? children) : children}
+          {infinite?.loadingMore && isMasonry ? (
+            <div className="feed-panel__loading-more" role="status">
+              <Spin size="small" />
+              <span>正在加载更多</span>
+            </div>
+          ) : null}
           {infinite ? (
             <ListEndHint
               ref={infinite.sentinelRef}
-              loadingMore={infinite.loadingMore}
+              loadingMore={isMasonry ? false : infinite.loadingMore}
               hasMore={infinite.hasMore}
               itemCount={itemCount}
             />

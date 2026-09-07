@@ -18,10 +18,20 @@ export function buildNotificationLink(
 ): string | null {
   const routeType = msg.routeType ?? NOTIFICATION_ROUTE.NONE;
   const articleId = msg.articlePublicId;
+  const gameAppId = msg.gameAppId;
+  const gameReviewId = msg.gameReviewId;
+  const gameReviewReplyId = msg.gameReviewReplyId;
   const commentId = msg.commentId;
   const replyId = msg.replyId;
   const danmakuId = msg.danmakuId;
   const accountId = resolveProfileAccountId(msg);
+
+  if (routeType === NOTIFICATION_ROUTE.GAME_REVIEW && gameAppId) {
+    const params = new URLSearchParams({ tab: 'reviews' });
+    if (gameReviewId) params.set('reviewId', gameReviewId);
+    if (gameReviewReplyId) params.set('replyId', gameReviewReplyId);
+    return `/game/${gameAppId}?${params.toString()}`;
+  }
 
   if (routeType === NOTIFICATION_ROUTE.ARTICLE && articleId) {
     return `/post/${articleId}`;
