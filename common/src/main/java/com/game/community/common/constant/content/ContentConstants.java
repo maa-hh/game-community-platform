@@ -17,6 +17,9 @@ public class ContentConstants {
      */
     public static final String FOLLOW_KEY_PREFIX = "user:follow:";
 
+    /** 已下架文章的媒体黑名单，保存稳定的媒体引用。 */
+    public static final String OFFLINE_MEDIA_BLACKLIST_KEY = "content:offline:media";
+
     /**
      * 立即执行任务队列Key
      */

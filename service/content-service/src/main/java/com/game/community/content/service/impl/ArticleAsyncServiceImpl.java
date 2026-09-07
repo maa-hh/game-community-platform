@@ -24,7 +24,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * 发布任务执行器：审核 → 私有媒体提升公共桶 → 状态回写。
+ * 发布任务执行器：审核 → 私有媒体复制到公有桶 → 状态回写。
  * 若作者已取消上架/删除，则中止发布。
  */
 @Slf4j
@@ -86,7 +86,7 @@ public class ArticleAsyncServiceImpl implements ArticleAsyncService {
             String publicVideo = articleMediaHelper.promoteToPublic(articleDTO.getVideoUrl(), "video");
 
             if (shouldAbortPublish(articleId)) {
-                log.info("媒体提升后文章已取消，放弃写发布态: articleId={}", articleId);
+                log.info("媒体复制后文章已取消，放弃写发布态: articleId={}", articleId);
                 return;
             }
 
@@ -99,6 +99,7 @@ public class ArticleAsyncServiceImpl implements ArticleAsyncService {
                 return;
             }
             articleMediaHelper.deletePendingRefs(concatRefs(coverUrl, imageUrls, articleDTO.getVideoUrl()));
+            articleMediaHelper.removeFromBlacklist(concatRefs(publicCover, publicImages, publicVideo));
             log.info("文章审核通过并发布: articleId={}", articleId);
             return;
         }
@@ -182,6 +183,7 @@ public class ArticleAsyncServiceImpl implements ArticleAsyncService {
             throw new BusinessException("文章状态已变更，发布失败");
         }
         articleMediaHelper.deletePendingRefs(concatRefs(coverUrl, imageUrls, articleDTO.getVideoUrl()));
+        articleMediaHelper.removeFromBlacklist(concatRefs(publicCover, publicImages, publicVideo));
     }
 
     private boolean shouldAbortPublish(Long articleId) {

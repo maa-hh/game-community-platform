@@ -139,13 +139,6 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             validateContent(contentText, postType);
         }
 
-        // 草稿和待审核态的媒体必须留在私有桶，同时兼容旧客户端回传公共/预签名 URL。
-        ArticleMediaHelper.DemotedGallery demotedGallery =
-                articleMediaHelper.demoteGallery(coverUrl, articleImages, "content");
-        coverUrl = demotedGallery.coverUrl();
-        articleImages = demotedGallery.imageUrls();
-        videoUrl = articleMediaHelper.demoteToPrivate(videoUrl, "video");
-
         Article article = isUpdate ? existingArticle : new Article();
         if (!isUpdate) {
             article.setUserId(userId);
@@ -431,22 +424,15 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     public void unpublishByAuthor(Long id, Long userId) {
         Article article = requireOwnedArticle(id, userId);
         taskService.cancelTasksByBusinessId(id, ContentConstants.TaskType.ARTICLE_PUBLISH);
-        // 取消上架：停上传并清分片，保留已合并文件
-        chunkUploadService.abortByArticleId(id, userId, false);
         ArticleContent content = articleContentService.getByArticleId(id);
-        ArticleMediaHelper.DemotedGallery demotedGallery = articleMediaHelper.demoteGallery(
-                article.getCoverUrl(), content == null ? List.of() : content.getImageUrls(), "content");
-        article.setCoverUrl(demotedGallery.coverUrl());
-        article.setVideoUrl(articleMediaHelper.demoteToPrivate(article.getVideoUrl(), "video"));
-        if (content != null) {
-            articleContentService.saveContent(id, content.getContent(), content.getContentHtml(),
-                    content.getContentParagraphs(), demotedGallery.imageUrls(), userId);
-        }
+        // 取消上架：只改状态和黑名单，不搬运公有桶中的图片/视频。
+        chunkUploadService.abortByArticleId(id, userId, false);
         article.setStatus(ContentConstants.ArticleStatus.DRAFT);
         article.setAuditMessage("作者下架，已移入草稿");
         article.setPublishedTime(null);
         article.setUpdateTime(LocalDateTime.now());
         updateById(article);
+        articleMediaHelper.blacklistRefs(collectMediaRefs(article, content));
         articleSearchSyncProducer.delete(id);
         articleSocialFeedProducer.remove(id);
         articleNotificationEventProducer.publishProfileInvalidation(userId,
@@ -544,9 +530,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         vo.setPublicId(article.getPublicId());
         vo.setTitle(article.getTitle());
         vo.setSummary(article.getSummary());
-        String coverRef = needPreview ? articleMediaHelper.normalizeReference(article.getCoverUrl()) : null;
+        String coverRef = needPreview ? article.getCoverUrl() : null;
         vo.setCoverUrl(needPreview ? articleMediaHelper.resolvePreview(coverRef)
-                : articleMediaHelper.resolvePublic(article.getCoverUrl()));
+                : articleMediaHelper.resolvePublic(article.getCoverUrl(), ownerOrAdmin));
         vo.setCoverRef(coverRef);
         vo.setPostType(article.getPostType());
         vo.setRefArticleId(article.getRefArticleId());
@@ -570,9 +556,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         if (isPublishedRefArticle(refArticle)) {
             vo.setRefArticle(buildRefVo(refArticle, authorMap));
         }
-        String videoRef = needPreview ? articleMediaHelper.normalizeReference(article.getVideoUrl()) : null;
+        String videoRef = needPreview ? article.getVideoUrl() : null;
         vo.setVideoUrl(needPreview ? articleMediaHelper.resolvePreview(videoRef)
-                : articleMediaHelper.resolvePublic(article.getVideoUrl()));
+                : articleMediaHelper.resolvePublic(article.getVideoUrl(), ownerOrAdmin));
         vo.setVideoRef(videoRef);
         vo.setCategoryId(article.getCategoryId());
         vo.setCategoryIds(ArticleCategoryHelper.resolveIds(article));
@@ -592,7 +578,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 List<String> refs = new ArrayList<>();
                 List<String> previews = new ArrayList<>();
                 for (String image : content.getImageUrls()) {
-                    String ref = articleMediaHelper.normalizeReference(image);
+                    String ref = image;
                     refs.add(ref);
                     previews.add(articleMediaHelper.resolvePreview(ref));
                 }
@@ -600,7 +586,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 vo.setImageUrls(previews);
             } else {
                 vo.setImageUrls(content.getImageUrls().stream()
-                        .map(articleMediaHelper::resolvePublic)
+                        .map(image -> articleMediaHelper.resolvePublic(image, ownerOrAdmin))
                         .toList());
             }
         }
@@ -774,6 +760,18 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         boolean wasPublished = Objects.equals(article.getStatus(), ContentConstants.ArticleStatus.PUBLISHED);
         boolean willBePublished = Objects.equals(status, ContentConstants.ArticleStatus.PUBLISHED);
         boolean newlyPublished = !wasPublished && willBePublished;
+        ArticleContent content = articleContentService.getByArticleId(id);
+        List<String> mediaRefs = collectMediaRefs(article, content);
+        if (newlyPublished) {
+            ArticleMediaHelper.PromotedGallery gallery = articleMediaHelper.promoteGallery(
+                    article.getCoverUrl(), content == null ? List.of() : content.getImageUrls(), "content");
+            article.setCoverUrl(gallery.coverUrl());
+            article.setVideoUrl(articleMediaHelper.promoteToPublic(article.getVideoUrl(), "video"));
+            if (content != null) {
+                articleContentService.saveContent(id, content.getContent(), content.getContentHtml(),
+                        content.getContentParagraphs(), gallery.imageUrls(), article.getUserId());
+            }
+        }
         LocalDateTime publishedTime = newlyPublished ? LocalDateTime.now() : article.getPublishedTime();
         article.setStatus(status);
         article.setUpdateTime(LocalDateTime.now());
@@ -785,6 +783,12 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             article.setAuditMessage("管理员下架");
         }
         updateById(article);
+        if (wasPublished && !willBePublished) {
+            articleMediaHelper.blacklistRefs(mediaRefs);
+        }
+        if (newlyPublished) {
+            articleMediaHelper.removeFromBlacklist(mediaRefs);
+        }
         if (wasPublished && !Objects.equals(status, ContentConstants.ArticleStatus.PUBLISHED)) {
             articleSocialFeedProducer.remove(id);
         }
@@ -937,10 +941,12 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             return;
         }
         Set<String> current = (currentRefs == null ? List.<String>of() : currentRefs).stream()
-                .map(articleMediaHelper::normalizeReference)
+                .filter(StringUtils::hasText)
+                .map(String::trim)
                 .collect(Collectors.toSet());
         oldRefs.stream()
-                .filter(ref -> !current.contains(articleMediaHelper.normalizeReference(ref)))
+                .filter(StringUtils::hasText)
+                .filter(ref -> !current.contains(ref.trim()))
                 .forEach(articleMediaHelper::deleteRef);
     }
 
