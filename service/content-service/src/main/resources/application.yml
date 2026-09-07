@@ -27,7 +27,7 @@ spring:
   # 文件上传配置
   servlet:
     multipart:
-      # 图片 ≤5MB；视频分片默认 5MB/片
+      # 图片 ≤5MB；媒体分片默认 1MB/片
       max-file-size: 6MB
       max-request-size: 32MB
   # MongoDB 配置

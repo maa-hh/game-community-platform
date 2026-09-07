@@ -82,14 +82,15 @@ ON DUPLICATE KEY UPDATE
 
 -- 通知用户状态（初始无未读）
 INSERT INTO t_notification_user_state (
-    user_id, unread_notification_count, feed_unread_flag,
+    user_id, unread_notification_count, feed_unread_flag, feed_unread_count,
     last_feed_event_time, last_feed_read_time, update_time
 ) VALUES (
-    @test_user_id, 0, 0, NULL, NULL, NOW()
+    @test_user_id, 0, 0, 0, NULL, NULL, NOW()
 )
 ON DUPLICATE KEY UPDATE
     unread_notification_count = 0,
     feed_unread_flag = 0,
+    feed_unread_count = 0,
     last_feed_event_time = NULL,
     last_feed_read_time = NULL,
     update_time = NOW();

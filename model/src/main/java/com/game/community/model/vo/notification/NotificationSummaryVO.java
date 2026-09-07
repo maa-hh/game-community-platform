@@ -14,4 +14,6 @@ public class NotificationSummaryVO implements Serializable {
     private Long unreadNotificationCount;
 
     private Boolean feedUnread;
+
+    private Long feedUnreadCount;
 }

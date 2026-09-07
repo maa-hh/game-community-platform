@@ -32,6 +32,12 @@ public class NotificationMessageVO implements Serializable {
 
     private String videoPublicId;
 
+    private Long gameAppId;
+
+    private String gameReviewId;
+
+    private String gameReviewReplyId;
+
     private Long reportId;
 
     /** 跳转目标用户对外账号 ID */

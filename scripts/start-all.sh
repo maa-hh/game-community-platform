@@ -13,6 +13,7 @@ CONF_FILE="$SCRIPT_DIR/lib/services.conf"
 START_DOCKER="${START_DOCKER:-1}"
 SYNC_DB="${SYNC_DB:-1}"
 START_INTERVAL="${START_INTERVAL:-4}"
+START_FRONTEND="${START_FRONTEND:-1}"
 
 load_services "$CONF_FILE"
 
@@ -64,6 +65,16 @@ if [[ -n "${gateway_idx:-}" ]]; then
   start_spring_service "${SERVICE_MODULES[$gateway_idx]}" gateway "${SERVICE_PORTS[$gateway_idx]}" background
 fi
 
+if [[ "$START_FRONTEND" == "1" ]]; then
+  echo ""
+  echo "========================================"
+  echo " 清理 3000 端口并启动前端生产服务"
+  echo "========================================"
+  FRONTEND_PORT="${FRONTEND_PORT:-3000}" \
+    BACKEND_URL="${BACKEND_URL:-http://127.0.0.1:8080}" \
+    "$SCRIPT_DIR/services/start-frontend.sh" background
+fi
+
 echo ""
 echo "========================================"
 echo " 全部微服务已在后台启动"
@@ -73,6 +84,10 @@ echo ""
 echo " 网关:     http://localhost:8080"
 echo " 用户服务: http://localhost:8081"
 echo " 弹幕服务: http://localhost:8094"
+if [[ "$START_FRONTEND" == "1" ]]; then
+  echo " 前端:     http://localhost:${FRONTEND_PORT:-3000}"
+fi
 echo " 单独启动: ./scripts/services/start-danmaku-service.sh [foreground|background]"
+echo " 单独启动前端: ./scripts/services/start-frontend.sh [foreground|background]"
 echo " 停止全部: ./scripts/stop-all.sh"
 echo "========================================"

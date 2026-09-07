@@ -31,6 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Service
 @RequiredArgsConstructor
@@ -171,7 +172,8 @@ public class ReportServiceImpl implements ReportService {
                 || targetType == SocialConstants.ReportTargetType.COMMENT
                 || targetType == SocialConstants.ReportTargetType.REPLY
                 || targetType == SocialConstants.ReportTargetType.USER
-                || targetType == SocialConstants.ReportTargetType.DANMAKU)) {
+                || targetType == SocialConstants.ReportTargetType.DANMAKU
+                || targetType == SocialConstants.ReportTargetType.FEEDBACK)) {
             throw new BusinessException("举报目标类型不合法");
         }
     }
@@ -185,6 +187,9 @@ public class ReportServiceImpl implements ReportService {
     }
 
     private Long resolveReportedUserId(Long reporterId, Integer targetType, Long targetId) {
+        if (targetType == SocialConstants.ReportTargetType.FEEDBACK) {
+            return null;
+        }
         if (targetId == null) {
             throw new BusinessException("举报目标不存在");
         }
@@ -240,6 +245,10 @@ public class ReportServiceImpl implements ReportService {
             throw new BusinessException("举报目标不存在");
         }
         String normalized = targetId.trim();
+        if (targetType == SocialConstants.ReportTargetType.FEEDBACK) {
+            // 反馈没有实际目标，生成一个内部占位 ID，避免命中举报去重索引。
+            return ThreadLocalRandom.current().nextLong(1, Long.MAX_VALUE);
+        }
         if (targetType == SocialConstants.ReportTargetType.ARTICLE) {
             var article = remoteClient.getArticleByPublicId(normalized);
             if (article == null || article.getId() == null) {

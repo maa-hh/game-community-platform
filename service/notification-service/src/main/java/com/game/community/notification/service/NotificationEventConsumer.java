@@ -16,7 +16,7 @@ public class NotificationEventConsumer {
 
     private final NotificationService notificationService;
 
-    @KafkaListener(topics = KafkaTopicConstants.NOTIFICATION_EVENT_READY_TOPIC, groupId = "notification-service-group")
+    @KafkaListener(topics = KafkaTopicConstants.NOTIFICATION_EVENT_TOPIC, groupId = "notification-service-group")
     public void consume(NotificationEventMessage event) {
         if (event == null || event.getRecipientUserId() == null || event.getEventType() == null) {
             log.warn("忽略无效通知事件: {}", event);

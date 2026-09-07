@@ -17,6 +17,7 @@ import com.game.community.model.vo.social.GameReviewReplyVO;
 import com.game.community.model.vo.social.GameReviewSocialStatsVO;
 import com.game.community.model.vo.user.UserCardInternalVO;
 import com.game.community.social.client.SocialRemoteClient;
+import com.game.community.social.event.NotificationEventProducer;
 import com.game.community.social.mapper.SocialGameReviewLikeMapper;
 import com.game.community.social.mapper.SocialGameReviewMapper;
 import com.game.community.social.mapper.SocialGameReviewReplyLikeMapper;
@@ -50,6 +51,7 @@ public class GameReviewSocialServiceImpl implements GameReviewSocialService {
     private final SocialGameReviewContentRepository reviewContentRepository;
     private final SocialGameReviewReplyContentRepository replyContentRepository;
     private final SocialRemoteClient remoteClient;
+    private final NotificationEventProducer notificationEventProducer;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -76,6 +78,10 @@ public class GameReviewSocialServiceImpl implements GameReviewSocialService {
         } else if (review.getStatus() == null || review.getStatus() != SocialConstants.GameReviewStatus.NORMAL) {
             review.setStatus(SocialConstants.GameReviewStatus.NORMAL);
             review.setUpdateTime(now);
+            reviewMapper.updateById(review);
+        }
+        if (userId != null && !Objects.equals(review.getUserId(), userId)) {
+            review.setUserId(userId);
             reviewMapper.updateById(review);
         }
         if (StringUtils.hasText(content) && review != null) {
@@ -158,7 +164,8 @@ public class GameReviewSocialServiceImpl implements GameReviewSocialService {
                 .collect(Collectors.toMap(SocialGameReviewReplyContent::getReplyId,
                         SocialGameReviewReplyContent::getContent, (a, b) -> a));
         Map<Long, UserCardInternalVO> users = userMap(result.getRecords().stream()
-                .map(SocialGameReviewReply::getUserId).toList());
+                .flatMap(item -> java.util.stream.Stream.of(item.getUserId(), item.getReplyToUserId()))
+                .toList());
         Map<String, Boolean> liked = likedReplyMap(replyIds, userId);
         List<GameReviewReplyVO> records = result.getRecords().stream().map(item -> {
             GameReviewReplyVO vo = new GameReviewReplyVO();
@@ -168,6 +175,9 @@ public class GameReviewSocialServiceImpl implements GameReviewSocialService {
             vo.setAccountId(user == null ? null : user.getAccountId());
             vo.setUsername(user == null ? item.getUsername() : user.getUsername());
             vo.setAvatar(user == null ? item.getAvatar() : user.getAvatar());
+            UserCardInternalVO replyTo = users.get(item.getReplyToUserId());
+            vo.setReplyToAccountId(replyTo == null ? null : replyTo.getAccountId());
+            vo.setReplyToUsername(replyTo == null ? item.getReplyToUsername() : replyTo.getUsername());
             vo.setContent(contents.getOrDefault(item.getReplyId(), ""));
             vo.setLikeCount(item.getLikeCount() == null ? 0L : item.getLikeCount());
             vo.setLiked(liked.getOrDefault(item.getReplyId(), false));
@@ -186,12 +196,21 @@ public class GameReviewSocialServiceImpl implements GameReviewSocialService {
             throw new BusinessException("回复内容不能为空");
         }
         UserCardInternalVO user = remoteClient.listUsersByIds(List.of(userId)).stream().findFirst().orElse(null);
+        SocialGameReviewReply replyTo = null;
+        if (dto.getReplyToReplyId() != null && !dto.getReplyToReplyId().isBlank()) {
+            replyTo = requireReply(dto.getReplyToReplyId());
+            if (!Objects.equals(replyTo.getReviewId(), reviewId)) {
+                throw new BusinessException("回复对象不属于该评价");
+            }
+        }
         LocalDateTime now = LocalDateTime.now();
         String replyId = UUID.randomUUID().toString().replace("-", "");
         SocialGameReviewReply reply = new SocialGameReviewReply();
         reply.setReplyId(replyId);
         reply.setReviewId(reviewId);
         reply.setUserId(userId);
+        reply.setReplyToUserId(replyTo == null ? null : replyTo.getUserId());
+        reply.setReplyToUsername(replyTo == null ? null : replyTo.getUsername());
         reply.setUsername(user == null ? "玩家" + userId : user.getUsername());
         reply.setAvatar(user == null || user.getAvatar() == null ? "" : user.getAvatar());
         reply.setLikeCount(0L);
@@ -211,6 +230,11 @@ public class GameReviewSocialServiceImpl implements GameReviewSocialService {
                 .eq(SocialGameReview::getId, review.getId())
                 .setSql("reply_count = reply_count + 1")
                 .set(SocialGameReview::getUpdateTime, now));
+        Long recipientUserId = replyTo == null ? review.getUserId() : replyTo.getUserId();
+        if (recipientUserId != null && !Objects.equals(recipientUserId, userId)) {
+            notificationEventProducer.publishGameReviewReply(
+                    recipientUserId, user, review.getAppId(), reviewId, replyId, document.getContent());
+        }
         return replyId;
     }
 
@@ -247,6 +271,11 @@ public class GameReviewSocialServiceImpl implements GameReviewSocialService {
             reviewLikeMapper.insert(like);
             reviewMapper.update(null, new LambdaUpdateWrapper<SocialGameReview>()
                     .eq(SocialGameReview::getId, review.getId()).setSql("like_count = like_count + 1"));
+            UserCardInternalVO actor = remoteClient.listUsersByIds(List.of(userId)).stream().findFirst().orElse(null);
+            if (review.getUserId() != null && !Objects.equals(review.getUserId(), userId)) {
+                notificationEventProducer.publishGameReviewLike(
+                        review.getUserId(), actor, review.getAppId(), reviewId);
+            }
         } catch (DuplicateKeyException ignored) {
             // 幂等点赞：重复点击不重复计数。
         }
@@ -279,6 +308,13 @@ public class GameReviewSocialServiceImpl implements GameReviewSocialService {
             replyLikeMapper.insert(like);
             replyMapper.update(null, new LambdaUpdateWrapper<SocialGameReviewReply>()
                     .eq(SocialGameReviewReply::getId, reply.getId()).setSql("like_count = like_count + 1"));
+            UserCardInternalVO actor = remoteClient.listUsersByIds(List.of(userId)).stream().findFirst().orElse(null);
+            SocialGameReview review = findReview(reply.getReviewId());
+            if (reply.getUserId() != null && review != null && !Objects.equals(reply.getUserId(), userId)) {
+                notificationEventProducer.publishGameReviewReplyLike(
+                        reply.getUserId(), actor, review.getAppId(),
+                        reply.getReviewId(), replyId);
+            }
         } catch (DuplicateKeyException ignored) {
             // 幂等点赞。
         }

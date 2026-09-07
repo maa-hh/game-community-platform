@@ -13,6 +13,8 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 
 @Slf4j
@@ -76,6 +78,30 @@ public class NotificationEventProducer {
                 null));
     }
 
+    public void publishGameReviewReply(Long recipientUserId, UserCardInternalVO actor,
+                                       Long appId, String reviewId, String replyId, String content) {
+        publish(gameReviewEvent(recipientUserId, actor,
+                NotificationConstants.EventType.GAME_REVIEW_REPLY,
+                appId, reviewId, replyId,
+                safeUsername(actor) + " 回复了你的游戏评价", trimText(content)));
+    }
+
+    public void publishGameReviewLike(Long recipientUserId, UserCardInternalVO actor,
+                                      Long appId, String reviewId) {
+        publish(gameReviewEvent(recipientUserId, actor,
+                NotificationConstants.EventType.GAME_REVIEW_LIKE,
+                appId, reviewId, null,
+                safeUsername(actor) + " 赞了你的游戏评价", null));
+    }
+
+    public void publishGameReviewReplyLike(Long recipientUserId, UserCardInternalVO actor,
+                                           Long appId, String reviewId, String replyId) {
+        publish(gameReviewEvent(recipientUserId, actor,
+                NotificationConstants.EventType.GAME_REVIEW_REPLY_LIKE,
+                appId, reviewId, replyId,
+                safeUsername(actor) + " 赞了你的评价回复", null));
+    }
+
     public void publishFollow(Long recipientUserId, UserCardInternalVO actor) {
         publish(buildEvent(recipientUserId, actor,
                 NotificationConstants.EventType.FOLLOW,
@@ -94,7 +120,9 @@ public class NotificationEventProducer {
                 NotificationConstants.EventType.REPORT_SUBMITTED,
                 routeTypeForTargetType(targetType),
                 articleId, commentId, replyId, reportId, targetUserId, null,
-                "举报已提交，管理员会尽快处理",
+                targetType != null && targetType == (long) SocialConstants.ReportTargetType.FEEDBACK
+                        ? "问题反馈已提交，管理员会尽快处理"
+                        : "举报已提交，管理员会尽快处理",
                 trimText(reason)
         );
         event.setDanmakuId(danmakuId);
@@ -102,7 +130,7 @@ public class NotificationEventProducer {
         publish(event);
     }
 
-    public void publishFeedUnread(Long recipientUserId, LocalDateTime occurredAt) {
+    public void publishFeedUnread(Long recipientUserId, Long feedItemId, LocalDateTime occurredAt) {
         NotificationEventMessage event = systemEvent(
                 recipientUserId,
                 NotificationConstants.EventType.FEED_UNREAD,
@@ -111,7 +139,31 @@ public class NotificationEventProducer {
                 "",
                 null
         );
+        event.setFeedItemId(feedItemId);
         event.setOccurredAt(occurredAt == null ? LocalDateTime.now() : occurredAt);
+        publish(event);
+    }
+
+    public void publishProfileInvalidation(Long recipientUserId, String... domains) {
+        if (recipientUserId == null || domains == null || domains.length == 0) {
+            return;
+        }
+        NotificationEventMessage event = systemEvent(
+                recipientUserId,
+                NotificationConstants.EventType.PROFILE_DATA_INVALIDATED,
+                NotificationConstants.RouteType.NONE,
+                null, null, null, null, null, null,
+                "",
+                null
+        );
+        List<String> normalized = Arrays.stream(domains)
+                .filter(domain -> domain != null && !domain.isBlank())
+                .distinct()
+                .toList();
+        if (normalized.isEmpty()) {
+            return;
+        }
+        event.setInvalidationDomains(normalized);
         publish(event);
     }
 
@@ -148,6 +200,18 @@ public class NotificationEventProducer {
                 articleId, commentId, replyId, reportId, targetUserId, targetAccountId, previewText, resultText);
         event.setActorUserId(0L);
         event.setActorUsername("系统通知");
+        return event;
+    }
+
+    private NotificationEventMessage gameReviewEvent(Long recipientUserId, UserCardInternalVO actor,
+                                                     Integer eventType, Long appId, String reviewId,
+                                                     String replyId, String previewText, String resultText) {
+        NotificationEventMessage event = buildEvent(recipientUserId, actor, eventType,
+                NotificationConstants.RouteType.GAME_REVIEW,
+                null, null, null, null, null, null, previewText, resultText);
+        event.setGameAppId(appId);
+        event.setGameReviewId(reviewId);
+        event.setGameReviewReplyId(replyId);
         return event;
     }
 

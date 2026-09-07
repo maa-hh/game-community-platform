@@ -546,6 +546,8 @@ public class ModerationServiceImpl implements ModerationService {
     private void publishReportNotifications(ModerationTask task, String action, String remark) {
         RouteContext route = resolveRouteContext(task);
         boolean upheld = !ModerationConstants.HandleAction.NO_VIOLATION.equals(action);
+        boolean feedback = task.getTargetType() != null
+                && task.getTargetType() == SocialConstants.ReportTargetType.FEEDBACK;
         if (task.getReporterId() != null) {
             notificationEventProducer.publishReportResult(
                     task.getReporterId(),
@@ -557,7 +559,7 @@ public class ModerationServiceImpl implements ModerationService {
                     route.videoPublicId(),
                     route.targetUserId(),
                     task.getSourceId(),
-                    upheld ? "你提交的举报已成立" : "你提交的举报未通过",
+                    feedback ? "你的问题反馈已处理" : (upheld ? "你提交的举报已成立" : "你提交的举报未通过"),
                     remark);
         }
         if (upheld
@@ -716,6 +718,13 @@ public class ModerationServiceImpl implements ModerationService {
     }
 
     private void enrichReportContext(ModerationTaskDetailVO vo, ModerationTask task) {
+        if (task.getTargetType() != null
+                && task.getTargetType() == SocialConstants.ReportTargetType.FEEDBACK) {
+            vo.setAvailableReportActions(List.of());
+            vo.setReviewable(Boolean.TRUE);
+            vo.setCurrentTargetStatus("待管理员处理");
+            return;
+        }
         List<String> available = new ArrayList<>();
         if (isReportActionAvailable(task, ModerationConstants.HandleAction.OFFLINE_ARTICLE)) {
             available.add(ModerationConstants.HandleAction.OFFLINE_ARTICLE);

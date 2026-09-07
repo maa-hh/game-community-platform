@@ -13,6 +13,8 @@ content-category-seed.sql
 danmaku.sql
 danmaku-account-id-migration.sql
 social.sql
+social-report-target-type-migration.sql
+social-feed-post-type-capacity-migration.sql
 social-production-hardening.sql
 social-outbox-migration.sql
 recommend-hot-rank-behavior.sql
@@ -21,6 +23,7 @@ recommend-hot-rank-idempotency-migration.sql
 recommend-hot-rank-danmaku.sql
 notification.sql
 notification-v2-migration.sql
+notification-feed-unread-count.sql
 notification-danmaku-migration.sql
 shop.sql
 shop-v3-migration.sql
@@ -51,3 +54,4 @@ steam-achievement-lazy-refresh.sql
 steam-achievement-icon-url-migration.sql
 steam-game-review-public-id.sql
 social-game-review.sql
+notification-game-review-migration.sql

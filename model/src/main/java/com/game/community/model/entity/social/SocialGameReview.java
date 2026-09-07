@@ -20,6 +20,8 @@ public class SocialGameReview implements Serializable {
 
     private Long appId;
 
+    private Long userId;
+
     private Long likeCount;
 
     private Long replyCount;

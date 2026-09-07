@@ -1,5 +1,5 @@
 #!/bin/bash
-# 启动 frontend（React + Vite）：环境检测、依赖安装、端口/PID 清理、dev server
+# 启动 frontend（React + CRA）：构建生产包、清理端口/PID、启动静态站点与 API 代理
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -7,11 +7,31 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/common.sh"
 
 RUN_MODE="${1:-foreground}" # foreground | background
-FRONTEND_DIR="${PROJECT_ROOT}/frontend"
-FRONTEND_PORT="${FRONTEND_PORT:-5173}"
+FRONTEND_DIR="${FRONTEND_DIR:-}"
+FRONTEND_PORT="${FRONTEND_PORT:-3000}"
+BACKEND_URL="${BACKEND_URL:-http://127.0.0.1:8080}"
 SERVICE_NAME="frontend"
 PID_FILE="${PID_DIR}/${SERVICE_NAME}.pid"
 LOG_FILE="${LOG_DIR}/${SERVICE_NAME}.log"
+
+resolve_frontend_dir() {
+  if [[ -n "$FRONTEND_DIR" ]]; then
+    return 0
+  fi
+
+  local candidate
+  for candidate in \
+    "${PROJECT_ROOT}/frontend" \
+    "${PROJECT_ROOT}/../../reactproject/game-community" \
+    "${HOME}/reactproject/game-community"; do
+    if [[ -f "${candidate}/package.json" ]]; then
+      FRONTEND_DIR="$(cd "$candidate" && pwd)"
+      return 0
+    fi
+  done
+
+  FRONTEND_DIR="${PROJECT_ROOT}/frontend"
+}
 
 ensure_node_path() {
   local node_home
@@ -55,16 +75,9 @@ stop_frontend_pid() {
   stop_service_by_name "$SERVICE_NAME"
 }
 
-ensure_env_file() {
-  if [[ ! -f "${FRONTEND_DIR}/.env.development" && -f "${FRONTEND_DIR}/.env.example" ]]; then
-    cp "${FRONTEND_DIR}/.env.example" "${FRONTEND_DIR}/.env.development"
-    echo "[配置] 已从 .env.example 生成 .env.development"
-  fi
-}
-
 ensure_dependencies() {
   cd "$FRONTEND_DIR"
-  if [[ ! -d node_modules ]] || [[ ! -d node_modules/react ]]; then
+  if [[ ! -d node_modules ]] || [[ ! -d node_modules/react ]] || [[ ! -d node_modules/http-proxy ]]; then
     echo "[依赖] 安装 npm 包（首次或 node_modules 缺失）..."
     npm install
   else
@@ -72,19 +85,25 @@ ensure_dependencies() {
   fi
 }
 
-start_dev_server() {
+build_frontend() {
   cd "$FRONTEND_DIR"
-  export VITE_PROXY_TARGET="${VITE_PROXY_TARGET:-http://127.0.0.1:8080}"
+  echo "[构建] frontend production bundle"
+  npm run build
+}
 
-  echo "[启动] frontend dev server → http://127.0.0.1:${FRONTEND_PORT}"
-  echo "[代理] /api → ${VITE_PROXY_TARGET}"
+start_production_server() {
+  cd "$FRONTEND_DIR"
+
+  echo "[启动] frontend production server → http://127.0.0.1:${FRONTEND_PORT}"
+  echo "[代理] API → ${BACKEND_URL}"
 
   if [[ "$RUN_MODE" == "background" ]]; then
-    nohup npm run dev -- --port "$FRONTEND_PORT" >"$LOG_FILE" 2>&1 &
+    nohup env PORT="$FRONTEND_PORT" BACKEND_URL="$BACKEND_URL" \
+      npm run serve:production >"$LOG_FILE" 2>&1 &
     echo $! >"$PID_FILE"
     echo "[后台] frontend PID=$(cat "$PID_FILE"), 日志: $LOG_FILE"
   else
-    npm run dev -- --port "$FRONTEND_PORT"
+    PORT="$FRONTEND_PORT" BACKEND_URL="$BACKEND_URL" npm run serve:production
   fi
 }
 
@@ -92,6 +111,7 @@ main() {
   load_env
   require_node
   require_npm
+  resolve_frontend_dir
 
   if [[ ! -d "$FRONTEND_DIR" ]]; then
     echo "frontend 目录不存在: $FRONTEND_DIR" >&2
@@ -102,9 +122,9 @@ main() {
   stop_frontend_pid
   kill_port "$FRONTEND_PORT"
 
-  ensure_env_file
   ensure_dependencies
-  start_dev_server
+  build_frontend
+  start_production_server
 }
 
 main "$@"

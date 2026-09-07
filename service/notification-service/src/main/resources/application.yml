@@ -59,19 +59,6 @@ spring:
       retries: ${NOTIFICATION_KAFKA_RETRIES:5}
       properties:
         enable.idempotence: true
-    streams:
-      application-id: notification-service-forward-stream-v2
-      properties:
-        processing.guarantee: at_least_once
-        auto.offset.reset: earliest
-        default.key.serde: org.apache.kafka.common.serialization.Serdes$StringSerde
-        default.value.serde: org.springframework.kafka.support.serializer.JsonSerde
-
-notification:
-  kafka:
-    window-seconds: ${NOTIFICATION_KAFKA_WINDOW_SECONDS:1}
-    window-grace-ms: ${NOTIFICATION_KAFKA_WINDOW_GRACE_MS:200}
-
 # MyBatis-Plus 配置
 mybatis-plus:
   mapper-locations: classpath*:mapper/*.xml

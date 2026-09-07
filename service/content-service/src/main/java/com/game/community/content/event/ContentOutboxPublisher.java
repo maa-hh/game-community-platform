@@ -92,6 +92,11 @@ public class ContentOutboxPublisher {
                             markFailed(event, token, error);
                             return null;
                         });
+                case "SOCIAL_FEED_REMOVE" -> CompletableFuture.runAsync(() -> removeSocialFeed(event, token), remoteExecutor)
+                        .exceptionally(error -> {
+                            markFailed(event, token, error);
+                            return null;
+                        });
                 case "GAME_DISCUSS_SYNC" -> CompletableFuture.runAsync(() -> sendGameDiscussSync(event, token), remoteExecutor)
                         .exceptionally(error -> {
                             markFailed(event, token, error);
@@ -140,6 +145,16 @@ public class ContentOutboxPublisher {
         contentOutboxMapper.markSent(event.getId(), token);
     }
 
+    private void removeSocialFeed(ContentOutboxEvent event, String token) {
+        Map<String, Object> payload = JSON.parseObject(event.getPayload());
+        Long articleId = toLong(payload.get("articleId"));
+        Result<Void> result = socialFeignClient.removeArticleFromFeeds(articleId, socialInternalToken);
+        if (result == null || result.getCode() == null || result.getCode() != 200) {
+            throw new IllegalStateException("社交 Feed 清理服务返回失败");
+        }
+        contentOutboxMapper.markSent(event.getId(), token);
+    }
+
     private void sendGameDiscussSync(ContentOutboxEvent event, String token) {
         Map<String, Object> payload = JSON.parseObject(event.getPayload());
         List<Long> appIds = JSON.parseArray(JSON.toJSONString(payload.get("appIds")), Long.class);
@@ -155,6 +170,10 @@ public class ContentOutboxPublisher {
         Long articleId = toLong(payload.get("articleId"));
         Long userId = toLong(payload.get("userId"));
         List<String> refs = JSON.parseArray(JSON.toJSONString(payload.get("refs")), String.class);
+        Result<Void> feedResult = socialFeignClient.removeArticleFromFeeds(articleId, socialInternalToken);
+        if (feedResult == null || feedResult.getCode() == null || feedResult.getCode() != 200) {
+            throw new IllegalStateException("社交 Feed 清理服务返回失败");
+        }
         articleMediaHelper.deleteRefsStrict(refs);
         chunkUploadService.abortByArticleId(articleId, userId, true);
         articleContentService.deleteByArticleId(articleId);

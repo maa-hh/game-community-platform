@@ -9,7 +9,7 @@
 - SSE 长连接实时推送（通知到达、摘要更新、Feed 红点、心跳）
 - 通知消息分页查询、全部已读标记、Feed 红点清除
 - 用户通知状态（未读数、Feed 红点）自动初始化与并发安全
-- 点赞/收藏在 Kafka Streams 短窗口内按“接收人+内容目标”聚合，评论、关注、系统通知实时落库
+- 所有通知事件经 Kafka 直通通知消费组，点赞、收藏、评论、关注、系统通知均实时落库
 - 弹幕可靠事件由独立消费组转换为视频作者的弹幕互动通知；举报通知保留举报与弹幕定位信息
 
 **技术栈**：Spring Boot 3 + MyBatis-Plus + MySQL + Redis + Kafka + SSE + Nacos + Sentinel
@@ -58,6 +58,7 @@
 | user_id | BIGINT NOT NULL | 用户ID（唯一） |
 | unread_notification_count | BIGINT DEFAULT 0 | 普通通知未读数 |
 | feed_unread_flag | TINYINT DEFAULT 0 | Feed未读红点（0否 1是） |
+| feed_unread_count | BIGINT DEFAULT 0 | Feed未读动态数 |
 | last_feed_event_time | DATETIME DEFAULT NULL | 最近一次Feed事件时间 |
 | last_feed_read_time | DATETIME DEFAULT NULL | 最近一次Feed清除时间 |
 | update_time | DATETIME ON UPDATE CURRENT_TIMESTAMP | 更新时间 |
@@ -88,12 +89,11 @@
 | ARTICLE_AUDIT_HUMAN_REVIEW | 17 | 帖子进入人工审核 |
 | DANMAKU_COMMENT | 18 | 视频弹幕互动 |
 
-### 2.4 分类与聚合
+### 2.4 分类
 
-- `like_favorite`：文章点赞、评论点赞、回复点赞、文章收藏；聚合窗口默认 1 秒，可通过 `notification.kafka.window-seconds` 调整。
+- `like_favorite`：文章点赞、评论点赞、回复点赞、文章收藏。
 - `comment`：文章评论、评论回复、弹幕互动。
 - `system`：资料/帖子审核结果、举报提交、举报结果、被举报处理结果。
-- 聚合键为 `recipientUserId:articleId:commentId:replyId`，因此同一内容目标的点赞与收藏可以合并，不同评论/回复不会串通知。
 
 ### 2.3 SSE 事件类型常量（NotificationConstants.SseEventType）
 
@@ -210,7 +210,7 @@ public void heartbeat() {
 @AllArgsConstructor
 public class NotificationSseEventVO implements Serializable {
     private String eventType;           // 事件类型标识
-    private NotificationSummaryVO summary; // 通知摘要（未读数+Feed红点）
+    private NotificationSummaryVO summary; // 通知摘要（通知未读数+Feed未读数）
     private NotificationMessageVO message; // 通知消息体（仅 notification_created 有值）
 }
 ```

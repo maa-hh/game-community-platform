@@ -43,7 +43,61 @@ public class ArticleMediaHelper {
             return minIOUtils.generatePrivateUrl(toObjectKey(ref),
                     ContentConstants.MediaLimit.PRESIGNED_EXPIRE_SECONDS);
         }
+        String privateObjectName = minIOUtils.parsePrivateObjectName(ref);
+        if (StringUtils.hasText(privateObjectName)) {
+            return minIOUtils.generatePrivateUrl(privateObjectName,
+                    ContentConstants.MediaLimit.PRESIGNED_EXPIRE_SECONDS);
+        }
         return ref;
+    }
+
+    /** 将公共媒体地址按当前 MINIO_PUBLIC_ENDPOINT 动态解析。 */
+    public String resolvePublic(String ref) {
+        return minIOUtils.resolvePublicUrl(ref);
+    }
+
+    /** 将作者接口收到的私有 URL 归一化为可持久化的 pending:// 引用。 */
+    public String normalizeReference(String ref) {
+        if (!StringUtils.hasText(ref) || isPending(ref)) {
+            return ref;
+        }
+        String privateObjectName = minIOUtils.parsePrivateObjectName(ref);
+        return StringUtils.hasText(privateObjectName) ? PENDING_PREFIX + privateObjectName : ref;
+    }
+
+    /** 将公共媒体移回私有桶；外部资源保持原 URL。 */
+    public String demoteToPrivate(String ref, String folder) {
+        if (!StringUtils.hasText(ref) || isPending(ref)) {
+            return ref;
+        }
+        String normalized = normalizeReference(ref);
+        if (isPending(normalized)) {
+            return normalized;
+        }
+        String privateObjectName = minIOUtils.movePublicObjectToPrivate(ref, folder);
+        return StringUtils.hasText(privateObjectName) ? PENDING_PREFIX + privateObjectName : ref;
+    }
+
+    /** 封面与图集去重转私有，避免同一对象被移动两次。 */
+    public DemotedGallery demoteGallery(String coverUrl, List<String> imageUrls, String folder) {
+        Map<String, String> demoted = new LinkedHashMap<>();
+        String trimmedCover = StringUtils.hasText(coverUrl) ? coverUrl.trim() : null;
+        String privateCover = demoteToPrivate(trimmedCover, folder);
+        if (StringUtils.hasText(trimmedCover)) {
+            demoted.put(trimmedCover, privateCover);
+        }
+
+        List<String> privateImages = new ArrayList<>();
+        if (imageUrls != null) {
+            for (String ref : imageUrls) {
+                if (!StringUtils.hasText(ref)) {
+                    continue;
+                }
+                String key = ref.trim();
+                privateImages.add(demoted.computeIfAbsent(key, k -> demoteToPrivate(k, folder)));
+            }
+        }
+        return new DemotedGallery(privateCover, privateImages);
     }
 
     public String promoteToPublic(String ref, String folder) {
@@ -82,7 +136,7 @@ public class ArticleMediaHelper {
             if (isPending(ref)) {
                 minIOUtils.deletePrivateObject(toObjectKey(ref));
             } else {
-                minIOUtils.deletePublicFileByUrl(ref);
+                minIOUtils.deleteFileByUrl(ref);
             }
         } catch (Exception e) {
             log.warn("删除媒体失败: ref={}, error={}", ref, e.getMessage());
@@ -110,7 +164,7 @@ public class ArticleMediaHelper {
             if (isPending(ref)) {
                 minIOUtils.deletePrivateObject(toObjectKey(ref));
             } else {
-                minIOUtils.deletePublicFileByUrl(ref);
+                minIOUtils.deleteFileByUrl(ref);
             }
         }
     }
@@ -151,5 +205,8 @@ public class ArticleMediaHelper {
     }
 
     public record PromotedGallery(String coverUrl, List<String> imageUrls) {
+    }
+
+    public record DemotedGallery(String coverUrl, List<String> imageUrls) {
     }
 }

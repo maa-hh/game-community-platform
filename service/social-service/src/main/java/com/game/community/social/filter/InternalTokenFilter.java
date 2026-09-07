@@ -32,7 +32,10 @@ public class InternalTokenFilter implements Filter {
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
             throws IOException, ServletException {
         HttpServletRequest httpRequest = (HttpServletRequest) request;
-        if (!SocialConstants.FEED_PUBLISH_PATH.equals(httpRequest.getRequestURI())
+        String requestUri = httpRequest.getRequestURI();
+        boolean protectedFeedPath = SocialConstants.FEED_PUBLISH_PATH.equals(requestUri)
+                || requestUri.startsWith(SocialConstants.FEED_ARTICLE_DELETE_PATH_PREFIX);
+        if (!protectedFeedPath
                 || valid(httpRequest.getHeader(SocialConstants.INTERNAL_TOKEN_HEADER))) {
             chain.doFilter(request, response);
             return;

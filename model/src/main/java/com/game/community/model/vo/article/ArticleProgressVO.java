@@ -11,7 +11,8 @@ import java.util.List;
 @Data
 public class ArticleProgressVO implements Serializable {
 
-    private Long articleId;
+    /** 文章公开 ID，与作者侧文章接口及前端进度任务使用的 publicId 保持一致。 */
+    private String articleId;
     private Integer status;
     private String auditMessage;
     private Integer postType;

@@ -25,6 +25,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.io.SequenceInputStream;
 import java.net.URL;
 import java.net.URLConnection;
 import java.net.URI;
@@ -32,6 +33,8 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Enumeration;
+import java.util.Iterator;
 import java.util.List;
 import java.util.UUID;
 
@@ -44,6 +47,7 @@ public class MinIOUtils {
 
     private final MinIOProperties properties;
     private final MinioClient minioClient;
+    private final MinioClient publicMinioClient;
     private volatile boolean privateBucketReady;
     private volatile boolean publicBucketReady;
 
@@ -51,6 +55,12 @@ public class MinIOUtils {
         this.properties = properties;
         this.minioClient = MinioClient.builder()
                 .endpoint(properties.getEndpoint())
+                .credentials(properties.getAccessKey(), properties.getSecretKey())
+                .build();
+        String publicEndpoint = StringUtils.hasText(properties.getPublicEndpoint())
+                ? properties.getPublicEndpoint() : properties.getEndpoint();
+        this.publicMinioClient = MinioClient.builder()
+                .endpoint(publicEndpoint)
                 .credentials(properties.getAccessKey(), properties.getSecretKey())
                 .build();
     }
@@ -127,7 +137,7 @@ public class MinIOUtils {
     public String generatePrivateUrl(String objectName, int expireSeconds) {
         try {
             ensurePrivateBucket(client());
-            return client().getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
+            return publicMinioClient.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
                     .method(Method.GET)
                     .bucket(properties.getPrivateBucketName())
                     .object(objectName)
@@ -165,6 +175,39 @@ public class MinIOUtils {
             return buildPublicUrl(publicObjectName);
         } catch (Exception e) {
             throw new IllegalStateException("发布文件到公共桶失败", e);
+        }
+    }
+
+    /**
+     * 将已发布的公共对象移回私有桶，返回新的私有对象名。
+     * 外部 URL 不属于本 MinIO 实例时返回 null，由上层保留原引用。
+     */
+    public String movePublicObjectToPrivate(String publicFileUrl, String privateFolder) {
+        String publicObjectName = parseObjectName(publicFileUrl, properties.getPublicBucketName());
+        if (!StringUtils.hasText(publicObjectName)) {
+            return null;
+        }
+        try {
+            MinioClient client = client();
+            ensurePublicBucket(client);
+            ensurePrivateBucket(client);
+            String suffix = publicObjectName.contains(".")
+                    ? publicObjectName.substring(publicObjectName.lastIndexOf('.')) : "";
+            String folder = StringUtils.hasText(privateFolder) ? privateFolder.trim() : "content";
+            String privateObjectName = properties.getPrivateFilePrefix() + "/" + folder + "/"
+                    + UUID.randomUUID() + suffix;
+            client.copyObject(CopyObjectArgs.builder()
+                    .bucket(properties.getPrivateBucketName())
+                    .object(privateObjectName)
+                    .source(CopySource.builder()
+                            .bucket(properties.getPublicBucketName())
+                            .object(publicObjectName)
+                            .build())
+                    .build());
+            removeObject(properties.getPublicBucketName(), publicObjectName);
+            return privateObjectName;
+        } catch (Exception e) {
+            throw new IllegalStateException("公共文件转私有失败", e);
         }
     }
 
@@ -226,6 +269,53 @@ public class MinIOUtils {
         }
     }
 
+    /**
+     * 按顺序读取私有桶中的多个分片并写入目标对象。
+     *
+     * <p>MinIO Compose 对除最后一段外的来源对象有 5MiB 最小限制，1MiB 上传分片不能直接
+     * Compose，因此小分片协议使用流式串接，避免把完整文件一次性加载进内存。</p>
+     */
+    public void concatenatePrivateObjects(String targetObjectName,
+                                          List<String> sourceObjectNames,
+                                          long objectSize,
+                                          String contentType) {
+        try {
+            MinioClient client = client();
+            ensurePrivateBucket(client);
+            Iterator<String> sourceIterator = sourceObjectNames.iterator();
+            Enumeration<InputStream> streams = new Enumeration<>() {
+                @Override
+                public boolean hasMoreElements() {
+                    return sourceIterator.hasNext();
+                }
+
+                @Override
+                public InputStream nextElement() {
+                    String sourceObjectName = sourceIterator.next();
+                    try {
+                        return client.getObject(GetObjectArgs.builder()
+                                .bucket(properties.getPrivateBucketName())
+                                .object(sourceObjectName)
+                                .build());
+                    } catch (Exception e) {
+                        throw new IllegalStateException("读取私有分片失败", e);
+                    }
+                }
+            };
+            try (InputStream inputStream = new SequenceInputStream(streams)) {
+                client.putObject(PutObjectArgs.builder()
+                        .bucket(properties.getPrivateBucketName())
+                        .object(targetObjectName)
+                        .stream(inputStream, objectSize, -1)
+                        .contentType(StringUtils.hasText(contentType)
+                                ? contentType : "application/octet-stream")
+                        .build());
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("私有分片合并失败", e);
+        }
+    }
+
     public FilePayload readPrivateObject(String objectName) {
         try {
             MinioClient client = client();
@@ -282,6 +372,45 @@ public class MinIOUtils {
         }
         String objectName = parseObjectName(fileUrl, properties.getPublicBucketName());
         removeObject(properties.getPublicBucketName(), objectName);
+    }
+
+    /** 删除公共或私有桶中的 URL，兼容历史上误保存的私有预签名 URL。 */
+    public void deleteFileByUrl(String fileUrl) {
+        if (!StringUtils.hasText(fileUrl)) {
+            return;
+        }
+        String privateObjectName = parseObjectName(fileUrl, properties.getPrivateBucketName());
+        if (StringUtils.hasText(privateObjectName)) {
+            removeObject(properties.getPrivateBucketName(), privateObjectName);
+            return;
+        }
+        deletePublicFileByUrl(fileUrl);
+    }
+
+    /** 从 URL 中解析私有桶对象名，供历史数据迁移为 pending:// 引用。 */
+    public String parsePrivateObjectName(String fileUrl) {
+        return parseObjectName(fileUrl, properties.getPrivateBucketName());
+    }
+
+    /**
+     * 将公共对象引用解析为当前配置的公网地址。
+     *
+     * <p>兼容历史上保存的完整 URL，也兼容直接保存的对象名。这样公网入口变化时，
+     * 只需修改 MINIO_PUBLIC_ENDPOINT 并重启服务，不需要批量改库。</p>
+     */
+    public String resolvePublicUrl(String fileUrl) {
+        if (!StringUtils.hasText(fileUrl) || fileUrl.startsWith("pending://")) {
+            return fileUrl;
+        }
+        String objectName = parseObjectName(fileUrl, properties.getPublicBucketName());
+        if (!StringUtils.hasText(objectName)) {
+            return fileUrl;
+        }
+        if (objectName.equals(fileUrl)
+                && (fileUrl.startsWith("http://") || fileUrl.startsWith("https://"))) {
+            return fileUrl;
+        }
+        return buildPublicUrl(objectName);
     }
 
     public FilePayload readFileByUrl(String fileUrl) {
@@ -468,7 +597,16 @@ public class MinIOUtils {
             return fileUrl;
         }
         String prefix = trimTrailingSlash(endpoint) + "/" + bucketName + "/";
-        return fileUrl.startsWith(prefix) ? fileUrl.substring(prefix.length()) : fileUrl;
+        if (!fileUrl.startsWith(prefix)) {
+            return fileUrl;
+        }
+        String objectName = fileUrl.substring(prefix.length());
+        int queryIndex = objectName.indexOf('?');
+        int fragmentIndex = objectName.indexOf('#');
+        int cutIndex = queryIndex >= 0 && fragmentIndex >= 0
+                ? Math.min(queryIndex, fragmentIndex)
+                : Math.max(queryIndex, fragmentIndex);
+        return cutIndex >= 0 ? objectName.substring(0, cutIndex) : objectName;
     }
 
     private String trimTrailingSlash(String value) {

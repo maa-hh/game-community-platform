@@ -24,4 +24,13 @@ public class ArticleSocialFeedProducer {
                 Map.of("authorId", authorId, "articleId", articleId,
                         "publishedTime", publishedTime.toString()));
     }
+
+    public void remove(Long articleId) {
+        contentOutboxService.enqueue(
+                "social-feed-remove:" + articleId + ":" + UUID.randomUUID(),
+                "SOCIAL_FEED_REMOVE",
+                null,
+                String.valueOf(articleId),
+                Map.of("articleId", articleId));
+    }
 }
