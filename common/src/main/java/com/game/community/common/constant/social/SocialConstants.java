@@ -18,6 +18,7 @@ public final class SocialConstants {
     public static final Set<String> REPLY_COUNTER_COLUMNS = Set.of("like_count");
     public static final String INTERNAL_TOKEN_HEADER = "X-Internal-Token";
     public static final String FEED_PUBLISH_PATH = "/feign/social/feed/publish";
+    public static final String FEED_ARTICLE_DELETE_PATH_PREFIX = "/feign/social/feed/article/";
     public static final String BLACK_RELATION_CACHE_KEY_PREFIX = "social:black:relation:";
     public static final long BLACK_RELATION_CACHE_SECONDS = 30;
 
@@ -62,6 +63,8 @@ public final class SocialConstants {
         public static final int REPLY = 3;
         public static final int USER = 4;
         public static final int DANMAKU = 5;
+        /** 站点问题反馈，复用举报链路但不关联具体内容目标。 */
+        public static final int FEEDBACK = 6;
 
         private ReportTargetType() {
         }

@@ -18,6 +18,10 @@ public class GameReviewReplyVO implements Serializable {
 
     private String avatar;
 
+    private Long replyToAccountId;
+
+    private String replyToUsername;
+
     private String content;
 
     private Long likeCount;

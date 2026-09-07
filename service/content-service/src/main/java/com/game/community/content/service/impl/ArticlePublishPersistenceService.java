@@ -2,6 +2,7 @@ package com.game.community.content.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.game.community.common.constant.content.ContentConstants;
+import com.game.community.common.constant.notification.NotificationConstants;
 import com.game.community.content.event.ArticleNotificationEventProducer;
 import com.game.community.content.event.ArticleSearchSyncProducer;
 import com.game.community.content.event.ArticleSocialFeedProducer;
@@ -54,6 +55,8 @@ public class ArticlePublishPersistenceService {
         }
         articleSearchSyncProducer.upsert(articleId);
         articleSocialFeedProducer.publish(userId, articleId, publishedTime);
+        articleNotificationEventProducer.publishProfileInvalidation(userId,
+                NotificationConstants.ProfileDataDomain.POSTS);
         return true;
     }
 

@@ -6,7 +6,8 @@ SET NAMES utf8mb4;
 
 -- 通知：清空历史（旧 VO 含 userId，重置后由新事件写入）
 TRUNCATE TABLE t_notification_message;
-UPDATE t_notification_user_state SET unread_notification_count = 0, feed_unread_flag = 0;
+UPDATE t_notification_user_state
+SET unread_notification_count = 0, feed_unread_flag = 0, feed_unread_count = 0;
 
 -- Steam 绑定：展示字段不允许 NULL
 UPDATE t_user_steam_bind SET persona_name = '' WHERE persona_name IS NULL;

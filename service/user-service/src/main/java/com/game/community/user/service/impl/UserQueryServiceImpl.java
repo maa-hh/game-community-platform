@@ -16,6 +16,7 @@ import com.game.community.model.vo.user.UserPublicVO;
 import com.game.community.user.mapper.UserMapper;
 import com.game.community.user.service.UserAccountService;
 import com.game.community.user.service.UserQueryService;
+import com.game.community.utils.MinIOUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
@@ -32,6 +33,7 @@ public class UserQueryServiceImpl implements UserQueryService {
 
     private final UserMapper userMapper;
     private final UserAccountService userAccountService;
+    private final MinIOUtils minIOUtils;
 
     /** 执行 getUserPublicByAccountId 对应的业务处理。 */
     @Override
@@ -175,6 +177,7 @@ public class UserQueryServiceImpl implements UserQueryService {
     private UserPublicVO convertToPublicVO(User user) {
         UserPublicVO vo = new UserPublicVO();
         BeanUtils.copyProperties(user, vo);
+        vo.setAvatar(minIOUtils.resolvePublicUrl(user.getAvatar()));
         vo.setFollowCount(0);
         vo.setFansCount(0);
         return vo;
@@ -184,6 +187,7 @@ public class UserQueryServiceImpl implements UserQueryService {
     private UserCardVO convertToCardVO(User user) {
         UserCardVO vo = new UserCardVO();
         BeanUtils.copyProperties(user, vo);
+        vo.setAvatar(minIOUtils.resolvePublicUrl(user.getAvatar()));
         return vo;
     }
 
@@ -192,6 +196,7 @@ public class UserQueryServiceImpl implements UserQueryService {
         UserCardInternalVO vo = new UserCardInternalVO();
         BeanUtils.copyProperties(user, vo);
         vo.setUserId(user.getId());
+        vo.setAvatar(minIOUtils.resolvePublicUrl(user.getAvatar()));
         return vo;
     }
 }

@@ -374,9 +374,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         if (loadout == null || !isSlotEquipped(loadout, slot)) {
             return;
         }
-        applySlot(loadout, slot, null);
-        loadout.setUpdateTime(LocalDateTime.now());
-        if (loadoutMapper.updateById(loadout) == 0) {
+        if (loadoutMapper.clearSlot(userId, slot, loadout.getVersion()) == 0) {
             throw new BusinessException(ApiErrorCodes.CONFLICT, "装备状态已变化，请刷新后重试");
         }
     }

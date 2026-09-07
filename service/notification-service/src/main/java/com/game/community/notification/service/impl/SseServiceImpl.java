@@ -17,6 +17,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -24,6 +25,9 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 @Service
 public class SseServiceImpl implements SseService {
+
+    /** 兼容部分 HTTP/2 代理对 SSE 小数据块的缓冲。 */
+    private static final String SSE_FLUSH_PADDING = " ".repeat(1536);
 
     private final Map<Long, Set<SseEmitter>> emitters = new ConcurrentHashMap<>();
 
@@ -79,7 +83,20 @@ public class SseServiceImpl implements SseService {
                 NotificationConstants.SseEventType.FEED_UNREAD, payload));
     }
 
-    @Scheduled(fixedDelay = 25000L)
+    @Override
+    public void sendProfileInvalidation(Long userId, String eventId, List<String> domains) {
+        NotificationSseEventVO payload = new NotificationSseEventVO(
+                NotificationConstants.SseEventType.PROFILE_INVALIDATED,
+                null,
+                null,
+                eventId,
+                domains
+        );
+        publish(new NotificationSseBroadcast(userId,
+                NotificationConstants.SseEventType.PROFILE_INVALIDATED, payload));
+    }
+
+    @Scheduled(fixedDelay = 10000L)
     public void heartbeat() {
         NotificationSseEventVO payload = new NotificationSseEventVO(
                 NotificationConstants.SseEventType.HEARTBEAT,
@@ -88,15 +105,19 @@ public class SseServiceImpl implements SseService {
         );
         for (Long userId : emitters.keySet()) {
             sendLocal(new NotificationSseBroadcast(userId,
-                    NotificationConstants.SseEventType.HEARTBEAT, payload));
+                    NotificationConstants.SseEventType.HEARTBEAT, payload), true);
         }
     }
 
     public void sendLocal(NotificationSseBroadcast broadcast) {
+        sendLocal(broadcast, false);
+    }
+
+    private void sendLocal(NotificationSseBroadcast broadcast, boolean prependFlushPadding) {
         if (broadcast == null || broadcast.getUserId() == null) {
             return;
         }
-        sendLocal(broadcast.getUserId(), broadcast.getEventName(), broadcast.getPayload());
+        sendLocal(broadcast.getUserId(), broadcast.getEventName(), broadcast.getPayload(), prependFlushPadding);
     }
 
     private void publish(NotificationSseBroadcast broadcast) {
@@ -111,7 +132,11 @@ public class SseServiceImpl implements SseService {
         }
     }
 
-    private void sendLocal(Long userId, String eventName, NotificationSseEventVO payload) {
+    private void sendLocal(
+            Long userId,
+            String eventName,
+            NotificationSseEventVO payload,
+            boolean prependFlushPadding) {
         Set<SseEmitter> connections = emitters.get(userId);
         if (connections == null || connections.isEmpty()) {
             return;
@@ -121,10 +146,15 @@ public class SseServiceImpl implements SseService {
             SseEmitter emitter = iterator.next();
             try {
                 synchronized (emitter) {
+                    if (prependFlushPadding) {
+                        emitter.send(SseEmitter.event().comment(SSE_FLUSH_PADDING));
+                    }
                     SseEmitter.SseEventBuilder builder = SseEmitter.event()
                             .name(eventName)
                             .data(payload);
-                    if (payload != null && payload.getMessage() != null
+                    if (payload != null && payload.getEventId() != null) {
+                        builder.id(payload.getEventId());
+                    } else if (payload != null && payload.getMessage() != null
                             && payload.getMessage().getId() != null) {
                         builder.id(String.valueOf(payload.getMessage().getId()));
                     }

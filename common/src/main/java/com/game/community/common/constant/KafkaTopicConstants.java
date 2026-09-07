@@ -21,12 +21,6 @@ public final class KafkaTopicConstants {
 
     public static final String NOTIFICATION_EVENT_TOPIC = "notification-events";
 
-    /** 通知聚合/直通后的就绪事件（由 notification-service Kafka Streams 写出） */
-    public static final String NOTIFICATION_EVENT_READY_TOPIC = "notification-events-ready";
-
-    /** 通知事件格式或接收人无效时的隔离 topic，避免静默丢失。 */
-    public static final String NOTIFICATION_EVENT_INVALID_TOPIC = "notification-events-invalid";
-
     private KafkaTopicConstants() {
     }
 }

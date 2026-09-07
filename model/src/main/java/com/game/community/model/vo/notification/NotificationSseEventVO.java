@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
+import java.util.List;
 
 @Data
 @NoArgsConstructor
@@ -16,4 +17,14 @@ public class NotificationSseEventVO implements Serializable {
     private NotificationSummaryVO summary;
 
     private NotificationMessageVO message;
+
+    /** 个人主页数据失效域；仅 profile_invalidated 事件使用。 */
+    private String eventId;
+
+    private List<String> invalidationDomains;
+
+    public NotificationSseEventVO(String eventType, NotificationSummaryVO summary,
+                                  NotificationMessageVO message) {
+        this(eventType, summary, message, null, null);
+    }
 }

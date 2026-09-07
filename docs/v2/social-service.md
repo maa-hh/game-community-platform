@@ -225,6 +225,7 @@ CREATE TABLE IF NOT EXISTS t_social_feed_item (
 - 唯一索引 `(user_id, article_id)` 保证信箱不重复
 - `source_type` 区分来源：`1-发布推送`（作者发文时推送）、`2-关注补偿`（新关注时回填）
 - `published_time` 为文章发布时间（非入信箱时间），用于游标分页排序
+- `post_type` 为帖子类型，Feed 信箱按帖子类型独立限容，每类最多保留 `ContentConstants.FEED_CAPACITY` 条
 - 索引 `(user_id, published_time, article_id)` 覆盖 Feed 读取查询
 
 #### 2.1.9 t_social_follow — 用户关注关系表
@@ -946,6 +947,7 @@ public void publishArticleToFollowers(Long authorId, Long articleId, LocalDateTi
 |------|------|--------|------|
 | before | String (ISO DateTime) | null | 游标：返回此时间之前的文章 |
 | size | Long | 20 | 每页条数 (最大100) |
+| postType | Integer | null | 帖子类型筛选：1-图文, 2-文章, 3-视频, 4-转发 |
 
 ```java
 @Override
@@ -963,7 +965,8 @@ public PageResult<Article> listFeed(Long userId, LocalDateTime before, Long size
 
     List<Long> articleIds = new ArrayList<>(feedItems.stream().map(SocialFeedItem::getArticleId).toList());
 
-    // 2. Feed 信箱不够时，从 content-service 拉取补偿
+    // 2. Feed 信箱不够时，从 content-service 按原始时间游标拉取补偿。
+    //    补偿只参与本次响应，不写入 Feed 信箱。
     LocalDateTime fallbackCursor = feedItems.isEmpty()
             ? cursor
             : feedItems.get(feedItems.size() - 1).getPublishedTime();
@@ -974,8 +977,6 @@ public PageResult<Article> listFeed(Long userId, LocalDateTime before, Long size
         List<Article> fallback = remoteClient.listPublishedByAuthorsBefore(
                 authorIds, fallbackCursor, (int) (pageSize - articleIds.size()));
         for (Article article : fallback) {
-            insertFeedItem(userId, article.getUserId(), article.getId(),
-                    article.getPublishedTime(), SocialConstants.FeedSourceType.FOLLOW_COMPENSATION);
             articleIds.add(article.getId());
         }
     }
@@ -997,7 +998,7 @@ public PageResult<Article> listFeed(Long userId, LocalDateTime before, Long size
 
 **推拉结合模式**：
 1. **推模式**：作者发文时，主动向所有粉丝的信箱 (`t_social_feed_item`) 插入记录
-2. **拉模式 (补偿)**：当信箱数据不足时，从 content-service 拉取关注作者的最新文章，并回填信箱
+2. **拉模式 (补偿)**：当信箱数据不足时，从 content-service 按当前时间游标拉取关注作者的文章，仅补齐当前响应，不回填信箱
 3. **关注补偿**：新关注用户时，回填该用户最近 50 篇文章到信箱
 
 ### 3.7 举报系统
@@ -1783,6 +1784,8 @@ public class DfaAuditUtils {
 | ReportTargetType | COMMENT | 2 | 举报评论 |
 | ReportTargetType | REPLY | 3 | 举报回复 |
 | ReportTargetType | USER | 4 | 举报用户 |
+| ReportTargetType | DANMAKU | 5 | 举报弹幕 |
+| ReportTargetType | FEEDBACK | 6 | 站点问题反馈 |
 | ReportStatus | PENDING | 0 | 待处理 |
 | ReportStatus | ACCEPTED | 1 | 已采纳 |
 | ReportStatus | REJECTED | 2 | 已驳回 |

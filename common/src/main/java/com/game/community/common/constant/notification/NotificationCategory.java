@@ -35,13 +35,16 @@ public final class NotificationCategory {
                     NotificationConstants.EventType.ARTICLE_LIKE,
                     NotificationConstants.EventType.COMMENT_LIKE,
                     NotificationConstants.EventType.REPLY_LIKE,
-                    NotificationConstants.EventType.ARTICLE_FAVORITE
+                    NotificationConstants.EventType.ARTICLE_FAVORITE,
+                    NotificationConstants.EventType.GAME_REVIEW_LIKE,
+                    NotificationConstants.EventType.GAME_REVIEW_REPLY_LIKE
             );
             case FOLLOW -> List.of(NotificationConstants.EventType.FOLLOW);
             case COMMENT -> List.of(
                     NotificationConstants.EventType.ARTICLE_COMMENT,
                     NotificationConstants.EventType.COMMENT_REPLY,
-                    NotificationConstants.EventType.DANMAKU_COMMENT
+                    NotificationConstants.EventType.DANMAKU_COMMENT,
+                    NotificationConstants.EventType.GAME_REVIEW_REPLY
             );
             default -> List.of();
         };

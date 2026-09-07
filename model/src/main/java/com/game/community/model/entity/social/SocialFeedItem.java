@@ -23,6 +23,8 @@ public class SocialFeedItem implements Serializable {
 
     private Long articleId;
 
+    private Integer postType;
+
     private LocalDateTime publishedTime;
 
     private Integer sourceType;

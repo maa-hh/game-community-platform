@@ -15,6 +15,7 @@ import com.game.community.social.service.ReportService;
 import com.game.community.social.service.SocialService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -48,6 +49,12 @@ public class SocialFeignController {
     @PostMapping("/feed/publish")
     public Result<Void> publishArticleToFollowers(@RequestBody PublishArticleFeedDTO request) {
         socialService.publishArticleToFollowers(request.getAuthorId(), request.getArticleId(), request.getPublishedTime());
+        return Result.success(null);
+    }
+
+    @DeleteMapping("/feed/article/{articleId}")
+    public Result<Void> removeArticleFromFeeds(@PathVariable("articleId") Long articleId) {
+        socialService.removeArticleFromFeeds(articleId);
         return Result.success(null);
     }
 

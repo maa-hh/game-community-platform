@@ -9,6 +9,7 @@ import com.game.community.content.service.ArticleByGameService;
 import com.game.community.content.service.ArticleCategoryService;
 import com.game.community.content.service.ArticleAuthorEnricher;
 import com.game.community.content.service.ArticleGameService;
+import com.game.community.content.util.ArticleMediaHelper;
 import com.game.community.model.base.PageResult;
 import com.game.community.model.entity.article.Article;
 import com.game.community.model.vo.article.ArticleListVO;
@@ -30,6 +31,7 @@ public class ArticleByGameServiceImpl implements ArticleByGameService {
     private final ArticleCategoryService articleCategoryService;
     private final ArticleGameService articleGameService;
     private final ArticleAuthorEnricher articleAuthorEnricher;
+    private final ArticleMediaHelper articleMediaHelper;
 
     @Override
     public PageResult<ArticleListVO> pageByGame(Long appId, Long page, Long size) {
@@ -55,6 +57,10 @@ public class ArticleByGameServiceImpl implements ArticleByGameService {
             }
         }
         List<ArticleListVO> records = ArticleConverter.toListVOs(ordered);
+        for (ArticleListVO record : records) {
+            record.setCoverUrl(articleMediaHelper.resolvePublic(record.getCoverUrl()));
+            record.setVideoUrl(articleMediaHelper.resolvePublic(record.getVideoUrl()));
+        }
         articleAuthorEnricher.enrich(ordered, records);
         articleCategoryService.enrichListVOs(records);
         articleGameService.enrichListVOs(records);

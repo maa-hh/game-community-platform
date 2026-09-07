@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.game.community.common.constant.notification.NotificationConstants;
 import com.game.community.model.entity.notification.NotificationMessage;
+import com.game.community.model.entity.notification.NotificationFeedEvent;
 import com.game.community.model.entity.notification.NotificationUserState;
 import com.game.community.model.message.NotificationEventMessage;
 import com.game.community.model.message.DanmakuEvent;
@@ -14,6 +15,7 @@ import com.game.community.model.vo.user.UserCardInternalVO;
 import com.game.community.model.vo.notification.NotificationMessageVO;
 import com.game.community.model.vo.notification.NotificationSummaryVO;
 import com.game.community.notification.mapper.NotificationMessageMapper;
+import com.game.community.notification.mapper.NotificationFeedEventMapper;
 import com.game.community.notification.mapper.NotificationUserStateMapper;
 import com.game.community.notification.service.SseService;
 import com.game.community.feign.ContentFeignClient;
@@ -42,6 +44,9 @@ class NotificationServiceImplTest {
     private NotificationMessageMapper notificationMessageMapper;
 
     @Mock
+    private NotificationFeedEventMapper notificationFeedEventMapper;
+
+    @Mock
     private NotificationUserStateMapper notificationUserStateMapper;
 
     @Mock
@@ -60,8 +65,10 @@ class NotificationServiceImplTest {
         MapperBuilderAssistant assistant = new MapperBuilderAssistant(new MybatisConfiguration(), "");
         TableInfoHelper.initTableInfo(assistant, NotificationMessage.class);
         TableInfoHelper.initTableInfo(assistant, NotificationUserState.class);
+        TableInfoHelper.initTableInfo(assistant, NotificationFeedEvent.class);
         notificationService = new NotificationServiceImpl(
                 notificationMessageMapper,
+                notificationFeedEventMapper,
                 notificationUserStateMapper,
                 sseService,
                 userFeignClient,
@@ -99,7 +106,7 @@ class NotificationServiceImplTest {
         assertThat(inserted.getReadStatus()).isEqualTo(NotificationConstants.ReadStatus.UNREAD);
 
         verify(notificationUserStateMapper).update(eq(null), any(LambdaUpdateWrapper.class));
-        verify(sseService).sendNotification(eq(9L), any(NotificationMessageVO.class), eq(new NotificationSummaryVO(3L, false)));
+        verify(sseService).sendNotification(eq(9L), any(NotificationMessageVO.class), eq(new NotificationSummaryVO(3L, false, 0L)));
         verify(sseService, never()).sendFeedUnread(eq(9L), any());
     }
 
@@ -108,16 +115,19 @@ class NotificationServiceImplTest {
         NotificationEventMessage event = new NotificationEventMessage();
         event.setEventType(NotificationConstants.EventType.FEED_UNREAD);
         event.setRecipientUserId(6L);
+        event.setEventId("feed-event-6");
+        event.setFeedItemId(600L);
         event.setOccurredAt(LocalDateTime.now());
 
         when(notificationUserStateMapper.selectByUserIdForUpdate(any())).thenReturn(buildState(6L, 2L, 1));
+        when(notificationFeedEventMapper.insertIgnore(any(NotificationFeedEvent.class))).thenReturn(1);
 
         NotificationMessageVO result = notificationService.consumeNotificationEvent(event);
 
         assertThat(result).isNull();
         verify(notificationMessageMapper, never()).insertIgnore(any(NotificationMessage.class));
         verify(notificationUserStateMapper).update(eq(null), any(LambdaUpdateWrapper.class));
-        verify(sseService).sendFeedUnread(6L, new NotificationSummaryVO(2L, true));
+        verify(sseService).sendFeedUnread(6L, new NotificationSummaryVO(2L, true, 1L));
         verify(sseService, never()).sendNotification(eq(6L), any(), any());
     }
 
@@ -163,10 +173,10 @@ class NotificationServiceImplTest {
 
         NotificationSummaryVO summary = notificationService.markAllAsRead(11L);
 
-        assertThat(summary).isEqualTo(new NotificationSummaryVO(0L, true));
+        assertThat(summary).isEqualTo(new NotificationSummaryVO(0L, true, 0L));
         verify(notificationMessageMapper).update(eq(null), any(LambdaUpdateWrapper.class));
         verify(notificationUserStateMapper).update(eq(null), any(LambdaUpdateWrapper.class));
-        verify(sseService).sendSummary(11L, new NotificationSummaryVO(0L, true));
+        verify(sseService).sendSummary(11L, new NotificationSummaryVO(0L, true, 0L));
     }
 
     private NotificationUserState buildState(Long userId, Long unreadCount, Integer feedUnread) {

@@ -41,6 +41,12 @@ public class NotificationMessage implements Serializable {
 
     private String videoPublicId;
 
+    private Long gameAppId;
+
+    private String gameReviewId;
+
+    private String gameReviewReplyId;
+
     private Long reportId;
 
     private Long targetUserId;

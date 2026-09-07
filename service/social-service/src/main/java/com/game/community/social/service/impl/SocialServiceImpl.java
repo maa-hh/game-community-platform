@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.game.community.common.constant.content.ContentConstants;
+import com.game.community.common.constant.notification.NotificationConstants;
 import com.game.community.common.constant.social.SocialConstants;
 import com.game.community.common.exception.BusinessException;
 import com.game.community.model.base.PageResult;
@@ -123,6 +124,8 @@ public class SocialServiceImpl implements SocialService {
         if (!Objects.equals(userId, articleAuthorUserId(article))) {
             notificationEventProducer.publishArticleComment(articleAuthorUserId(article), user, article.getId(), comment.getId(), content.getContent());
         }
+        notificationEventProducer.publishProfileInvalidation(userId,
+                NotificationConstants.ProfileDataDomain.COMMENTS);
         return comment.getId();
     }
 
@@ -149,6 +152,8 @@ public class SocialServiceImpl implements SocialService {
             incrementArticleStats(comment.getArticleId(), "comment_like_count", -defaultLong(comment.getLikeCount()));
             incrementArticleStats(comment.getArticleId(), "reply_like_count", -replyLikeCount);
             articleBehaviorProducer.publish(comment.getArticleId(), 0L, -1L, 0L);
+            notificationEventProducer.publishProfileInvalidation(userId,
+                    NotificationConstants.ProfileDataDomain.COMMENTS);
         }
     }
 
@@ -232,6 +237,8 @@ public class SocialServiceImpl implements SocialService {
         for (Long recipientId : recipients) {
             notificationEventProducer.publishCommentReply(recipientId, user, comment.getArticleId(), comment.getId(), reply.getId(), reply.getContent());
         }
+        notificationEventProducer.publishProfileInvalidation(userId,
+                NotificationConstants.ProfileDataDomain.COMMENTS);
         return reply.getId();
     }
 
@@ -253,6 +260,8 @@ public class SocialServiceImpl implements SocialService {
             incrementArticleStats(reply.getArticleId(), "reply_count", -1);
             incrementArticleStats(reply.getArticleId(), "reply_like_count", -defaultLong(reply.getLikeCount()));
             articleBehaviorProducer.publish(reply.getArticleId(), 0L, -1L, 0L);
+            notificationEventProducer.publishProfileInvalidation(userId,
+                    NotificationConstants.ProfileDataDomain.COMMENTS);
         }
     }
 
@@ -343,8 +352,14 @@ public class SocialServiceImpl implements SocialService {
         if (insertIgnoreDuplicate(() -> articleLikeMapper.insert(like))) {
             incrementArticleStats(articleId, "like_count", 1);
             articleBehaviorProducer.publish(articleId, 1L, 0L, 0L);
-            if (!Objects.equals(userId, articleAuthorUserId(article))) {
-                notificationEventProducer.publishArticleLike(articleAuthorUserId(article), currentUser(userId), articleId);
+            Long authorUserId = articleAuthorUserId(article);
+            notificationEventProducer.publishProfileInvalidation(userId,
+                    NotificationConstants.ProfileDataDomain.LIKED);
+            if (!Objects.equals(userId, authorUserId)) {
+                notificationEventProducer.publishArticleLike(authorUserId, currentUser(userId), articleId);
+                notificationEventProducer.publishProfileInvalidation(authorUserId,
+                        NotificationConstants.ProfileDataDomain.STATS,
+                        NotificationConstants.ProfileDataDomain.RECEIVED);
             }
         }
     }
@@ -365,6 +380,15 @@ public class SocialServiceImpl implements SocialService {
         if (deleted > 0) {
             incrementArticleStats(articleId, "like_count", -1);
             articleBehaviorProducer.publish(articleId, -1L, 0L, 0L);
+            ArticleListVO article = requirePublishedArticle(articleId);
+            Long authorUserId = articleAuthorUserId(article);
+            notificationEventProducer.publishProfileInvalidation(userId,
+                    NotificationConstants.ProfileDataDomain.LIKED);
+            if (!Objects.equals(userId, authorUserId)) {
+                notificationEventProducer.publishProfileInvalidation(authorUserId,
+                        NotificationConstants.ProfileDataDomain.STATS,
+                        NotificationConstants.ProfileDataDomain.RECEIVED);
+            }
         }
     }
 
@@ -395,6 +419,13 @@ public class SocialServiceImpl implements SocialService {
             for (Long recipientId : recipients) {
                 notificationEventProducer.publishCommentLike(recipientId, actor, article.getId(), comment.getId());
             }
+            notificationEventProducer.publishProfileInvalidation(userId,
+                    NotificationConstants.ProfileDataDomain.LIKED);
+            if (!Objects.equals(userId, comment.getUserId())) {
+                notificationEventProducer.publishProfileInvalidation(comment.getUserId(),
+                        NotificationConstants.ProfileDataDomain.STATS,
+                        NotificationConstants.ProfileDataDomain.RECEIVED);
+            }
             articleBehaviorProducer.publishCommentLike(comment.getArticleId(), 1L);
         }
     }
@@ -409,6 +440,13 @@ public class SocialServiceImpl implements SocialService {
             incrementComment(commentId, "like_count", -1);
             SocialComment comment = requireComment(commentId);
             incrementArticleStats(comment.getArticleId(), "comment_like_count", -1);
+            notificationEventProducer.publishProfileInvalidation(userId,
+                    NotificationConstants.ProfileDataDomain.LIKED);
+            if (!Objects.equals(userId, comment.getUserId())) {
+                notificationEventProducer.publishProfileInvalidation(comment.getUserId(),
+                        NotificationConstants.ProfileDataDomain.STATS,
+                        NotificationConstants.ProfileDataDomain.RECEIVED);
+            }
             articleBehaviorProducer.publishCommentLike(comment.getArticleId(), -1L);
         }
     }
@@ -437,6 +475,13 @@ public class SocialServiceImpl implements SocialService {
             for (Long recipientId : recipients) {
                 notificationEventProducer.publishReplyLike(recipientId, actor, article.getId(), reply.getCommentId(), reply.getId());
             }
+            notificationEventProducer.publishProfileInvalidation(userId,
+                    NotificationConstants.ProfileDataDomain.LIKED);
+            if (!Objects.equals(userId, reply.getUserId())) {
+                notificationEventProducer.publishProfileInvalidation(reply.getUserId(),
+                        NotificationConstants.ProfileDataDomain.STATS,
+                        NotificationConstants.ProfileDataDomain.RECEIVED);
+            }
             articleBehaviorProducer.publishReplyLike(reply.getArticleId(), 1L);
         }
     }
@@ -451,6 +496,13 @@ public class SocialServiceImpl implements SocialService {
             incrementReply(replyId, "like_count", -1);
             SocialReply reply = requireReply(replyId);
             incrementArticleStats(reply.getArticleId(), "reply_like_count", -1);
+            notificationEventProducer.publishProfileInvalidation(userId,
+                    NotificationConstants.ProfileDataDomain.LIKED);
+            if (!Objects.equals(userId, reply.getUserId())) {
+                notificationEventProducer.publishProfileInvalidation(reply.getUserId(),
+                        NotificationConstants.ProfileDataDomain.STATS,
+                        NotificationConstants.ProfileDataDomain.RECEIVED);
+            }
             articleBehaviorProducer.publishReplyLike(reply.getArticleId(), -1L);
         }
     }
@@ -498,6 +550,8 @@ public class SocialServiceImpl implements SocialService {
                     .eq(SocialBrowseHistory::getArticleId, articleId)
                     .set(SocialBrowseHistory::getUpdateTime, LocalDateTime.now()));
         }
+        notificationEventProducer.publishProfileInvalidation(userId,
+                NotificationConstants.ProfileDataDomain.HISTORY);
         return article;
     }
 
@@ -794,6 +848,8 @@ public class SocialServiceImpl implements SocialService {
         if (insertIgnoreDuplicate(() -> favoriteMapper.insert(favorite))) {
             incrementArticleStats(articleId, "favorite_count", 1);
             articleBehaviorProducer.publish(articleId, 0L, 0L, 0L, 1L, 0L);
+            notificationEventProducer.publishProfileInvalidation(userId,
+                    NotificationConstants.ProfileDataDomain.FAVORITES);
             if (!Objects.equals(userId, articleAuthorUserId(article))) {
                 notificationEventProducer.publishArticleFavorite(
                         articleAuthorUserId(article), currentUser(userId), articleId);
@@ -816,6 +872,8 @@ public class SocialServiceImpl implements SocialService {
         if (deleted > 0) {
             incrementArticleStats(articleId, "favorite_count", -1);
             articleBehaviorProducer.publish(articleId, 0L, 0L, 0L, -1L, 0L);
+            notificationEventProducer.publishProfileInvalidation(userId,
+                    NotificationConstants.ProfileDataDomain.FAVORITES);
         }
     }
 
@@ -882,68 +940,118 @@ public class SocialServiceImpl implements SocialService {
     public PageResult<ArticleListVO> listFeed(Long userId, FeedQueryDTO query) {
         long pageSize = normalizeSize(query == null ? null : query.getSize());
         LocalDateTime cursor = parseFeedCursor(query == null ? null : query.getBefore());
-        Long cursorArticleId = Long.MAX_VALUE;
         boolean withSelf = query == null || query.getIncludeSelf() == null || query.getIncludeSelf();
-        long fetchLimit = Math.min(500L, pageSize * 3L);
+        Integer postType = query == null ? null : query.getPostType();
+        Long cursorArticleId = Long.MAX_VALUE;
+        long batchSize = pageSize;
+        List<ArticleListVO> records = new ArrayList<>();
+        Set<Long> articleIds = new LinkedHashSet<>();
 
-        List<SocialFeedItem> feedItems = feedItemMapper.selectList(new LambdaQueryWrapper<SocialFeedItem>()
-                .eq(SocialFeedItem::getUserId, userId)
-                .and(wrapper -> wrapper.lt(SocialFeedItem::getPublishedTime, cursor)
-                        .or(equalTime -> equalTime.eq(SocialFeedItem::getPublishedTime, cursor)
-                                .lt(SocialFeedItem::getArticleId, cursorArticleId)))
-                .orderByDesc(SocialFeedItem::getPublishedTime)
-                .orderByDesc(SocialFeedItem::getArticleId)
-                .last("LIMIT " + fetchLimit));
+        // 1. 先按同一个时间游标分页读取 Feed 信箱。类型筛选在文章详情补齐后进行，
+        //    因此不能只取一页候选数据，否则前面的图文会把视频/转发挤掉。
+        LocalDateTime mailboxCursor = cursor;
+        Long mailboxArticleId = cursorArticleId;
+        boolean mailboxExhausted = false;
+        while (!mailboxExhausted && records.size() < pageSize) {
+            LocalDateTime queryCursor = mailboxCursor;
+            Long queryArticleId = mailboxArticleId;
+            List<SocialFeedItem> feedItems = feedItemMapper.selectList(new LambdaQueryWrapper<SocialFeedItem>()
+                    .eq(SocialFeedItem::getUserId, userId)
+                    .and(wrapper -> wrapper.lt(SocialFeedItem::getPublishedTime, queryCursor)
+                            .or(equalTime -> equalTime.eq(SocialFeedItem::getPublishedTime, queryCursor)
+                                    .lt(SocialFeedItem::getArticleId, queryArticleId)))
+                    .orderByDesc(SocialFeedItem::getPublishedTime)
+                    .orderByDesc(SocialFeedItem::getArticleId)
+                    .last("LIMIT " + batchSize));
+            if (feedItems.isEmpty()) {
+                mailboxExhausted = true;
+                break;
+            }
 
-        List<Long> articleIds = new ArrayList<>(feedItems.stream().map(SocialFeedItem::getArticleId).toList());
-        LocalDateTime fallbackCursor = feedItems.isEmpty() ? cursor : feedItems.get(feedItems.size() - 1).getPublishedTime();
-        Long fallbackArticleId = feedItems.isEmpty() ? cursorArticleId : feedItems.get(feedItems.size() - 1).getArticleId();
-        if (articleIds.size() < pageSize) {
+            Map<Long, ArticleListVO> articleMap = remoteClient.listArticlesByIds(
+                            feedItems.stream().map(SocialFeedItem::getArticleId).toList())
+                    .stream().collect(Collectors.toMap(ArticleListVO::getId, Function.identity(), (a, b) -> a));
+            for (SocialFeedItem feedItem : feedItems) {
+                ArticleListVO article = articleMap.get(feedItem.getArticleId());
+                if (article == null || (postType != null && !Objects.equals(article.getPostType(), postType))) {
+                    continue;
+                }
+                if (articleIds.add(article.getId())) {
+                    records.add(article);
+                }
+                if (records.size() >= pageSize) {
+                    break;
+                }
+            }
+
+            SocialFeedItem lastItem = feedItems.get(feedItems.size() - 1);
+            mailboxCursor = lastItem.getPublishedTime();
+            mailboxArticleId = lastItem.getArticleId();
+            mailboxExhausted = feedItems.size() < batchSize;
+        }
+
+        // 2. 信箱不足一页时，从全部关注人按原始时间游标回源补齐。
+        //    回源数据只参与本次返回，不写入信箱，避免绕过各类型容量限制。
+        if (records.size() < pageSize) {
             List<Long> authorIds = followMapper.selectList(new LambdaQueryWrapper<SocialFollow>()
                             .eq(SocialFollow::getUserId, userId))
                     .stream().map(SocialFollow::getFollowUserId).toList();
-            List<ArticleListVO> fallback = remoteClient.listPublishedByAuthorsBefore(
-                    authorIds, fallbackCursor, fallbackArticleId, (int) Math.min(500L, pageSize * 2L));
-            for (ArticleListVO article : fallback) {
-                if (article == null || article.getId() == null || article.getPublishedTime() == null) {
-                    continue;
+            LocalDateTime fallbackCursor = cursor;
+            Long fallbackArticleId = cursorArticleId;
+            boolean fallbackExhausted = authorIds.isEmpty();
+            while (!fallbackExhausted && records.size() < pageSize) {
+                List<ArticleListVO> fallback = remoteClient.listPublishedByAuthorsBefore(
+                        authorIds, fallbackCursor, fallbackArticleId, (int) batchSize);
+                if (fallback.isEmpty()) {
+                    break;
                 }
-                insertFeedItem(userId, articleAuthorUserId(article), article.getId(),
-                        article.getPublishedTime(), SocialConstants.FeedSourceType.FOLLOW_COMPENSATION);
-                if (!articleIds.contains(article.getId())) {
-                    articleIds.add(article.getId());
+                for (ArticleListVO article : fallback) {
+                    if (article == null || article.getId() == null || article.getPublishedTime() == null) {
+                        continue;
+                    }
+                    if (postType == null || Objects.equals(article.getPostType(), postType)) {
+                        if (articleIds.add(article.getId())) {
+                            records.add(article);
+                        }
+                    }
+                    if (records.size() >= pageSize) {
+                        break;
+                    }
                 }
+                ArticleListVO lastArticle = fallback.get(fallback.size() - 1);
+                if (lastArticle == null || lastArticle.getPublishedTime() == null || lastArticle.getId() == null) {
+                    break;
+                }
+                fallbackCursor = lastArticle.getPublishedTime();
+                fallbackArticleId = lastArticle.getId();
+                fallbackExhausted = fallback.size() < batchSize;
             }
         }
 
+        // 3. 保留原有 includeSelf 语义：自己的文章也作为候选，最后和前两类动态统一按时间排序。
         if (withSelf) {
-            List<ArticleListVO> selfArticles = remoteClient.listPublishedByAuthor(userId, (int) pageSize);
+            List<ArticleListVO> selfArticles = remoteClient.listPublishedByAuthor(
+                    userId, (int) Math.min(500L, pageSize * 3L));
             for (ArticleListVO article : selfArticles) {
-                if (article == null || article.getId() == null) {
+                if (article == null || article.getId() == null || article.getPublishedTime() == null
+                        || article.getPublishedTime().isAfter(cursor)
+                        || (article.getPublishedTime().equals(cursor) && article.getId() >= cursorArticleId)
+                        || (postType != null && !Objects.equals(article.getPostType(), postType))) {
                     continue;
                 }
-                if (article.getPublishedTime() != null
-                        && (article.getPublishedTime().isAfter(cursor)
-                        || (article.getPublishedTime().equals(cursor) && article.getId() >= cursorArticleId))) {
-                    continue;
+                if (articleIds.add(article.getId())) {
+                    records.add(article);
                 }
-                if (!articleIds.contains(article.getId())) {
-                    articleIds.add(article.getId());
+                if (records.size() >= pageSize) {
+                    break;
                 }
             }
         }
 
-        if (articleIds.isEmpty()) {
+        if (records.isEmpty()) {
             return PageResult.of(List.of(), 1L, pageSize, 0L);
         }
-        Map<Long, ArticleListVO> articleMap = remoteClient.listArticlesByIds(articleIds).stream()
-                .collect(Collectors.toMap(ArticleListVO::getId, Function.identity(), (a, b) -> a));
-        List<ArticleListVO> records = articleIds.stream()
-                .distinct()
-                .map(articleMap::get)
-                .filter(Objects::nonNull)
-                .filter(article -> query == null || query.getPostType() == null
-                        || Objects.equals(article.getPostType(), query.getPostType()))
+        records = records.stream()
                 .sorted((a, b) -> {
                     LocalDateTime left = a.getPublishedTime() == null ? a.getCreateTime() : a.getPublishedTime();
                     LocalDateTime right = b.getPublishedTime() == null ? b.getCreateTime() : b.getPublishedTime();
@@ -1297,6 +1405,8 @@ public class SocialServiceImpl implements SocialService {
         if (authorId == null || articleId == null || publishedTime == null) {
             return;
         }
+        ArticleListVO article = remoteClient.getArticle(articleId);
+        Integer postType = article == null ? null : article.getPostType();
         long pageNo = 1;
         while (true) {
             Page<SocialFollow> page = new Page<>(pageNo++, 500, false);
@@ -1310,15 +1420,38 @@ public class SocialServiceImpl implements SocialService {
                 if (hasBlackRelation(follower.getUserId(), authorId)) {
                     continue;
                 }
-                if (insertFeedItem(follower.getUserId(), authorId, articleId, publishedTime,
-                        SocialConstants.FeedSourceType.PUBLISH_PUSH)) {
-                    notificationEventProducer.publishFeedUnread(follower.getUserId(), publishedTime);
+                Long feedItemId = insertFeedItem(follower.getUserId(), authorId, articleId, postType, publishedTime,
+                        SocialConstants.FeedSourceType.PUBLISH_PUSH);
+                if (feedItemId != null) {
+                    notificationEventProducer.publishFeedUnread(follower.getUserId(), feedItemId, publishedTime);
+                    notificationEventProducer.publishProfileInvalidation(
+                            follower.getUserId(), NotificationConstants.ProfileDataDomain.FEED);
                 }
             }
             if (followers.size() < 500) {
                 return;
             }
         }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void removeArticleFromFeeds(Long articleId) {
+        if (articleId == null) {
+            return;
+        }
+        List<Long> recipientIds = feedItemMapper.selectList(new LambdaQueryWrapper<SocialFeedItem>()
+                        .select(SocialFeedItem::getUserId)
+                        .eq(SocialFeedItem::getArticleId, articleId))
+                .stream()
+                .map(SocialFeedItem::getUserId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        feedItemMapper.delete(new LambdaQueryWrapper<SocialFeedItem>()
+                .eq(SocialFeedItem::getArticleId, articleId));
+        recipientIds.forEach(recipientId -> notificationEventProducer.publishProfileInvalidation(
+                recipientId, NotificationConstants.ProfileDataDomain.FEED));
     }
 
     private Long articleAuthorUserId(ArticleListVO article) {
@@ -1630,17 +1763,43 @@ public class SocialServiceImpl implements SocialService {
         }
     }
 
-    private boolean insertFeedItem(Long userId, Long authorId, Long articleId, LocalDateTime publishedTime, int sourceType) {
-        if (userId == null || authorId == null || articleId == null || publishedTime == null) {
-            return false;
+    private Long insertFeedItem(Long userId, Long authorId, Long articleId, Integer postType,
+                                LocalDateTime publishedTime, int sourceType) {
+        if (userId == null || authorId == null || articleId == null || postType == null || publishedTime == null) {
+            return null;
         }
         SocialFeedItem item = new SocialFeedItem();
         item.setUserId(userId);
         item.setAuthorId(authorId);
         item.setArticleId(articleId);
+        item.setPostType(postType);
         item.setPublishedTime(publishedTime);
         item.setSourceType(sourceType);
-        return insertIgnoreDuplicate(() -> feedItemMapper.insert(item));
+        Long itemId = insertIgnoreDuplicate(() -> feedItemMapper.insert(item)) ? item.getId() : null;
+        trimFeedCategoryCapacity(userId, postType);
+        return itemId;
+    }
+
+    /** 每个帖子类型独立限容，超出时淘汰该类型最旧的信箱记录。 */
+    private void trimFeedCategoryCapacity(Long userId, Integer postType) {
+        long count = feedItemMapper.selectCount(new LambdaQueryWrapper<SocialFeedItem>()
+                .eq(SocialFeedItem::getUserId, userId)
+                .eq(SocialFeedItem::getPostType, postType));
+        long overflow = count - ContentConstants.FEED_CAPACITY;
+        if (overflow <= 0) {
+            return;
+        }
+        List<Long> oldestIds = feedItemMapper.selectList(new LambdaQueryWrapper<SocialFeedItem>()
+                        .select(SocialFeedItem::getId)
+                        .eq(SocialFeedItem::getUserId, userId)
+                        .eq(SocialFeedItem::getPostType, postType)
+                        .orderByAsc(SocialFeedItem::getPublishedTime)
+                        .orderByAsc(SocialFeedItem::getArticleId)
+                        .last("LIMIT " + overflow))
+                .stream().map(SocialFeedItem::getId).toList();
+        if (!oldestIds.isEmpty()) {
+            feedItemMapper.deleteBatchIds(oldestIds);
+        }
     }
 
     private CommentVO toCommentVO(

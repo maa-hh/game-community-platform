@@ -22,6 +22,10 @@ public class SocialGameReviewReply implements Serializable {
 
     private Long userId;
 
+    private Long replyToUserId;
+
+    private String replyToUsername;
+
     private String username;
 
     private String avatar;

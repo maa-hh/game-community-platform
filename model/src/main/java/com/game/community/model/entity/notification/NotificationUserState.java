@@ -23,6 +23,8 @@ public class NotificationUserState implements Serializable {
 
     private Integer feedUnreadFlag;
 
+    private Long feedUnreadCount;
+
     private LocalDateTime lastFeedEventTime;
 
     private LocalDateTime lastFeedReadTime;

@@ -2,6 +2,8 @@ package com.game.community.content.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.game.community.common.constant.content.ContentConstants;
+import com.game.community.common.constant.notification.NotificationConstants;
+import com.game.community.content.event.ArticleNotificationEventProducer;
 import com.game.community.content.event.ArticleSearchSyncProducer;
 import com.game.community.content.mapper.ArticleMapper;
 import com.game.community.content.service.ChunkUploadService;
@@ -27,6 +29,7 @@ public class ArticleDeletionPersistenceService {
     private final TaskService taskService;
     private final ArticleSearchSyncProducer articleSearchSyncProducer;
     private final ContentOutboxService contentOutboxService;
+    private final ArticleNotificationEventProducer articleNotificationEventProducer;
 
     @Transactional(rollbackFor = Exception.class)
     public boolean markDeleted(Article article, ArticleContent content) {
@@ -57,6 +60,8 @@ public class ArticleDeletionPersistenceService {
                 "article-cleanup:" + article.getId() + ":" + UUID.randomUUID(),
                 "ARTICLE_CLEANUP", null, String.valueOf(article.getId()),
                 Map.of("articleId", article.getId(), "userId", article.getUserId(), "refs", refs));
+        articleNotificationEventProducer.publishProfileInvalidation(article.getUserId(),
+                NotificationConstants.ProfileDataDomain.POSTS);
         return true;
     }
 }

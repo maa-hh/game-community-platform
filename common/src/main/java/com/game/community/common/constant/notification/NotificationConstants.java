@@ -32,13 +32,19 @@ public final class NotificationConstants {
         public static final int ARTICLE_AUDIT_HUMAN_REVIEW = 17;
         /** 视频弹幕互动 */
         public static final int DANMAKU_COMMENT = 18;
+        /** 个人主页数据失效，不落通知表，只通过 SSE 通知前端。 */
+        public static final int PROFILE_DATA_INVALIDATED = 19;
+        /** 游戏评价回复及评价互动。 */
+        public static final int GAME_REVIEW_REPLY = 20;
+        public static final int GAME_REVIEW_LIKE = 21;
+        public static final int GAME_REVIEW_REPLY_LIKE = 22;
 
         private EventType() {
         }
 
         public static boolean isSupported(Integer eventType) {
             return eventType != null && (eventType >= ARTICLE_LIKE && eventType <= ARTICLE_AUDIT_HUMAN_REVIEW
-                    || eventType == DANMAKU_COMMENT);
+                    || (eventType >= DANMAKU_COMMENT && eventType <= GAME_REVIEW_REPLY_LIKE));
         }
     }
 
@@ -49,6 +55,7 @@ public final class NotificationConstants {
         public static final int REPLY = 3;
         public static final int USER = 4;
         public static final int DANMAKU = 5;
+        public static final int GAME_REVIEW = 6;
 
         private RouteType() {
         }
@@ -76,8 +83,26 @@ public final class NotificationConstants {
         public static final String NOTIFICATION_SUMMARY = "notification_summary";
         public static final String FEED_UNREAD = "feed_unread";
         public static final String HEARTBEAT = "heartbeat";
+        public static final String PROFILE_INVALIDATED = "profile_invalidated";
 
         private SseEventType() {
+        }
+    }
+
+    public static final class ProfileDataDomain {
+        public static final String BASE = "profile.base";
+        public static final String STATS = "profile.stats";
+        public static final String FOLLOWING = "profile.following";
+        public static final String FEED = "profile.feed";
+        public static final String FOLLOWERS = "profile.followers";
+        public static final String POSTS = "profile.posts";
+        public static final String HISTORY = "profile.history";
+        public static final String LIKED = "profile.liked";
+        public static final String RECEIVED = "profile.received";
+        public static final String FAVORITES = "profile.favorites";
+        public static final String COMMENTS = "profile.comments";
+
+        private ProfileDataDomain() {
         }
     }
 }

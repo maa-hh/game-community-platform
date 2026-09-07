@@ -35,6 +35,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ChunkUploadServiceImpl implements ChunkUploadService {
 
+    private static final long MIN_COMPOSE_SOURCE_SIZE_BYTES = 5L * 1024 * 1024;
     private static final String STATUS_UPLOADING = "UPLOADING";
     private static final String STATUS_MERGED = "MERGED";
     private static final String STATUS_ABORTED = "ABORTED";
@@ -196,7 +197,13 @@ public class ChunkUploadServiceImpl implements ChunkUploadService {
             String suffix = extractSuffix(session.getFileName());
             String folder = "video".equals(session.getBizType()) ? "video" : "content";
             String targetObject = "content/" + folder + "/" + userId + "/" + uploadId + suffix;
-            minIOUtils.composePrivateObjects(targetObject, sources);
+            if (session.getChunkSize() != null
+                    && session.getChunkSize() < MIN_COMPOSE_SOURCE_SIZE_BYTES) {
+                minIOUtils.concatenatePrivateObjects(targetObject, sources,
+                        session.getFileSize(), session.getContentType());
+            } else {
+                minIOUtils.composePrivateObjects(targetObject, sources);
+            }
             if (StringUtils.hasText(session.getFileMd5())) {
                 String actualMd5 = minIOUtils.calculatePrivateMd5(targetObject);
                 if (!session.getFileMd5().equalsIgnoreCase(actualMd5)) {

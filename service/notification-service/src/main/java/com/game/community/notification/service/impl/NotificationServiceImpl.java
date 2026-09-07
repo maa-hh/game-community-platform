@@ -7,6 +7,7 @@ import com.game.community.common.constant.notification.NotificationCategory;
 import com.game.community.common.constant.notification.NotificationConstants;
 import com.game.community.model.base.PageResult;
 import com.game.community.model.entity.notification.NotificationMessage;
+import com.game.community.model.entity.notification.NotificationFeedEvent;
 import com.game.community.model.entity.notification.NotificationUserState;
 import com.game.community.model.message.NotificationEventMessage;
 import com.game.community.model.message.DanmakuEvent;
@@ -20,11 +21,10 @@ import com.game.community.model.vo.notification.NotificationSummaryVO;
 import com.game.community.model.vo.article.ArticleDetailVO;
 import com.game.community.model.vo.user.UserCardInternalVO;
 import com.game.community.notification.mapper.NotificationMessageMapper;
+import com.game.community.notification.mapper.NotificationFeedEventMapper;
 import com.game.community.notification.mapper.NotificationUserStateMapper;
 import com.game.community.notification.service.NotificationService;
 import com.game.community.notification.service.SseService;
-import com.game.community.notification.stream.NotificationAggregatePayload;
-import com.game.community.notification.stream.NotificationAggregatePayloadCodec;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -50,6 +50,8 @@ public class NotificationServiceImpl implements NotificationService {
 
     private final NotificationMessageMapper notificationMessageMapper;
 
+    private final NotificationFeedEventMapper notificationFeedEventMapper;
+
     private final NotificationUserStateMapper notificationUserStateMapper;
 
     private final SseService sseService;
@@ -61,14 +63,14 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     public NotificationSummaryVO getSummary(Long userId) {
         if (userId == null) {
-            return new NotificationSummaryVO(0L, false);
+            return new NotificationSummaryVO(0L, false, 0L);
         }
         ensureUserState(userId);
         NotificationUserState state = notificationUserStateMapper.selectOne(new LambdaQueryWrapper<NotificationUserState>()
                 .eq(NotificationUserState::getUserId, userId)
                 .last("LIMIT 1"));
         if (state == null) {
-            return new NotificationSummaryVO(0L, false);
+            return new NotificationSummaryVO(0L, false, 0L);
         }
         return toSummary(state);
     }
@@ -144,7 +146,7 @@ public class NotificationServiceImpl implements NotificationService {
     @Transactional(rollbackFor = Exception.class)
     public NotificationSummaryVO markAllAsRead(Long userId) {
         if (userId == null) {
-            return new NotificationSummaryVO(0L, false);
+            return new NotificationSummaryVO(0L, false, 0L);
         }
         ensureUserState(userId);
         NotificationUserState state = lockUserState(userId);
@@ -196,7 +198,7 @@ public class NotificationServiceImpl implements NotificationService {
     @Transactional(rollbackFor = Exception.class)
     public NotificationSummaryVO markFeedRead(Long userId) {
         if (userId == null) {
-            return new NotificationSummaryVO(0L, false);
+            return new NotificationSummaryVO(0L, false, 0L);
         }
         ensureUserState(userId);
         NotificationUserState state = lockUserState(userId);
@@ -204,9 +206,11 @@ public class NotificationServiceImpl implements NotificationService {
         notificationUserStateMapper.update(null, new LambdaUpdateWrapper<NotificationUserState>()
                 .eq(NotificationUserState::getUserId, userId)
                 .set(NotificationUserState::getFeedUnreadFlag, 0)
+                .set(NotificationUserState::getFeedUnreadCount, 0L)
                 .set(NotificationUserState::getLastFeedReadTime, now)
                 .set(NotificationUserState::getUpdateTime, now));
         state.setFeedUnreadFlag(0);
+        state.setFeedUnreadCount(0L);
         state.setLastFeedReadTime(now);
         NotificationSummaryVO summary = toSummary(state);
         sendSummaryAfterCommit(userId, summary);
@@ -219,20 +223,41 @@ public class NotificationServiceImpl implements NotificationService {
         if (event == null || event.getRecipientUserId() == null || event.getEventType() == null) {
             return null;
         }
+        if (event.getEventType() == NotificationConstants.EventType.PROFILE_DATA_INVALIDATED) {
+            sendProfileInvalidationAfterCommit(event.getRecipientUserId(), eventIdOf(event),
+                    event.getInvalidationDomains());
+            return null;
+        }
         ensureUserState(event.getRecipientUserId());
         NotificationUserState state = lockUserState(event.getRecipientUserId());
         if (event.getEventType() == NotificationConstants.EventType.FEED_UNREAD) {
+            String eventId = eventIdOf(event);
             LocalDateTime eventTime = defaultTime(event.getOccurredAt());
             LocalDateTime lastRead = state.getLastFeedReadTime();
             if (lastRead != null && eventTime.isBefore(lastRead)) {
                 return null;
             }
+            NotificationFeedEvent feedEvent = new NotificationFeedEvent();
+            feedEvent.setUserId(event.getRecipientUserId());
+            feedEvent.setEventId(eventId);
+            feedEvent.setFeedItemId(event.getFeedItemId());
+            feedEvent.setOccurredAt(eventTime);
+            if (notificationFeedEventMapper.insertIgnore(feedEvent) == 0) {
+                log.debug("跳过重复 Feed 未读事件: recipient={}, eventId={}",
+                        event.getRecipientUserId(), eventId);
+                return null;
+            }
+            long currentFeedUnread = state.getFeedUnreadCount() == null
+                    ? 0L : state.getFeedUnreadCount();
+            long nextFeedUnread = currentFeedUnread + 1;
             notificationUserStateMapper.update(null, new LambdaUpdateWrapper<NotificationUserState>()
                     .eq(NotificationUserState::getUserId, event.getRecipientUserId())
                     .set(NotificationUserState::getFeedUnreadFlag, 1)
+                    .set(NotificationUserState::getFeedUnreadCount, nextFeedUnread)
                     .set(NotificationUserState::getLastFeedEventTime, eventTime)
                     .set(NotificationUserState::getUpdateTime, LocalDateTime.now()));
             state.setFeedUnreadFlag(1);
+            state.setFeedUnreadCount(nextFeedUnread);
             state.setLastFeedEventTime(eventTime);
             sendFeedUnreadAfterCommit(event.getRecipientUserId(), toSummary(state));
             return null;
@@ -242,9 +267,7 @@ public class NotificationServiceImpl implements NotificationService {
         String eventId = eventIdOf(event);
         LocalDateTime occurredAt = defaultTime(event.getOccurredAt());
         message.setEventId(eventId);
-        message.setAggregateKey(NotificationCategory.isAggregatable(event.getEventType())
-                ? com.game.community.notification.stream.NotificationAggregateKey.build(event)
-                : eventId);
+        message.setAggregateKey(eventId);
         message.setUserId(event.getRecipientUserId());
         message.setEventType(event.getEventType());
         message.setActorUserId(event.getActorUserId());
@@ -255,6 +278,9 @@ public class NotificationServiceImpl implements NotificationService {
         message.setReplyId(event.getReplyId());
         message.setDanmakuId(event.getDanmakuId());
         message.setVideoPublicId(event.getVideoPublicId());
+        message.setGameAppId(event.getGameAppId());
+        message.setGameReviewId(event.getGameReviewId());
+        message.setGameReviewReplyId(event.getGameReviewReplyId());
         message.setReportId(event.getReportId());
         message.setTargetUserId(event.getTargetUserId());
         message.setPreviewText(defaultText(event.getPreviewText()));
@@ -366,6 +392,7 @@ public class NotificationServiceImpl implements NotificationService {
                 String.valueOf(event.getEventType()),
                 String.valueOf(event.getActorUserId()),
                 String.valueOf(event.getArticleId()),
+                String.valueOf(event.getFeedItemId()),
                 String.valueOf(event.getCommentId()),
                 String.valueOf(event.getReplyId()),
                 String.valueOf(event.getDanmakuId()),
@@ -390,7 +417,8 @@ public class NotificationServiceImpl implements NotificationService {
     private NotificationSummaryVO toSummary(NotificationUserState state) {
         return new NotificationSummaryVO(
                 state.getUnreadNotificationCount() == null ? 0L : state.getUnreadNotificationCount(),
-                state.getFeedUnreadFlag() != null && state.getFeedUnreadFlag() == 1
+                state.getFeedUnreadFlag() != null && state.getFeedUnreadFlag() == 1,
+                state.getFeedUnreadCount() == null ? 0L : state.getFeedUnreadCount()
         );
     }
 
@@ -420,6 +448,9 @@ public class NotificationServiceImpl implements NotificationService {
         vo.setReplyId(message.getReplyId());
         vo.setDanmakuId(message.getDanmakuId());
         vo.setVideoPublicId(message.getVideoPublicId());
+        vo.setGameAppId(message.getGameAppId());
+        vo.setGameReviewId(message.getGameReviewId());
+        vo.setGameReviewReplyId(message.getGameReviewReplyId());
         vo.setReportId(message.getReportId());
         vo.setPreviewText(message.getPreviewText());
         vo.setResultText(message.getResultText());
@@ -428,19 +459,7 @@ public class NotificationServiceImpl implements NotificationService {
         LocalDateTime readTime = message.getReadTime();
         vo.setReadTime(LocalDateTime.of(1970, 1, 1, 0, 0).equals(readTime) ? null : readTime);
         vo.setCreateTime(message.getCreateTime());
-        NotificationAggregatePayload payload =
-                NotificationAggregatePayloadCodec.decode(message.getResultText());
-        if (payload != null && payload.getActors() != null && !payload.getActors().isEmpty()) {
-            vo.setAggregated(true);
-            vo.setAggregateActors(payload.getActors());
-            vo.setAggregateTotal(payload.getTotal() == null ? payload.getActors().size() : payload.getTotal());
-            vo.setAggregateHasLike(Boolean.TRUE.equals(payload.getHasLike())
-                    || payload.getActors().stream().anyMatch(actor -> "like".equals(actor.getAction())));
-            vo.setAggregateHasFavorite(Boolean.TRUE.equals(payload.getHasFavorite())
-                    || payload.getActors().stream().anyMatch(actor -> "favorite".equals(actor.getAction())));
-        } else {
-            vo.setAggregated(false);
-        }
+        vo.setAggregated(false);
         return vo;
     }
 
@@ -455,6 +474,10 @@ public class NotificationServiceImpl implements NotificationService {
 
     private void sendFeedUnreadAfterCommit(Long userId, NotificationSummaryVO summary) {
         afterCommit(() -> sseService.sendFeedUnread(userId, summary));
+    }
+
+    private void sendProfileInvalidationAfterCommit(Long userId, String eventId, List<String> domains) {
+        afterCommit(() -> sseService.sendProfileInvalidation(userId, eventId, domains));
     }
 
     private void afterCommit(Runnable action) {

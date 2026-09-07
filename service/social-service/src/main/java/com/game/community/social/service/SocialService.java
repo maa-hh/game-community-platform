@@ -101,6 +101,8 @@ public interface SocialService {
 
     void publishArticleToFollowers(Long authorId, Long articleId, LocalDateTime publishedTime);
 
+    void removeArticleFromFeeds(Long articleId);
+
     void favoriteArticle(Long userId, Long articleId);
 
     void favoriteArticle(Long userId, String articlePublicId);

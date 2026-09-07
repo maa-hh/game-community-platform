@@ -234,7 +234,7 @@ public class ContentConstants {
         public static final long IMAGE_MAX_BYTES = 5L * 1024 * 1024;
         public static final int IMAGE_MAX_COUNT = 20;
         public static final long VIDEO_MAX_BYTES = 500L * 1024 * 1024;
-        public static final long CHUNK_SIZE_BYTES = 5L * 1024 * 1024;
+        public static final long CHUNK_SIZE_BYTES = 1L * 1024 * 1024;
         public static final int PRESIGNED_EXPIRE_SECONDS = 900;
     }
 

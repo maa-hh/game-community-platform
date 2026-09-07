@@ -30,6 +30,10 @@ public interface SocialFeignClient {
     Result<Void> publishArticleToFollowers(@RequestBody PublishArticleFeedDTO request,
                                            @RequestHeader(SocialConstants.INTERNAL_TOKEN_HEADER) String internalToken);
 
+    @DeleteMapping("/feed/article/{articleId}")
+    Result<Void> removeArticleFromFeeds(@PathVariable("articleId") Long articleId,
+                                        @RequestHeader(SocialConstants.INTERNAL_TOKEN_HEADER) String internalToken);
+
     @GetMapping("/comments/{commentId}")
     Result<CommentVO> getCommentDetail(@PathVariable("commentId") Long commentId);
 

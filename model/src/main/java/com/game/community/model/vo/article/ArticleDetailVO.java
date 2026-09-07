@@ -36,6 +36,9 @@ public class ArticleDetailVO implements Serializable {
     private String summary;
     @JsonView(ApiJsonViews.Public.class)
     private String coverUrl;
+    /** 作者编辑草稿时使用的持久化引用；仅作者接口在非发布状态返回。 */
+    @JsonView(ApiJsonViews.Public.class)
+    private String coverRef;
     @JsonView(ApiJsonViews.Public.class)
     private Integer postType;
     /** 转发引用的原帖 ID */
@@ -46,6 +49,9 @@ public class ArticleDetailVO implements Serializable {
     private ArticleRefVO refArticle;
     @JsonView(ApiJsonViews.Public.class)
     private String videoUrl;
+    /** 作者编辑草稿时使用的持久化视频引用；仅作者接口在非发布状态返回。 */
+    @JsonView(ApiJsonViews.Public.class)
+    private String videoRef;
     @JsonView(ApiJsonViews.Public.class)
     private Long categoryId;
     @JsonView(ApiJsonViews.Public.class)
@@ -74,6 +80,9 @@ public class ArticleDetailVO implements Serializable {
     private Map<String, String> contentParagraphs;
     @JsonView(ApiJsonViews.Public.class)
     private List<String> imageUrls;
+    /** 作者编辑草稿时使用的持久化图片引用；仅作者接口在非发布状态返回。 */
+    @JsonView(ApiJsonViews.Public.class)
+    private List<String> imageRefs;
 
     /** 关联游戏标签 */
     @JsonView(ApiJsonViews.Public.class)

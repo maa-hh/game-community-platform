@@ -8,6 +8,7 @@ import com.game.community.common.constant.notification.NotificationConstants;
 import com.game.community.notification.service.NotificationService;
 import com.game.community.notification.service.SseService;
 import com.game.community.utils.ThreadLocal.UserThreadLocal;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,17 +22,27 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @RequiredArgsConstructor
 public class SseController {
 
+    /** 兼容部分 HTTP/2 代理对 SSE 小数据块的缓冲，连接建立时先刷出一个完整块。 */
+    private static final String SSE_FLUSH_PADDING = " ".repeat(1536);
+
     private final SseService sseService;
 
     private final NotificationService notificationService;
 
     @LoginCheck
     @GetMapping(value = "/connect", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter connect(@RequestHeader(name = "Last-Event-ID", required = false) String lastEventId) {
+    public SseEmitter connect(
+            @RequestHeader(name = "Last-Event-ID", required = false) String lastEventId,
+            HttpServletResponse response) {
+        // SSE 必须按事件实时透传，避免 CDN/隧道/反向代理缓存或改写小数据块。
+        response.setHeader("Cache-Control", "no-cache, no-transform");
+        response.setHeader("X-Accel-Buffering", "no");
+
         Long userId = UserThreadLocal.getUserId();
         SseEmitter emitter = sseService.connect(userId);
         NotificationSummaryVO summary = notificationService.getSummary(userId);
         try {
+            emitter.send(SseEmitter.event().comment(SSE_FLUSH_PADDING));
             emitter.send(SseEmitter.event()
                     .name(NotificationConstants.SseEventType.NOTIFICATION_SUMMARY)
                     .data(new NotificationSseEventVO(

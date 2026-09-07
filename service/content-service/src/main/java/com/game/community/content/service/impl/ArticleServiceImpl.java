@@ -5,9 +5,12 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.game.community.common.constant.content.ContentConstants;
+import com.game.community.common.constant.notification.NotificationConstants;
 import com.game.community.common.exception.BusinessException;
 import com.game.community.content.common.converter.ArticleConverter;
 import com.game.community.content.event.ArticleSearchSyncProducer;
+import com.game.community.content.event.ArticleSocialFeedProducer;
+import com.game.community.content.event.ArticleNotificationEventProducer;
 import com.game.community.content.mapper.ArticleMapper;
 import com.game.community.content.util.ArticleCategoryHelper;
 import com.game.community.content.util.ArticleContentCompat;
@@ -28,6 +31,7 @@ import com.game.community.model.dto.article.ArticleDTO;
 import com.game.community.model.entity.article.Article;
 import com.game.community.model.entity.article.ArticleAudit;
 import com.game.community.model.entity.task.Task;
+import com.game.community.model.mongo.ArticleContent;
 import com.game.community.model.enums.user.AccountType;
 import com.game.community.model.vo.article.ArticleContentVO;
 import com.game.community.model.vo.article.ArticleDetailVO;
@@ -47,6 +51,7 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -73,6 +78,8 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
     private final ArticleSearchSyncProducer articleSearchSyncProducer;
 
+    private final ArticleSocialFeedProducer articleSocialFeedProducer;
+
     private final ArticleMediaHelper articleMediaHelper;
 
     private final ChunkUploadService chunkUploadService;
@@ -89,6 +96,8 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
     private final ArticleDeletionPersistenceService articleDeletionPersistenceService;
 
+    private final ArticleNotificationEventProducer articleNotificationEventProducer;
+
     private static final int MAX_CONTENT_LENGTH = 3000;
 
     @Override
@@ -96,6 +105,10 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     public Long saveArticle(ArticleDTO dto, Long userId) {
         validatePublishTime(dto.getScheduledPublishTime());
         int postType = normalizePostType(dto.getPostType());
+        boolean isUpdate = dto.getId() != null;
+        Article existingArticle = isUpdate ? requireOwnedArticle(dto.getId(), userId) : null;
+        ArticleContent existingContent = isUpdate ? articleContentService.getByArticleId(dto.getId()) : null;
+        List<String> oldMediaRefs = collectMediaRefs(existingArticle, existingContent);
         Article refArticle = resolveRefArticleIfRepost(postType, dto.getRefArticleId());
         List<Long> categoryIds = resolveCategoryIds(dto, postType, refArticle);
         List<String> articleImages = normalizeArticleImages(dto.getImageUrls(), dto.getCoverUrl(), postType);
@@ -120,10 +133,20 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             contentParagraphs = new LinkedHashMap<>();
             contentParagraphs.put("p1", contentText);
         }
-        validateContent(contentText, postType);
+        boolean draft = Objects.equals(dto.getStatus(), ContentConstants.ArticleStatus.DRAFT);
+        // 保存草稿不进入审核，也允许正文/视频尚未完成；提交审核时再做完整校验。
+        if (!draft) {
+            validateContent(contentText, postType);
+        }
 
-        boolean isUpdate = dto.getId() != null;
-        Article article = isUpdate ? requireOwnedArticle(dto.getId(), userId) : new Article();
+        // 草稿和待审核态的媒体必须留在私有桶，同时兼容旧客户端回传公共/预签名 URL。
+        ArticleMediaHelper.DemotedGallery demotedGallery =
+                articleMediaHelper.demoteGallery(coverUrl, articleImages, "content");
+        coverUrl = demotedGallery.coverUrl();
+        articleImages = demotedGallery.imageUrls();
+        videoUrl = articleMediaHelper.demoteToPrivate(videoUrl, "video");
+
+        Article article = isUpdate ? existingArticle : new Article();
         if (!isUpdate) {
             article.setUserId(userId);
             article.setPublicId(newPublicId());
@@ -148,7 +171,6 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         article.setScheduledPublishTime(dto.getScheduledPublishTime());
         article.setUpdateTime(LocalDateTime.now());
 
-        boolean draft = Objects.equals(dto.getStatus(), ContentConstants.ArticleStatus.DRAFT);
         if (draft) {
             article.setStatus(ContentConstants.ArticleStatus.DRAFT);
             article.setAuditMessage(null);
@@ -159,6 +181,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                     contentParagraphs, articleImages, userId);
             articleGameService.saveArticleGames(article.getId(), dto.getGameAppIds());
             articleSearchSyncProducer.delete(article.getId());
+            articleNotificationEventProducer.publishProfileInvalidation(userId,
+                    NotificationConstants.ProfileDataDomain.POSTS);
+            cleanupReplacedMedia(oldMediaRefs, collectMediaRefs(article, articleContentService.getByArticleId(article.getId())));
             log.info("文章草稿保存成功: articleId={}, userId={}", article.getId(), userId);
             return article.getId();
         }
@@ -176,6 +201,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         articleContentService.saveContent(articleId, contentText, contentHtml,
                 contentParagraphs, articleImages, userId);
         articleGameService.saveArticleGames(articleId, dto.getGameAppIds());
+        cleanupReplacedMedia(oldMediaRefs, collectMediaRefs(article, articleContentService.getByArticleId(articleId)));
+        articleNotificationEventProducer.publishProfileInvalidation(userId,
+                NotificationConstants.ProfileDataDomain.POSTS);
 
         Map<String, Object> taskParam = new HashMap<>();
         taskParam.put("articleId", articleId);
@@ -311,7 +339,6 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         if (article == null) {
             throw new IllegalArgumentException("文章不存在");
         }
-        Long ownerId = article.getUserId();
         var content = articleContentService.getByArticleId(id);
         boolean deleted = articleDeletionPersistenceService.markDeleted(article, content);
         if (deleted) {
@@ -394,6 +421,8 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         taskParam.put("imageUrls", content.getImageUrls() == null ? List.of() : content.getImageUrls());
         taskService.addImmediateTask(ContentConstants.TaskType.ARTICLE_PUBLISH, taskParam, id);
         articleSearchSyncProducer.delete(id);
+        articleNotificationEventProducer.publishProfileInvalidation(userId,
+                NotificationConstants.ProfileDataDomain.POSTS);
         log.info("文章提交审核: articleId={}", id);
     }
 
@@ -404,12 +433,24 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         taskService.cancelTasksByBusinessId(id, ContentConstants.TaskType.ARTICLE_PUBLISH);
         // 取消上架：停上传并清分片，保留已合并文件
         chunkUploadService.abortByArticleId(id, userId, false);
+        ArticleContent content = articleContentService.getByArticleId(id);
+        ArticleMediaHelper.DemotedGallery demotedGallery = articleMediaHelper.demoteGallery(
+                article.getCoverUrl(), content == null ? List.of() : content.getImageUrls(), "content");
+        article.setCoverUrl(demotedGallery.coverUrl());
+        article.setVideoUrl(articleMediaHelper.demoteToPrivate(article.getVideoUrl(), "video"));
+        if (content != null) {
+            articleContentService.saveContent(id, content.getContent(), content.getContentHtml(),
+                    content.getContentParagraphs(), demotedGallery.imageUrls(), userId);
+        }
         article.setStatus(ContentConstants.ArticleStatus.DRAFT);
         article.setAuditMessage("作者下架，已移入草稿");
         article.setPublishedTime(null);
         article.setUpdateTime(LocalDateTime.now());
         updateById(article);
         articleSearchSyncProducer.delete(id);
+        articleSocialFeedProducer.remove(id);
+        articleNotificationEventProducer.publishProfileInvalidation(userId,
+                NotificationConstants.ProfileDataDomain.POSTS);
         log.info("文章取消上架: articleId={}", id);
     }
 
@@ -417,7 +458,8 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     public ArticleProgressVO getArticleProgress(Long id, Long userId) {
         Article article = requireOwnedArticle(id, userId);
         ArticleProgressVO vo = new ArticleProgressVO();
-        vo.setArticleId(article.getId());
+        // 进度 VO 面向作者侧公开接口，返回 publicId，不能泄露内部数据库主键。
+        vo.setArticleId(article.getPublicId());
         vo.setStatus(article.getStatus());
         vo.setAuditMessage(article.getAuditMessage());
         vo.setPostType(article.getPostType());
@@ -502,7 +544,10 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         vo.setPublicId(article.getPublicId());
         vo.setTitle(article.getTitle());
         vo.setSummary(article.getSummary());
-        vo.setCoverUrl(needPreview ? articleMediaHelper.resolvePreview(article.getCoverUrl()) : article.getCoverUrl());
+        String coverRef = needPreview ? articleMediaHelper.normalizeReference(article.getCoverUrl()) : null;
+        vo.setCoverUrl(needPreview ? articleMediaHelper.resolvePreview(coverRef)
+                : articleMediaHelper.resolvePublic(article.getCoverUrl()));
+        vo.setCoverRef(coverRef);
         vo.setPostType(article.getPostType());
         vo.setRefArticleId(article.getRefArticleId());
         Article refArticle = article.getRefArticleId() == null
@@ -520,12 +565,15 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         if (author != null) {
             vo.setAuthorAccountId(author.getAccountId());
             vo.setUsername(author.getUsername());
-            vo.setAvatar(author.getAvatar());
+            vo.setAvatar(articleMediaHelper.resolvePublic(author.getAvatar()));
         }
         if (isPublishedRefArticle(refArticle)) {
             vo.setRefArticle(buildRefVo(refArticle, authorMap));
         }
-        vo.setVideoUrl(needPreview ? articleMediaHelper.resolvePreview(article.getVideoUrl()) : article.getVideoUrl());
+        String videoRef = needPreview ? articleMediaHelper.normalizeReference(article.getVideoUrl()) : null;
+        vo.setVideoUrl(needPreview ? articleMediaHelper.resolvePreview(videoRef)
+                : articleMediaHelper.resolvePublic(article.getVideoUrl()));
+        vo.setVideoRef(videoRef);
         vo.setCategoryId(article.getCategoryId());
         vo.setCategoryIds(ArticleCategoryHelper.resolveIds(article));
         vo.setStatus(article.getStatus());
@@ -541,13 +589,19 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             vo.setContentHtml(content.getContentHtml());
             vo.setContentParagraphs(content.getContentParagraphs());
             if (needPreview && content.getImageUrls() != null) {
+                List<String> refs = new ArrayList<>();
                 List<String> previews = new ArrayList<>();
                 for (String image : content.getImageUrls()) {
-                    previews.add(articleMediaHelper.resolvePreview(image));
+                    String ref = articleMediaHelper.normalizeReference(image);
+                    refs.add(ref);
+                    previews.add(articleMediaHelper.resolvePreview(ref));
                 }
+                vo.setImageRefs(refs);
                 vo.setImageUrls(previews);
             } else {
-                vo.setImageUrls(content.getImageUrls());
+                vo.setImageUrls(content.getImageUrls().stream()
+                        .map(articleMediaHelper::resolvePublic)
+                        .toList());
             }
         }
         articleCategoryService.enrichDetailVO(vo);
@@ -565,14 +619,14 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         refVo.setId(refArticle.getPublicId());
         refVo.setTitle(refArticle.getTitle());
         refVo.setSummary(refArticle.getSummary());
-        refVo.setCoverUrl(refArticle.getCoverUrl());
-        refVo.setVideoUrl(refArticle.getVideoUrl());
+        refVo.setCoverUrl(articleMediaHelper.resolvePublic(refArticle.getCoverUrl()));
+        refVo.setVideoUrl(articleMediaHelper.resolvePublic(refArticle.getVideoUrl()));
         refVo.setPostType(refArticle.getPostType());
         UserCardInternalVO author = authorMap.get(refArticle.getUserId());
         if (author != null) {
             refVo.setAuthorAccountId(author.getAccountId());
             refVo.setUsername(author.getUsername());
-            refVo.setAvatar(author.getAvatar());
+            refVo.setAvatar(articleMediaHelper.resolvePublic(author.getAvatar()));
         }
         return refVo;
     }
@@ -717,13 +771,29 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         if (article == null) {
             throw new IllegalArgumentException("文章不存在");
         }
+        boolean wasPublished = Objects.equals(article.getStatus(), ContentConstants.ArticleStatus.PUBLISHED);
+        boolean willBePublished = Objects.equals(status, ContentConstants.ArticleStatus.PUBLISHED);
+        boolean newlyPublished = !wasPublished && willBePublished;
+        LocalDateTime publishedTime = newlyPublished ? LocalDateTime.now() : article.getPublishedTime();
         article.setStatus(status);
         article.setUpdateTime(LocalDateTime.now());
+        if (newlyPublished) {
+            article.setPublishedTime(publishedTime);
+            article.setAuditMessage("重新上架");
+        }
         if (Objects.equals(status, ContentConstants.ArticleStatus.OFFLINE)) {
             article.setAuditMessage("管理员下架");
         }
         updateById(article);
-        if (Objects.equals(status, ContentConstants.ArticleStatus.PUBLISHED)) {
+        if (wasPublished && !Objects.equals(status, ContentConstants.ArticleStatus.PUBLISHED)) {
+            articleSocialFeedProducer.remove(id);
+        }
+        if (newlyPublished) {
+            articleSocialFeedProducer.publish(article.getUserId(), id, publishedTime);
+            articleNotificationEventProducer.publishProfileInvalidation(article.getUserId(),
+                    NotificationConstants.ProfileDataDomain.POSTS);
+        }
+        if (willBePublished) {
             articleSearchSyncProducer.upsert(id);
         } else {
             articleSearchSyncProducer.delete(id);
@@ -844,6 +914,36 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         return UUID.randomUUID().toString().replace("-", "");
     }
 
+    private List<String> collectMediaRefs(Article article, ArticleContent content) {
+        Set<String> refs = new HashSet<>();
+        if (article != null) {
+            if (StringUtils.hasText(article.getCoverUrl())) {
+                refs.add(article.getCoverUrl());
+            }
+            if (StringUtils.hasText(article.getVideoUrl())) {
+                refs.add(article.getVideoUrl());
+            }
+        }
+        if (content != null && content.getImageUrls() != null) {
+            content.getImageUrls().stream()
+                    .filter(StringUtils::hasText)
+                    .forEach(refs::add);
+        }
+        return new ArrayList<>(refs);
+    }
+
+    private void cleanupReplacedMedia(List<String> oldRefs, List<String> currentRefs) {
+        if (oldRefs == null || oldRefs.isEmpty()) {
+            return;
+        }
+        Set<String> current = (currentRefs == null ? List.<String>of() : currentRefs).stream()
+                .map(articleMediaHelper::normalizeReference)
+                .collect(Collectors.toSet());
+        oldRefs.stream()
+                .filter(ref -> !current.contains(articleMediaHelper.normalizeReference(ref)))
+                .forEach(articleMediaHelper::deleteRef);
+    }
+
     private void validatePublishTime(LocalDateTime publishTime) {
         if (publishTime != null && publishTime.isBefore(LocalDateTime.now().minusMinutes(1))) {
             throw new BusinessException("定时发布时间不能早于当前时间");
@@ -924,7 +1024,22 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     }
 
     private List<ArticleListVO> toEnrichedListVOs(List<Article> articles) {
+        return toEnrichedListVOs(articles, false);
+    }
+
+    private List<ArticleListVO> toEnrichedListVOs(List<Article> articles, boolean resolvePrivatePreview) {
         List<ArticleListVO> records = ArticleConverter.toListVOs(articles);
+        for (int i = 0; i < records.size(); i++) {
+            Article article = articles.get(i);
+            ArticleListVO record = records.get(i);
+            if (resolvePrivatePreview && !Objects.equals(article.getStatus(), ContentConstants.ArticleStatus.PUBLISHED)) {
+                    record.setCoverUrl(articleMediaHelper.resolvePreview(article.getCoverUrl()));
+                    record.setVideoUrl(articleMediaHelper.resolvePreview(article.getVideoUrl()));
+            } else {
+                record.setCoverUrl(articleMediaHelper.resolvePublic(article.getCoverUrl()));
+                record.setVideoUrl(articleMediaHelper.resolvePublic(article.getVideoUrl()));
+            }
+        }
         articleAuthorEnricher.enrich(articles, records);
         articleCategoryService.enrichListVOs(records);
         articleGameService.enrichListVOs(records);
@@ -933,14 +1048,16 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
     @Override
     public Result<String> saveArticleForCurrentUser(ArticleDTO dto) {
-        return Result.success(getPublicId(saveArticle(dto, requireCurrentUserId())));
+        // 明确指定 data 类型，避免 String 重载把公开 ID 写进 message 字段。
+        return Result.success("操作成功", getPublicId(saveArticle(dto, requireCurrentUserId())));
     }
 
     @Override
     public Result<String> updateArticleForCurrentUser(String publicId, ArticleDTO dto) {
         Long userId = requireCurrentUserId();
         dto.setId(resolvePublicId(publicId));
-        return Result.success(getPublicId(saveArticle(dto, userId)));
+        // 明确指定 data 类型，避免 String 重载把公开 ID 写进 message 字段。
+        return Result.success("操作成功", getPublicId(saveArticle(dto, userId)));
     }
 
     @Override
@@ -970,7 +1087,13 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     public Result<ArticleContentVO> queryArticleContent(String publicId) {
         Long id = resolvePublicId(publicId);
         assertContentReadable(id);
-        return Result.success(ArticleConverter.toContentVO(articleContentService.getByArticleId(id)));
+        ArticleContentVO contentVO = ArticleConverter.toContentVO(articleContentService.getByArticleId(id));
+        if (contentVO != null && contentVO.getImageUrls() != null) {
+            contentVO.setImageUrls(contentVO.getImageUrls().stream()
+                    .map(articleMediaHelper::resolvePublic)
+                    .toList());
+        }
+        return Result.success(contentVO);
     }
 
     @Override
@@ -980,7 +1103,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
     @Override
     public PageResult<ArticleListVO> queryMyArticlesPage(Integer page, Integer size, String tab) {
-        return toListPageResult(getUserArticlesPage(requireCurrentUserId(), page, size, tab));
+        Page<Article> pageResult = getUserArticlesPage(requireCurrentUserId(), page, size, tab);
+        return PageResult.of(toEnrichedListVOs(pageResult.getRecords(), true),
+                pageResult.getCurrent(), pageResult.getSize(), pageResult.getTotal());
     }
 
     @Override

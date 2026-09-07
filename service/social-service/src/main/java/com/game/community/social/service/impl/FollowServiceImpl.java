@@ -2,8 +2,10 @@ package com.game.community.social.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.game.community.common.constant.content.ContentConstants;
 import com.game.community.common.exception.BusinessException;
 import com.game.community.common.constant.social.SocialConstants;
+import com.game.community.common.constant.notification.NotificationConstants;
 import com.game.community.model.base.PageResult;
 import com.game.community.model.vo.article.ArticleListVO;
 import com.game.community.model.entity.social.SocialBlack;
@@ -61,6 +63,13 @@ public class FollowServiceImpl implements FollowService {
                     public void afterCommit() {
                         try {
                             compensateFeedOnFollow(userId, targetUserId);
+                            notificationEventProducer.publishProfileInvalidation(userId,
+                                    NotificationConstants.ProfileDataDomain.STATS,
+                                    NotificationConstants.ProfileDataDomain.FOLLOWING,
+                                    NotificationConstants.ProfileDataDomain.FEED);
+                            notificationEventProducer.publishProfileInvalidation(targetUserId,
+                                    NotificationConstants.ProfileDataDomain.STATS,
+                                    NotificationConstants.ProfileDataDomain.FOLLOWERS);
                             notificationEventProducer.publishFollow(targetUserId, currentUser(userId));
                         } catch (RuntimeException e) {
                             log.warn("关注后的 Feed 补偿或通知投递失败: userId={}, targetUserId={}",
@@ -70,6 +79,13 @@ public class FollowServiceImpl implements FollowService {
                 });
             } else {
                 compensateFeedOnFollow(userId, targetUserId);
+                notificationEventProducer.publishProfileInvalidation(userId,
+                        NotificationConstants.ProfileDataDomain.STATS,
+                        NotificationConstants.ProfileDataDomain.FOLLOWING,
+                        NotificationConstants.ProfileDataDomain.FEED);
+                notificationEventProducer.publishProfileInvalidation(targetUserId,
+                        NotificationConstants.ProfileDataDomain.STATS,
+                        NotificationConstants.ProfileDataDomain.FOLLOWERS);
                 notificationEventProducer.publishFollow(targetUserId, currentUser(userId));
             }
         } catch (DuplicateKeyException ignored) {
@@ -80,9 +96,21 @@ public class FollowServiceImpl implements FollowService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void unfollow(Long userId, Long targetUserId) {
-        followMapper.delete(new LambdaQueryWrapper<SocialFollow>()
+        int deleted = followMapper.delete(new LambdaQueryWrapper<SocialFollow>()
                 .eq(SocialFollow::getUserId, userId)
                 .eq(SocialFollow::getFollowUserId, targetUserId));
+        if (deleted > 0) {
+            feedItemMapper.delete(new LambdaQueryWrapper<SocialFeedItem>()
+                    .eq(SocialFeedItem::getUserId, userId)
+                    .eq(SocialFeedItem::getAuthorId, targetUserId));
+            notificationEventProducer.publishProfileInvalidation(userId,
+                    NotificationConstants.ProfileDataDomain.STATS,
+                    NotificationConstants.ProfileDataDomain.FOLLOWING,
+                    NotificationConstants.ProfileDataDomain.FEED);
+            notificationEventProducer.publishProfileInvalidation(targetUserId,
+                    NotificationConstants.ProfileDataDomain.STATS,
+                    NotificationConstants.ProfileDataDomain.FOLLOWERS);
+        }
     }
 
     @Override
@@ -272,18 +300,45 @@ public class FollowServiceImpl implements FollowService {
     private void compensateFeedOnFollow(Long userId, Long targetUserId) {
         List<ArticleListVO> articles = remoteClient.listPublishedByAuthor(targetUserId, 50);
         for (ArticleListVO article : articles) {
+            if (article == null || article.getId() == null || article.getPostType() == null
+                    || article.getPublishedTime() == null) {
+                continue;
+            }
             SocialFeedItem item = new SocialFeedItem();
             item.setUserId(userId);
             item.setAuthorId(targetUserId);
             item.setArticleId(article.getId());
+            item.setPostType(article.getPostType());
             item.setPublishedTime(article.getPublishedTime());
             item.setSourceType(SocialConstants.FeedSourceType.FOLLOW_COMPENSATION);
             try {
                 feedItemMapper.insert(item);
-                notificationEventProducer.publishFeedUnread(userId, article.getPublishedTime());
+                trimFeedCategoryCapacity(userId, article.getPostType());
             } catch (DuplicateKeyException ignored) {
                 // 关注补偿可重复执行，唯一索引保证信箱不重复。
             }
+        }
+    }
+
+    /** 每个帖子类型独立限容，超出时淘汰该类型最旧的信箱记录。 */
+    private void trimFeedCategoryCapacity(Long userId, Integer postType) {
+        long count = feedItemMapper.selectCount(new LambdaQueryWrapper<SocialFeedItem>()
+                .eq(SocialFeedItem::getUserId, userId)
+                .eq(SocialFeedItem::getPostType, postType));
+        long overflow = count - ContentConstants.FEED_CAPACITY;
+        if (overflow <= 0) {
+            return;
+        }
+        List<Long> oldestIds = feedItemMapper.selectList(new LambdaQueryWrapper<SocialFeedItem>()
+                        .select(SocialFeedItem::getId)
+                        .eq(SocialFeedItem::getUserId, userId)
+                        .eq(SocialFeedItem::getPostType, postType)
+                        .orderByAsc(SocialFeedItem::getPublishedTime)
+                        .orderByAsc(SocialFeedItem::getArticleId)
+                        .last("LIMIT " + overflow))
+                .stream().map(SocialFeedItem::getId).toList();
+        if (!oldestIds.isEmpty()) {
+            feedItemMapper.deleteBatchIds(oldestIds);
         }
     }
 

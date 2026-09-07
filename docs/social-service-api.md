@@ -262,7 +262,7 @@
 ### 关注 Feed 信箱
 
 - 路径：`GET /social/feed`
-- 作用：查询当前用户关注流。优先读取 `t_social_feed_item` 信箱；信箱不足时，根据游标时间回源查询已关注作者的更早文章并补偿写入信箱。
+- 作用：查询当前用户关注流。优先读取 `t_social_feed_item` 信箱；信箱不足时，根据游标时间从全部关注作者回源补齐当前响应，不回写信箱。
 - 登录：需要
 
 请求参数：
@@ -272,6 +272,7 @@
 | before | String | 否 | 当前时间 | 游标时间，格式为 `yyyy-MM-ddTHH:mm:ss` |
 | beforeArticleId | Long | 否 | - | 与 `before` 配套的同时间游标 ID，避免同一时间戳文章分页重复或遗漏 |
 | size | Long | 否 | 20 | 每次拉取数量，最大 100 |
+| postType | Integer | 否 | - | 帖子类型：1-图文，2-文章，3-视频，4-转发 |
 
 输出 `data[]`：内容为文章骨架 `Article`，包含 `id`、`userId`、`title`、`summary`、`coverUrl`、`categoryId`、`publishedTime` 等字段。
 
@@ -349,9 +350,9 @@
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| targetType | Integer | 是 | 1-文章，2-评论，3-回复，4-用户 |
-| targetId | String | 是 | 目标标识：文章传 publicId，用户传 accountId，评论/回复传数字 ID |
-| reason | String | 是 | 举报原因 |
+| targetType | Integer | 是 | 1-文章，2-评论，3-回复，4-用户，5-弹幕，6-问题反馈 |
+| targetId | String | 是 | 目标标识：文章传 publicId，用户传 accountId，评论/回复/弹幕传数字 ID；问题反馈传任意非空占位值 |
+| reason | String | 是 | 举报原因或问题反馈内容 |
 
 输出：`data = 举报ID`
 

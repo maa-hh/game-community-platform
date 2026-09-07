@@ -81,7 +81,9 @@ MySQL 和 MongoDB 没有做分布式事务。当前策略是在同一个业务�
 2. social-service 查询作者粉丝，将 `authorId/articleId/publishedTime` 写入 `t_social_feed_item`。
 3. 用户关注某个作者时，立即拉取该作者最近文章补偿写入信箱，避免“关注后看不到历史内容”。
 4. 用户请求 `/social/feed` 时，优先按 `published_time` 游标读取信箱。
-5. 如果信箱数据不足，则按当前游标回源查询已关注作者的更早文章，并补偿写入信箱后返回。
+5. 如果信箱数据不足，则按当前游标从全部已关注作者回源补齐当前响应，不回写信箱。
+
+Feed 信箱按 `post_type` 独立限容，每个帖子类型最多保留 `ContentConstants.FEED_CAPACITY` 条，超出时淘汰该类型最旧记录。
 
 Feed 信箱只保存文章基础索引，不复制标题、摘要、封面等文章内容，避免内容修改后多处冗余不一致。返回给前端前会通过 content-service 的文章查询接口补齐文章骨架。
 
