@@ -10,7 +10,6 @@ import type { FC, MouseEvent } from 'react';
 import { LeftOutlined, RightOutlined } from '@ant-design/icons';
 
 import ImageLightbox from '@/base-ui/ImageLightbox';
-import LazyImage from '@/base-ui/LazyImage';
 
 import './style.less';
 
@@ -109,12 +108,10 @@ const CoverGallery: FC<IProps> = ({ images, className }) => {
               className="cover-gallery__slide"
               onClick={() => openAt(i)}
             >
-              <LazyImage
+              <img
                 src={item.src}
                 alt=""
-                className="cover-gallery__image"
-                imgClassName="cover-gallery__image-el"
-                fallback={<span className="cover-gallery__image-fallback" />}
+                className="cover-gallery__image cover-gallery__image-el"
                 onLoad={updateScrollState}
               />
               <span className="cover-gallery__counter" aria-hidden>
@@ -159,4 +156,24 @@ const CoverGallery: FC<IProps> = ({ images, className }) => {
   );
 };
 
-export default memo(CoverGallery);
+function areGalleryImagesEqual(
+  previous: Array<string | CoverGalleryImage>,
+  next: Array<string | CoverGalleryImage>,
+) {
+  if (previous === next) return true;
+  if (previous.length !== next.length) return false;
+  return previous.every((item, index) => {
+    const other = next[index];
+    if (typeof item === 'string' || typeof other === 'string') {
+      return item === other;
+    }
+    return item.src === other.src && item.previewSrc === other.previewSrc;
+  });
+}
+
+export default memo(CoverGallery, (previous, next) => {
+  return (
+    previous.className === next.className &&
+    areGalleryImagesEqual(previous.images, next.images)
+  );
+});

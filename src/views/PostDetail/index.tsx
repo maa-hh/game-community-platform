@@ -66,6 +66,46 @@ function arePostDetailsEqual(
   return previous != null && JSON.stringify(previous) === JSON.stringify(next);
 }
 
+function mergeStableImages(
+  previewImages?: string[],
+  detailImages?: string[],
+): string[] | undefined {
+  if (!detailImages?.length) return previewImages;
+  if (!previewImages?.length) return detailImages;
+
+  // 列表与详情通常共享第一张封面。保留预览中的封面 URL，避免详情响应
+  // 到达后替换掉已经开始加载的图片；详情新增图片再追加到末尾。
+  if (previewImages[0] !== detailImages[0]) return detailImages;
+
+  const seen = new Set(previewImages);
+  return [
+    ...previewImages,
+    ...detailImages.slice(1).filter((url) => {
+      if (seen.has(url)) return false;
+      seen.add(url);
+      return true;
+    }),
+  ];
+}
+
+function mergePostPreview(
+  preview: PostDetailData | null,
+  detail: PostDetailData,
+): PostDetailData {
+  if (!preview || preview.id !== detail.id) return detail;
+
+  return {
+    ...preview,
+    ...detail,
+    content: detail.content || preview.content,
+    contentHtml: detail.contentHtml || preview.contentHtml,
+    images: mergeStableImages(preview.images, detail.images),
+    bodyImages: detail.bodyImages || preview.bodyImages,
+    coverUrl: detail.coverUrl || preview.coverUrl,
+    videoUrl: detail.videoUrl || preview.videoUrl,
+  };
+}
+
 function PostDetail() {
   const { id = '' } = useParams();
   const location = useLocation();
@@ -333,9 +373,10 @@ function PostDetail() {
     }
 
     setLoadError(null);
-    setPostState((current) =>
-      arePostDetailsEqual(current, detail) ? current : detail,
-    );
+    setPostState((current) => {
+      const merged = mergePostPreview(current, detail);
+      return arePostDetailsEqual(current, merged) ? current : merged;
+    });
     updateInteraction(id, {
       liked: detail.stats.liked,
       favorited: detail.stats.favorited,

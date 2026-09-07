@@ -3,8 +3,6 @@ import type { FC } from 'react';
 import { createPortal } from 'react-dom';
 import { CloseOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons';
 
-import LazyImage from '@/base-ui/LazyImage';
-
 import './style.less';
 
 interface IProps {
@@ -68,17 +66,13 @@ const ImageLightbox: FC<IProps> = ({
         </button>
 
         <div className="image-lightbox__stage">
-          <LazyImage
+          <img
             key={images[index]}
             src={images[index]}
             alt=""
-            className="image-lightbox__image"
-            imgClassName="image-lightbox__image-el"
+            className="image-lightbox__image image-lightbox__image-el"
             loading="eager"
             draggable={false}
-            fallback={
-              <div className="image-lightbox__fallback">图片加载失败</div>
-            }
           />
         </div>
 

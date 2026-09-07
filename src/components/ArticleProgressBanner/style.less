@@ -1,14 +1,21 @@
 .article-progress-banner {
-  position: sticky;
+  // 上传和审核共用顶部吸附进度条，始终显示在主导航下方。
+  position: fixed;
   top: var(--app-header-height);
+  right: 0;
+  left: 0;
   z-index: 95;
+  box-sizing: border-box;
   pointer-events: none;
-  background: color-mix(in srgb, var(--header-bg) 92%, var(--color-primary) 8%);
+  background: var(--color-bg);
   border-bottom: 1px solid
     color-mix(in srgb, var(--color-primary) 25%, transparent);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+
+  &__slot {
+    width: 100%;
+    flex: none;
+  }
 
   &__inner {
     width: 100%;
