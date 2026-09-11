@@ -22,9 +22,6 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @RequiredArgsConstructor
 public class SseController {
 
-    /** 兼容部分 HTTP/2 代理对 SSE 小数据块的缓冲，连接建立时先刷出一个完整块。 */
-    private static final String SSE_FLUSH_PADDING = " ".repeat(1536);
-
     private final SseService sseService;
 
     private final NotificationService notificationService;
@@ -42,7 +39,6 @@ public class SseController {
         SseEmitter emitter = sseService.connect(userId);
         NotificationSummaryVO summary = notificationService.getSummary(userId);
         try {
-            emitter.send(SseEmitter.event().comment(SSE_FLUSH_PADDING));
             emitter.send(SseEmitter.event()
                     .name(NotificationConstants.SseEventType.NOTIFICATION_SUMMARY)
                     .data(new NotificationSseEventVO(

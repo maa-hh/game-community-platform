@@ -1,5 +1,6 @@
 package com.game.community.utils;
 
+import com.game.community.common.constant.content.ContentConstants;
 import com.game.community.utils.config.MinIOProperties;
 import io.minio.BucketExistsArgs;
 import io.minio.ComposeObjectArgs;
@@ -15,8 +16,12 @@ import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
 import io.minio.Result;
 import io.minio.SetBucketPolicyArgs;
+import io.minio.StatObjectArgs;
 import io.minio.http.Method;
 import io.minio.messages.Item;
+import okhttp3.ConnectionPool;
+import okhttp3.Dispatcher;
+import okhttp3.OkHttpClient;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -37,6 +42,7 @@ import java.util.Enumeration;
 import java.util.Iterator;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 /**
  * MinIO 文件工具
@@ -53,15 +59,34 @@ public class MinIOUtils {
 
     public MinIOUtils(MinIOProperties properties) {
         this.properties = properties;
+        OkHttpClient httpClient = buildHttpClient(properties);
         this.minioClient = MinioClient.builder()
                 .endpoint(properties.getEndpoint())
                 .credentials(properties.getAccessKey(), properties.getSecretKey())
+                .httpClient(httpClient)
                 .build();
         String publicEndpoint = StringUtils.hasText(properties.getPublicEndpoint())
                 ? properties.getPublicEndpoint() : properties.getEndpoint();
         this.publicMinioClient = MinioClient.builder()
                 .endpoint(publicEndpoint)
                 .credentials(properties.getAccessKey(), properties.getSecretKey())
+                .httpClient(httpClient)
+                .build();
+    }
+
+    /** 创建可复用的 MinIO HTTP 客户端，保证并发分片请求不会被 OkHttp 默认的单主机上限卡住。 */
+    private OkHttpClient buildHttpClient(MinIOProperties minioProperties) {
+        Dispatcher dispatcher = new Dispatcher();
+        dispatcher.setMaxRequests(Math.max(1, minioProperties.getMaxRequests()));
+        dispatcher.setMaxRequestsPerHost(Math.max(1,
+                Math.min(minioProperties.getMaxRequests(), minioProperties.getMaxRequestsPerHost())));
+        ConnectionPool connectionPool = new ConnectionPool(
+                Math.max(1, minioProperties.getMaxIdleConnections()),
+                Math.max(1, minioProperties.getKeepAliveMinutes()),
+                TimeUnit.MINUTES);
+        return new OkHttpClient.Builder()
+                .connectionPool(connectionPool)
+                .dispatcher(dispatcher)
                 .build();
     }
 
@@ -115,6 +140,22 @@ public class MinIOUtils {
         }
     }
 
+    /** 上传到指定私有对象名，供内容寻址去重使用。 */
+    public void uploadPrivateFile(MultipartFile file, String objectName) {
+        try {
+            MinioClient client = client();
+            ensurePrivateBucket(client);
+            client.putObject(PutObjectArgs.builder()
+                    .bucket(properties.getPrivateBucketName())
+                    .object(objectName)
+                    .stream(file.getInputStream(), file.getSize(), -1)
+                    .contentType(file.getContentType())
+                    .build());
+        } catch (Exception e) {
+            throw new IllegalStateException("私有文件上传失败", e);
+        }
+    }
+
     public void uploadPrivateBytes(String objectName, byte[] bytes, String contentType) {
         try {
             MinioClient client = client();
@@ -127,6 +168,24 @@ public class MinIOUtils {
                     .build());
         } catch (Exception e) {
             throw new IllegalStateException("私有分片写入失败", e);
+        }
+    }
+
+    /** 判断私有桶中的内容寻址对象是否存在。 */
+    public boolean privateObjectExists(String objectName) {
+        if (!StringUtils.hasText(objectName)) {
+            return false;
+        }
+        try {
+            MinioClient client = client();
+            ensurePrivateBucket(client);
+            client.statObject(StatObjectArgs.builder()
+                    .bucket(properties.getPrivateBucketName())
+                    .object(objectName)
+                    .build());
+            return true;
+        } catch (Exception e) {
+            return false;
         }
     }
 
@@ -163,7 +222,9 @@ public class MinIOUtils {
             String suffix = pendingObjectName == null ? ""
                     : pendingObjectName.substring(pendingObjectName.lastIndexOf('/') + 1);
             String folder = StringUtils.hasText(publicFolder) ? publicFolder.trim() : "content";
-            String publicObjectName = properties.getPublicFilePrefix() + "/" + folder + "/" + suffix;
+            String objectFolder = isGlobalDedupeObject(pendingObjectName)
+                    ? folder + "/dedupe" : folder;
+            String publicObjectName = properties.getPublicFilePrefix() + "/" + objectFolder + "/" + suffix;
             client.copyObject(CopyObjectArgs.builder()
                     .bucket(properties.getPublicBucketName())
                     .object(publicObjectName)
@@ -272,8 +333,9 @@ public class MinIOUtils {
     /**
      * 按顺序读取私有桶中的多个分片并写入目标对象。
      *
-     * <p>MinIO Compose 对除最后一段外的来源对象有 5MiB 最小限制，1MiB 上传分片不能直接
-     * Compose，因此小分片协议使用流式串接，避免把完整文件一次性加载进内存。</p>
+     * <p>MinIO Compose 对除最后一段外的来源对象有 5MiB 最小限制；当前协议默认 3MiB，
+     * 历史会话还可能使用 1MiB，因此统一使用流式串接，避免把完整文件一次性加载到内存。
+     * 若未来协议分片调整到至少 5MiB，可再切换为直接 Compose。</p>
      */
     public void concatenatePrivateObjects(String targetObjectName,
                                           List<String> sourceObjectNames,
@@ -357,6 +419,29 @@ public class MinIOUtils {
                 result.append(String.format("%02x", value));
             }
             return result.toString();
+        } catch (Exception e) {
+            throw new IllegalStateException("计算文件 MD5 失败", e);
+        }
+    }
+
+    /** 计算上传文件 MD5，兼容旧的图片直传接口。 */
+    public String calculateMd5(MultipartFile file) {
+        if (file == null) {
+            throw new IllegalArgumentException("文件不能为空");
+        }
+        try (InputStream inputStream = file.getInputStream()) {
+            MessageDigest digest = MessageDigest.getInstance("MD5");
+            byte[] buffer = new byte[64 * 1024];
+            long total = 0;
+            int read;
+            while ((read = inputStream.read(buffer)) != -1) {
+                total += read;
+                if (properties.getMaxHashBytes() > 0 && total > properties.getMaxHashBytes()) {
+                    throw new IllegalStateException("文件超过后端校验上限");
+                }
+                digest.update(buffer, 0, read);
+            }
+            return toHex(digest.digest());
         } catch (Exception e) {
             throw new IllegalStateException("计算文件 MD5 失败", e);
         }
@@ -552,6 +637,19 @@ public class MinIOUtils {
                 ? properties.getPublicEndpoint()
                 : properties.getEndpoint();
         return trimTrailingSlash(endpoint) + "/" + properties.getPublicBucketName() + "/" + objectName;
+    }
+
+    private boolean isGlobalDedupeObject(String objectName) {
+        return StringUtils.hasText(objectName)
+                && objectName.startsWith(ContentConstants.UploadRedis.GLOBAL_OBJECT_PREFIX);
+    }
+
+    private String toHex(byte[] bytes) {
+        StringBuilder result = new StringBuilder(bytes.length * 2);
+        for (byte value : bytes) {
+            result.append(String.format("%02x", value));
+        }
+        return result.toString();
     }
 
     private byte[] readLimited(InputStream inputStream) throws Exception {

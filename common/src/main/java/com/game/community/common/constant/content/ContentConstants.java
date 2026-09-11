@@ -237,7 +237,8 @@ public class ContentConstants {
         public static final long IMAGE_MAX_BYTES = 5L * 1024 * 1024;
         public static final int IMAGE_MAX_COUNT = 20;
         public static final long VIDEO_MAX_BYTES = 500L * 1024 * 1024;
-        public static final long CHUNK_SIZE_BYTES = 1L * 1024 * 1024;
+        /** 默认 3MiB 分片，在并发吞吐与单请求内存占用之间取平衡。 */
+        public static final long CHUNK_SIZE_BYTES = 3L * 1024 * 1024;
         public static final int PRESIGNED_EXPIRE_SECONDS = 900;
     }
 
@@ -248,6 +249,8 @@ public class ContentConstants {
         public static final String SESSION_PREFIX = "content:upload:session:";
         /** 当前用户按文件 MD5 定位可恢复的上传会话。 */
         public static final String MD5_INDEX_PREFIX = "content:upload:md5:";
+        /** 全局去重对象前缀；对象名由文件 MD5 和大小确定，一旦写入即作为共享只读源保留。 */
+        public static final String GLOBAL_OBJECT_PREFIX = "content/dedupe/";
         /** 文章关联的 uploadId 集合 */
         public static final String ARTICLE_UPLOADS_PREFIX = "content:article:uploads:";
         public static final long SESSION_TTL_SECONDS = 24 * 3600L;

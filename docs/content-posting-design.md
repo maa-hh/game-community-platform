@@ -23,7 +23,7 @@
 | 删除（停传+取消任务+删文件） | ✅ `DELETE /article/{id}` |
 | 前端进度展示 + 取消/删除 | ✅ 编辑器 + 个人页帖子 |
 
-运维：已有库执行 `sql/content-posting-alter.sql`；content-service multipart 已调至 6MB/片。
+运维：已有库执行 `sql/content-posting-alter.sql`；content-service 单请求上限为 6MB，媒体默认按 3MiB/片并发上传。
 
 ---
 

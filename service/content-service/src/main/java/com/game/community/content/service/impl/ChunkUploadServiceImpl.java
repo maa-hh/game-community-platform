@@ -48,6 +48,10 @@ public class ChunkUploadServiceImpl implements ChunkUploadService {
         validateInit(dto);
         String bizType = normalizeBizType(dto.getBizType());
         String fileMd5 = normalizeFileMd5(dto.getFileMd5());
+        ChunkUploadInitVO globallyReusable = findGlobalReusableUpload(dto, fileMd5, userId);
+        if (globallyReusable != null) {
+            return globallyReusable;
+        }
         ChunkUploadInitVO reusable = findReusableUpload(dto, bizType, fileMd5, userId);
         if (reusable != null) {
             return reusable;
@@ -87,6 +91,40 @@ public class ChunkUploadServiceImpl implements ChunkUploadService {
         vo.setUploadedChunks(List.of());
         vo.setInstant(false);
         return vo;
+    }
+
+    private ChunkUploadInitVO findGlobalReusableUpload(ChunkUploadInitDTO dto,
+                                                       String fileMd5,
+                                                       Long userId) {
+        String objectKey = globalObjectKey(fileMd5, dto.getFileSize());
+        if (!StringUtils.hasText(objectKey) || !minIOUtils.privateObjectExists(objectKey)) {
+            return null;
+        }
+
+        long chunkSize = ContentConstants.MediaLimit.CHUNK_SIZE_BYTES;
+        int totalChunks = (int) Math.ceil(dto.getFileSize() * 1.0 / chunkSize);
+        String uploadId = UUID.randomUUID().toString().replace("-", "");
+        UploadSession session = new UploadSession();
+        session.setUploadId(uploadId);
+        session.setUserId(userId);
+        session.setFileName(dto.getFileName().trim());
+        session.setFileSize(dto.getFileSize());
+        session.setFileMd5(fileMd5);
+        session.setContentType(StringUtils.hasText(dto.getContentType())
+                ? dto.getContentType().trim() : "application/octet-stream");
+        session.setBizType(normalizeBizType(dto.getBizType()));
+        session.setArticleId(dto.getArticleId());
+        session.setChunkSize(chunkSize);
+        session.setTotalChunks(totalChunks);
+        session.setUploadedChunks(new TreeSet<>());
+        session.setPrefix("content/chunks/" + userId + "/" + uploadId + "/");
+        session.setStatus(STATUS_MERGED);
+        session.setObjectKey(objectKey);
+        saveSession(session);
+        if (dto.getArticleId() != null) {
+            linkArticle(dto.getArticleId(), uploadId);
+        }
+        return toInitVo(session, true);
     }
 
     private ChunkUploadInitVO findReusableUpload(ChunkUploadInitDTO dto,
@@ -190,13 +228,29 @@ public class ChunkUploadServiceImpl implements ChunkUploadService {
                 throw new BusinessException("分片未全部上传完成");
             }
 
+            String existingGlobalObject = globalObjectKey(session.getFileMd5(), session.getFileSize());
+            if (!StringUtils.hasText(existingGlobalObject)
+                    || !minIOUtils.privateObjectExists(existingGlobalObject)) {
+                existingGlobalObject = null;
+            }
+            if (existingGlobalObject != null) {
+                minIOUtils.deletePrivatePrefix(session.getPrefix());
+                session.setObjectKey(existingGlobalObject);
+                session.setStatus(STATUS_MERGED);
+                session.setUploadedChunks(new TreeSet<>());
+                saveSession(session);
+                return toMediaVo(existingGlobalObject);
+            }
+
             List<String> sources = new ArrayList<>();
             for (int i = 0; i < session.getTotalChunks(); i++) {
                 sources.add(chunkObjectName(session, i));
             }
             String suffix = extractSuffix(session.getFileName());
             String folder = "video".equals(session.getBizType()) ? "video" : "content";
-            String targetObject = "content/" + folder + "/" + userId + "/" + uploadId + suffix;
+            String targetObject = StringUtils.hasText(session.getFileMd5())
+                    ? globalObjectKey(session.getFileMd5(), session.getFileSize())
+                    : "content/" + folder + "/" + userId + "/" + uploadId + suffix;
             if (session.getChunkSize() != null
                     && session.getChunkSize() < MIN_COMPOSE_SOURCE_SIZE_BYTES) {
                 minIOUtils.concatenatePrivateObjects(targetObject, sources,
@@ -293,7 +347,8 @@ public class ChunkUploadServiceImpl implements ChunkUploadService {
         }
         try {
             minIOUtils.deletePrivatePrefix(session.getPrefix());
-            if (deleteMerged && StringUtils.hasText(session.getObjectKey())) {
+            if (deleteMerged && StringUtils.hasText(session.getObjectKey())
+                    && !isGlobalObject(session.getObjectKey())) {
                 minIOUtils.deletePrivateObject(session.getObjectKey());
                 session.setObjectKey(null);
             }
@@ -440,6 +495,18 @@ public class ChunkUploadServiceImpl implements ChunkUploadService {
 
     private String md5IndexKey(Long userId, String fileMd5) {
         return ContentConstants.UploadRedis.MD5_INDEX_PREFIX + userId + ":" + fileMd5;
+    }
+
+    private String globalObjectKey(String fileMd5, Long fileSize) {
+        if (!StringUtils.hasText(fileMd5) || fileSize == null || fileSize <= 0) {
+            return null;
+        }
+        return ContentConstants.UploadRedis.GLOBAL_OBJECT_PREFIX + fileMd5 + "-" + fileSize;
+    }
+
+    private boolean isGlobalObject(String objectKey) {
+        return StringUtils.hasText(objectKey)
+                && objectKey.startsWith(ContentConstants.UploadRedis.GLOBAL_OBJECT_PREFIX);
     }
 
     private void removeMd5Index(UploadSession session) {

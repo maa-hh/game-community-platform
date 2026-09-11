@@ -4,13 +4,6 @@ server:
 spring:
   application:
     name: ai-agent-service
-  # AI 配置
-  ai:
-    dashscope:
-      api-key: ${DASHSCOPE_API_KEY}
-      chat:
-        options:
-          model: ${DASHSCOPE_CHAT_MODEL:qwen-plus}
   # 数据源配置
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -53,10 +46,12 @@ mybatis-plus:
 
 # AI Agent 配置
 ai-agent:
+  api-key: ${DASHSCOPE_API_KEY:}
   embedding-endpoint: https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings
-  chat-endpoint: https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
+  # 兼容旧配置字段；实际 ChatClient 由 models.default-provider=deepseek 管理。
+  chat-endpoint: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}/chat/completions
   embedding-model: ${DASHSCOPE_EMBEDDING_MODEL:text-embedding-v4}
-  chat-model: ${DASHSCOPE_CHAT_MODEL:qwen-plus}
+  chat-model: ${DEEPSEEK_CHAT_MODEL:deepseek-flash}
   knowledge-index: ai_knowledge_segment
   retrieval-top-k: 6
   retrieval-candidate-k: 12
@@ -64,6 +59,30 @@ ai-agent:
   segment-overlap: 60
   memory-ttl-hours: 72
   max-rounds: 10
+  models:
+    default-provider: ${AI_DEFAULT_PROVIDER:deepseek}
+    providers:
+      deepseek:
+        enabled: true
+        base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+        completions-path: /chat/completions
+        api-key: ${DEEPSEEK_API_KEY:}
+        chat-model: ${DEEPSEEK_CHAT_MODEL:deepseek-flash}
+        text-moderation-model: ${DEEPSEEK_TEXT_MODEL:deepseek-flash}
+        image-moderation-model: ${DEEPSEEK_IMAGE_MODEL:deepseek-flash}
+        temperature: 0.1
+      # 可按相同结构增加任意 OpenAI 兼容供应商，并通过 provider 字段选择。
+  moderation:
+    reject-max-score: ${AUDIT_REJECT_MAX_SCORE:3}
+    human-review-max-score: ${AUDIT_HUMAN_REVIEW_MAX_SCORE:6}
+    unavailable-decision: ${AUDIT_UNAVAILABLE_DECISION:HUMAN_REVIEW}
+    sensitive-words-path: ${AUDIT_SENSITIVE_WORDS_PATH:classpath:moderation/sensitive-words.txt}
+    system-prompt-path: ${AUDIT_SYSTEM_PROMPT_PATH:classpath:prompts/moderation-system.st}
+    text-prompt-path: ${AUDIT_TEXT_PROMPT_PATH:classpath:prompts/moderation-text-user.st}
+    image-prompt-path: ${AUDIT_IMAGE_PROMPT_PATH:classpath:prompts/moderation-image-user.st}
+    article-prompt-path: ${AUDIT_ARTICLE_PROMPT_PATH:classpath:prompts/moderation-article-user.st}
+    max-text-chars: ${AUDIT_MAX_TEXT_CHARS:12000}
+    max-concurrent-model-calls: ${AUDIT_MAX_CONCURRENT_MODEL_CALLS:8}
 
 # 日志配置
 logging:

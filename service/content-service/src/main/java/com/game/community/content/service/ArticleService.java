@@ -63,6 +63,11 @@ public interface ArticleService extends IService<Article> {
     ArticleDetailVO getArticleDetail(Long id);
 
     /**
+     * 人工审核预览：仅供审核服务/管理员审核页面读取任意状态文章。
+     */
+    ArticleDetailVO getArticleDetailForAdminPreview(String publicId);
+
+    /**
      * 作者编辑：读取自己的文章（任意状态）
      */
     ArticleDetailVO getArticleDetailForOwner(Long id, Long userId);

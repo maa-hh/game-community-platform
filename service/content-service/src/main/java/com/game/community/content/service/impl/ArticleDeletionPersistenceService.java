@@ -5,6 +5,7 @@ import com.game.community.common.constant.content.ContentConstants;
 import com.game.community.common.constant.notification.NotificationConstants;
 import com.game.community.content.event.ArticleNotificationEventProducer;
 import com.game.community.content.event.ArticleSearchSyncProducer;
+import com.game.community.content.event.ArticleSocialFeedProducer;
 import com.game.community.content.mapper.ArticleMapper;
 import com.game.community.content.service.ChunkUploadService;
 import com.game.community.content.service.ContentOutboxService;
@@ -29,6 +30,7 @@ public class ArticleDeletionPersistenceService {
     private final ArticleMapper articleMapper;
     private final TaskService taskService;
     private final ArticleSearchSyncProducer articleSearchSyncProducer;
+    private final ArticleSocialFeedProducer articleSocialFeedProducer;
     private final ContentOutboxService contentOutboxService;
     private final ArticleNotificationEventProducer articleNotificationEventProducer;
     private final ArticleMediaHelper articleMediaHelper;
@@ -47,6 +49,7 @@ public class ArticleDeletionPersistenceService {
         }
         taskService.cancelTasksByBusinessId(article.getId(), ContentConstants.TaskType.ARTICLE_PUBLISH);
         articleSearchSyncProducer.delete(article.getId());
+        articleSocialFeedProducer.remove(article.getId());
 
         List<String> refs = new ArrayList<>();
         if (article.getCoverUrl() != null) {

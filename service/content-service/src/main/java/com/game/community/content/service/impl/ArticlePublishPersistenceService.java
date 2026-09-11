@@ -85,6 +85,7 @@ public class ArticlePublishPersistenceService {
             return false;
         }
         articleSearchSyncProducer.delete(articleId);
+        articleSocialFeedProducer.remove(articleId);
         articleNotificationEventProducer.publishArticleAuditRejected(userId, articleId, reason);
         return true;
     }

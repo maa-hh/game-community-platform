@@ -11,4 +11,7 @@ public class AiChatRequest {
 
     @NotBlank(message = "消息不能为空")
     private String message;
+
+    /** 可选模型供应商，空值使用服务端默认配置。 */
+    private String provider;
 }

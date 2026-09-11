@@ -1,6 +1,6 @@
 package com.game.community.content.service;
 
-import com.game.community.utils.audit.AuditResult;
+import com.game.community.model.vo.aiagent.ModerationResultVO;
 
 import java.util.List;
 
@@ -12,5 +12,5 @@ public interface ArticleAuditService {
     /**
      * 同步审核文章文本与图片，逐项记录审核流水。
      */
-    AuditResult auditArticle(Long articleId, String title, String content, List<String> imageUrls);
+    ModerationResultVO auditArticle(Long articleId, String title, String content, List<String> imageUrls);
 }

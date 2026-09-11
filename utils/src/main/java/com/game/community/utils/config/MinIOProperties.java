@@ -39,4 +39,16 @@ public class MinIOProperties {
 
     /** 合并文件完整性校验上限；0 表示不限制。 */
     private long maxHashBytes = 0;
+
+    /** MinIO HTTP 客户端允许的总并发请求数。 */
+    private int maxRequests = 64;
+
+    /** MinIO HTTP 客户端对同一 endpoint 允许的并发请求数。 */
+    private int maxRequestsPerHost = 16;
+
+    /** MinIO HTTP 连接池保留的空闲连接数。 */
+    private int maxIdleConnections = 32;
+
+    /** MinIO HTTP 空闲连接保活时间。 */
+    private int keepAliveMinutes = 5;
 }

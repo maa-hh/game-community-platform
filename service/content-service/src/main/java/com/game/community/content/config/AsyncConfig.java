@@ -1,6 +1,7 @@
 package com.game.community.content.config;
 
 import com.game.community.common.constant.content.ContentConstants;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -39,6 +40,21 @@ public class AsyncConfig {
         executor.setMaxPoolSize(32);
         executor.setQueueCapacity(200);
         executor.setThreadNamePrefix("content-remote-");
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.AbortPolicy());
+        executor.initialize();
+        return executor;
+    }
+
+    /** 图片直传使用独立线程池并发写 MinIO，避免占满审核/业务任务线程。 */
+    @Bean(name = "contentFileUploadExecutor")
+    public Executor contentFileUploadExecutor(
+            @Value("${content.file-upload.concurrency:8}") int concurrency) {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        int poolSize = Math.max(1, concurrency);
+        executor.setCorePoolSize(poolSize);
+        executor.setMaxPoolSize(poolSize);
+        executor.setQueueCapacity(100);
+        executor.setThreadNamePrefix("content-file-upload-");
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.AbortPolicy());
         executor.initialize();
         return executor;

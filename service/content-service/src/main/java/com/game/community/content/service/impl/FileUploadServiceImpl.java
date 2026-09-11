@@ -15,40 +15,115 @@ import com.game.community.model.vo.file.ChunkUploadStatusVO;
 import com.game.community.model.vo.file.MediaUploadVO;
 import com.game.community.utils.MinIOUtils;
 import com.game.community.utils.ThreadLocal.UserThreadLocal;
-import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.Executor;
 
+@Slf4j
 @Service
-@RequiredArgsConstructor
 public class FileUploadServiceImpl implements FileUploadService {
 
-    private static final String PRIVATE_DIR_CONTENT = "content";
     private static final String PENDING_URL_PREFIX = "pending://";
 
     private final MinIOUtils minIOUtils;
     private final ChunkUploadService chunkUploadService;
     private final ArticleService articleService;
+    private final Executor fileUploadExecutor;
+
+    public FileUploadServiceImpl(MinIOUtils minIOUtils,
+                                 ChunkUploadService chunkUploadService,
+                                 ArticleService articleService,
+                                 @Qualifier("contentFileUploadExecutor") Executor fileUploadExecutor) {
+        this.minIOUtils = minIOUtils;
+        this.chunkUploadService = chunkUploadService;
+        this.articleService = articleService;
+        this.fileUploadExecutor = fileUploadExecutor;
+    }
 
     @Override
     public Result<List<MediaUploadVO>> uploadImages(List<MultipartFile> files) {
         validateArticleImages(files);
-        List<MediaUploadVO> result = new ArrayList<>();
-        for (MultipartFile file : files) {
-            String objectKey = minIOUtils.uploadPrivateFile(file, file.getOriginalFilename(), PRIVATE_DIR_CONTENT);
-            MediaUploadVO vo = new MediaUploadVO();
-            vo.setObjectKey(objectKey);
-            vo.setPendingUrl(PENDING_URL_PREFIX + objectKey);
-            vo.setPreviewUrl(minIOUtils.generatePrivateUrl(objectKey,
-                    ContentConstants.MediaLimit.PRESIGNED_EXPIRE_SECONDS));
-            result.add(vo);
+        List<CompletableFuture<MediaUploadVO>> uploads = files.stream()
+                .map(file -> CompletableFuture.supplyAsync(() -> uploadImage(file), fileUploadExecutor))
+                .toList();
+        try {
+            CompletableFuture.allOf(uploads.toArray(new CompletableFuture[0])).join();
+            return Result.success(uploads.stream().map(CompletableFuture::join).toList());
+        } catch (CompletionException exception) {
+            cleanupUploadedImages(uploads);
+            Throwable cause = exception.getCause();
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new BusinessException("图片上传失败");
         }
-        return Result.success(result);
+    }
+
+    /** 单张图片写入私有桶并组装预览协议。 */
+    private MediaUploadVO uploadImage(MultipartFile file) {
+        String fileMd5 = minIOUtils.calculateMd5(file);
+        String objectKey = globalObjectKey(fileMd5, file.getSize());
+        if (minIOUtils.privateObjectExists(objectKey)) {
+            return toMediaVo(objectKey);
+        }
+
+        try {
+            minIOUtils.uploadPrivateFile(file, objectKey);
+            return toMediaVo(objectKey);
+        } catch (RuntimeException exception) {
+            if (!isGlobalObject(objectKey)) {
+                try {
+                    minIOUtils.deletePrivateObject(objectKey);
+                } catch (RuntimeException cleanupException) {
+                    log.warn("生成图片预览地址失败后的对象清理失败: objectKey={}",
+                            objectKey, cleanupException);
+                }
+            }
+            throw exception;
+        }
+    }
+
+    private MediaUploadVO toMediaVo(String objectKey) {
+        MediaUploadVO vo = new MediaUploadVO();
+        vo.setObjectKey(objectKey);
+        vo.setPendingUrl(PENDING_URL_PREFIX + objectKey);
+        vo.setPreviewUrl(minIOUtils.generatePrivateUrl(objectKey,
+                ContentConstants.MediaLimit.PRESIGNED_EXPIRE_SECONDS));
+        return vo;
+    }
+
+    /** 多图批量上传部分失败时删除本批次已写入对象，避免产生孤儿文件。 */
+    private void cleanupUploadedImages(List<CompletableFuture<MediaUploadVO>> uploads) {
+        uploads.stream()
+                .filter(CompletableFuture::isDone)
+                .filter(upload -> !upload.isCompletedExceptionally())
+                .map(CompletableFuture::join)
+                .filter(media -> !isGlobalObject(media.getObjectKey()))
+                .forEach(media -> {
+                    try {
+                        minIOUtils.deletePrivateObject(media.getObjectKey());
+                    } catch (RuntimeException cleanupException) {
+                        log.warn("批量图片上传失败后的对象清理失败: objectKey={}",
+                                media.getObjectKey(), cleanupException);
+                    }
+                });
+    }
+
+    private boolean isGlobalObject(String objectKey) {
+        return StringUtils.hasText(objectKey)
+                && objectKey.startsWith(ContentConstants.UploadRedis.GLOBAL_OBJECT_PREFIX);
+    }
+
+    private String globalObjectKey(String fileMd5, long fileSize) {
+        return ContentConstants.UploadRedis.GLOBAL_OBJECT_PREFIX + fileMd5 + "-" + fileSize;
     }
 
     @Override

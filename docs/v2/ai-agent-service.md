@@ -2,7 +2,7 @@
 
 ## 1. 服务概述
 
-AI 智能体服务是游戏社区平台的 AI 对话与知识库管理微服务，基于 DashScope（通义千问）实现 RAG (Retrieval-Augmented Generation) 问答系统。核心流程为：用户发起提问 → 从 Elasticsearch 知识库中混合检索（BM25 + 语义向量）相关片段 → 组装 Prompt 调用大模型生成回答 → 返回答案及引用来源。同时提供知识文档管理（文本录入/文件上传）、段落感知切分、向量索引构建、调试搜索等能力。
+AI 智能体服务是游戏社区平台的统一 AI 微服务，基于 Spring AI 与 OpenAI 兼容模型实现可扩展 Agent、文本/图片审核和 RAG 问答。模型选择、提示词、阈值及本地词库全部在本服务集中维护，业务微服务只消费内部协议。
 
 **核心能力**：
 - RAG 问答：知识检索 + LLM 生成，返回答案及引用片段
@@ -13,10 +13,22 @@ AI 智能体服务是游戏社区平台的 AI 对话与知识库管理微服务�
 - 聊天记忆：Redis 存储会话上下文，72h TTL，最多 10 轮
 - 知识索引调试：分别查看 BM25 / 语义 / 融合结果，支持统计查询
 - ES 索引自动初始化（@PostConstruct）
+- 统一审核：文本 AC 自动机预审 + 文本/图片模型评分 + 通过/拒绝/人工审核决策
+- 多模型扩展：按 provider 配置 OpenAI 兼容模型，业务代码不绑定具体供应商；当前审核默认 DeepSeek `deepseek-flash`
+- 提示词工程：系统、文本、图片与 RAG 提示词位于 `src/main/resources/prompts`
 
-**技术栈**：Spring Boot 3 + Elasticsearch 8 + MySQL + Redis + DashScope API + MyBatis-Plus + Nacos + Sentinel
+**技术栈**：Spring Boot 3.4.2 + Spring AI 1.0.3 + Elasticsearch 8 + MySQL + Redis + OpenAI Compatible API + MyBatis-Plus + Nacos + Sentinel
 
 **服务端口**：8093
+
+### 1.1 Spring 版本选择
+
+- 保持 Spring Boot 3.4.2，不升级到 4.x。
+- Spring AI 固定为 1.0.3，其 Spring Framework 基线为 6.2.x，与 Boot 3.4.x 同代。
+- 旧 `spring-ai-alibaba 1.1.0.0-RC2` 会解析到 Spring AI 1.1.0，其自动配置构建基线为 Boot 3.5.x，已从通用 `utils` 模块移除。
+- AI 依赖只存在于 `ai-agent-service`；user/content 通过 Feign 使用内部协议，不再各自创建模型 Bean。
+
+参考：[Spring AI 1.0 Getting Started](https://docs.spring.io/spring-ai/reference/1.0/getting-started.html)、[Spring AI ChatClient](https://docs.spring.io/spring-ai/reference/1.0/api/chatclient.html)。
 
 ---
 
@@ -125,7 +137,7 @@ String context = references.stream()
 ```
 
 3. 组装 Prompt：`"请基于以下知识片段回答用户问题。\n\n" + context + "\n\n用户问题: " + message`
-4. 调用 DashScope Chat API（qwen-plus），传入系统提示词 + 历史消息 + 当前 Prompt
+4. 通过 Spring AI `AgentModelRegistry` 调用默认 DeepSeek `deepseek-flash`，传入系统提示词 + 历史消息 + 当前 Prompt
 5. 保存聊天记忆（用户消息 + 助手回复）
 6. 返回答案及引用片段
 
@@ -639,9 +651,9 @@ mybatis-plus:
 ```yaml
 ai-agent:
   embedding-endpoint: https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings
-  chat-endpoint: https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
+  chat-endpoint: https://api.deepseek.com/chat/completions
   embedding-model: ${DASHSCOPE_EMBEDDING_MODEL:text-embedding-v4}
-  chat-model: ${DASHSCOPE_CHAT_MODEL:qwen-plus}
+  chat-model: ${DEEPSEEK_CHAT_MODEL:deepseek-flash}
   knowledge-index: ai_knowledge_segment
   retrieval-top-k: 6
   retrieval-candidate-k: 12
@@ -671,9 +683,9 @@ management:
 |--------|--------|------|
 | `server.port` | 8093 | 服务端口 |
 | `ai-agent.embedding-endpoint` | DashScope embeddings API | 向量嵌入端点 |
-| `ai-agent.chat-endpoint` | DashScope chat API | 对话生成端点 |
+| `ai-agent.chat-endpoint` | DeepSeek chat API | 对话生成端点 |
 | `ai-agent.embedding-model` | text-embedding-v4 | 嵌入模型（1024维） |
-| `ai-agent.chat-model` | qwen-plus | 对话模型 |
+| `ai-agent.chat-model` | deepseek-flash | 对话模型 |
 | `ai-agent.knowledge-index` | ai_knowledge_segment | ES 知识索引名 |
 | `ai-agent.retrieval-top-k` | 6 | 检索返回条数 |
 | `ai-agent.retrieval-candidate-k` | 12 | kNN 候选数 |
@@ -688,7 +700,7 @@ management:
 | 端点 | URL | 用途 |
 |------|-----|------|
 | Embedding | `https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings` | 文本向量化 |
-| Chat | `https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions` | 对话生成 |
+| Chat | `https://api.deepseek.com/chat/completions` | 对话生成（DeepSeek deepseek-flash） |
 
 ### 7.5 启动类注解
 
@@ -745,3 +757,58 @@ CREATE TABLE IF NOT EXISTS t_ai_knowledge_document (
     KEY idx_ai_knowledge_index_status (index_status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI 知识文档表';
 ```
+
+---
+
+## 8. 统一 AI 审核
+
+内部接口：`POST /feign/ai/moderation`。请求类型为 `TEXT`、`IMAGE` 或 `ARTICLE`；图片支持 `imageUrl`，也支持 `imageBase64 + mimeType`。`provider` 可选，空值使用 `ai-agent.models.default-provider`。
+
+`ARTICLE` 用于一次上传文章任务：传 `title`、`content` 和 `images[]`，正文与全部图片会组成一条多模态消息，只调用一次模型；内容服务据此写入本地词、AI 文字、AI 图片三个审核流水阶段，不再为每张图单独调用。
+
+文本执行顺序：输入规范化（NFKC、大小写、插入符清理）→ AC 自动机扫描 → 命中高置信屏蔽词则直接拒绝 → 未命中再调用文本模型评分。图片直接调用视觉模型，同时要求模型检查画面文字。
+
+统一响应字段：
+
+| 字段 | 含义 |
+|------|------|
+| `type` | `TEXT` / `IMAGE` / `ARTICLE` |
+| `keywordAudit` | `PASS` / `REJECT` / `NOT_APPLICABLE` |
+| `matchedKeywords` | 命中的屏蔽词；无命中为空数组 |
+| `aiAudit` | `PASS` / `REJECT` / `HUMAN_REVIEW` / `NOT_EXECUTED` |
+| `score` | 0–10 合规分；0–3 拒绝，4–6 人工，7–10 通过 |
+| `reason` | 屏蔽词或模型给出的简短原因 |
+| `result` | 最终 `PASS` / `REJECT` / `HUMAN_REVIEW` |
+| `provider` / `model` | 实际模型信息 |
+| `durationMs` / token 字段 | 模型调用观测数据 |
+
+模型不可用默认返回 5 分并进入 `HUMAN_REVIEW`，可通过 `AUDIT_UNAVAILABLE_DECISION` 调整。Feign 调用本身不可达时，user/content 也执行同样的人工审核降级。
+
+### 8.1 扩展模型
+
+当前审核使用 DeepSeek 官方 OpenAI 兼容接口：`https://api.deepseek.com/chat/completions`。官方模型页确认 `deepseek-flash` 同时支持文本和 Vision，`deepseek-v4-pro` 不支持 Vision，因此文字、图片和 ARTICLE 审核统一使用 `deepseek-flash`。
+
+在 `ai-agent.models.providers` 下新增配置即可接入其他 OpenAI 兼容供应商：
+
+```yaml
+ai-agent:
+  models:
+    providers:
+      example:
+        base-url: https://provider.example.com
+        completions-path: /v1/chat/completions
+        api-key: ${EXAMPLE_API_KEY:}
+        chat-model: example-chat
+        text-moderation-model: example-chat
+        image-moderation-model: example-vision
+        temperature: 0.1
+```
+
+`AgentModelRegistry` 按 provider/model 缓存 Spring AI `ChatClient`。审核和 RAG 对话使用工程化 Prompt；Embedding 暂时保留现有 DashScope 接口，不影响后续迁移到 `EmbeddingModel`。
+
+### 8.2 并发与失败保护
+
+- ai-agent 的模型调用使用 `max-concurrent-model-calls` 信号量（默认 8）做有界并发；满载立即返回 `HUMAN_REVIEW`，不会无限堆积 Tomcat 请求线程。
+- 文章发布、资料审核仍由各业务服务已有的有界异步线程池执行；Kafka 不放进 ai-agent，避免把同步审核强行改成无法追踪的异步任务。
+- 空 key、供应商不可达、超时、图片 URL/内容格式错误、模型返回空或非法 JSON、输入超过 `max-text-chars` 均不误放行，统一返回 5 分 `HUMAN_REVIEW`（可配置失败策略）。响应不泄漏供应商原始错误。
+- 业务侧已有 Outbox + Kafka：文章审核后续的人工任务、通知、搜索同步由 content/audit/user 服务投递并重试；ai-agent 本身只负责同步给出审核结果，因此不存在“模型完成但 ai-agent 事件丢失”的隐式事件。若未来需要独立审核完成事件，应在业务落库事务中新增 Outbox 消息和幂等键。

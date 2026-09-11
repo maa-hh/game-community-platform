@@ -866,6 +866,8 @@ private void runAfterCommit(Runnable action) {
 
 ### 3.6 资料审核链
 
+> 当前实现已收口到 ai-agent-service：`AuditTaskExecutor` 通过 `AiAgentFeignClient` 获取 `ModerationResultVO`，按 0–3 拒绝、4–6 人工、7–10 通过推进资料状态。下面出现的本地 `AuditClient` / DFA 代码是迁移前背景，当前协议详见 `docs/v2/ai-agent-service.md` §8。
+
 **完整流程**：
 
 ```mermaid
@@ -1726,16 +1728,13 @@ minio:
   presigned-expire-seconds: ${MINIO_PRESIGNED_EXPIRE_SECONDS:900}
 
 audit:
+  mode: ${AUDIT_MODE:llm}
   async:
     core-pool-size: ${AUDIT_ASYNC_CORE_POOL_SIZE:2}
     max-pool-size: ${AUDIT_ASYNC_MAX_POOL_SIZE:4}
     queue-capacity: ${AUDIT_ASYNC_QUEUE_CAPACITY:200}
     keep-alive-seconds: ${AUDIT_ASYNC_KEEP_ALIVE_SECONDS:60}
     thread-name-prefix: ${AUDIT_ASYNC_THREAD_NAME_PREFIX:audit-}
-  dashscope:
-    text-model: ${AUDIT_DASHSCOPE_TEXT_MODEL:qwen-plus}
-    image-model: ${AUDIT_DASHSCOPE_IMAGE_MODEL:qwen3-vl-plus}
-    fail-open-on-unavailable: ${AUDIT_DASHSCOPE_FAIL_OPEN_ON_UNAVAILABLE:false}
 
 mybatis-plus:
   mapper-locations: classpath*:mapper/*.xml

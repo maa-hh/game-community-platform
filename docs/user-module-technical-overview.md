@@ -18,7 +18,7 @@
 - `Redis`
 - `MySQL`
 - `MinIO`
-- `AuditClient`
+- `ai-agent-service`（统一文本/图片审核）
 
 ## 2. 整体脉络
 

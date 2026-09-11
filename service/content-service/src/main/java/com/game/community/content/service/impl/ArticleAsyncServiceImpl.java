@@ -10,7 +10,8 @@ import com.game.community.content.service.ArticleContentService;
 import com.game.community.content.util.ArticleMediaHelper;
 import com.game.community.model.dto.article.ArticleDTO;
 import com.game.community.model.entity.article.Article;
-import com.game.community.utils.audit.AuditResult;
+import com.game.community.model.enums.aiagent.ModerationDecision;
+import com.game.community.model.vo.aiagent.ModerationResultVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -62,13 +63,14 @@ public class ArticleAsyncServiceImpl implements ArticleAsyncService {
             }
         }
 
-        AuditResult result = articleAuditService.auditArticle(articleId, articleDTO.getTitle(), articleDTO.getContent(), auditImages);
+        ModerationResultVO result = articleAuditService.auditArticle(
+                articleId, articleDTO.getTitle(), articleDTO.getContent(), auditImages);
         if (shouldAbortPublish(articleId)) {
             log.info("审核完成后文章已取消，放弃发布: articleId={}", articleId);
             return;
         }
 
-        if (result.isHumanReview()) {
+        if (result.getResult() == ModerationDecision.HUMAN_REVIEW) {
             LocalDateTime snapshotAt = LocalDateTime.now();
             articlePublishPersistenceService.enterManualReview(articleId, userId, articleDTO,
                     result.getReason(), snapshotAt);
@@ -76,7 +78,7 @@ public class ArticleAsyncServiceImpl implements ArticleAsyncService {
             return;
         }
 
-        if (result.isPass()) {
+        if (result.getResult() == ModerationDecision.PASS) {
             LocalDateTime publishedTime = LocalDateTime.now();
             Map<String, String> paragraphs = normalizeParagraphs(articleDTO);
             ArticleMediaHelper.PromotedGallery gallery =
@@ -107,7 +109,7 @@ public class ArticleAsyncServiceImpl implements ArticleAsyncService {
         boolean rejected = articlePublishPersistenceService.reject(articleId, userId, result.getReason());
         if (rejected) {
             articleMediaHelper.deleteRefs(auditImages);
-            articleMediaHelper.deletePendingRefs(List.of(articleDTO.getVideoUrl()));
+            deletePendingVideo(articleDTO.getVideoUrl());
         }
         log.info("文章审核驳回: articleId={}, reason={}", articleId, result.getReason());
     }
@@ -162,7 +164,7 @@ public class ArticleAsyncServiceImpl implements ArticleAsyncService {
                 StringUtils.hasText(reason) ? reason : "人工审核未通过");
         if (rejected) {
             articleMediaHelper.deleteRefs(auditImages);
-            articleMediaHelper.deletePendingRefs(List.of(article.getVideoUrl()));
+            deletePendingVideo(article.getVideoUrl());
         }
     }
 
@@ -209,6 +211,12 @@ public class ArticleAsyncServiceImpl implements ArticleAsyncService {
             refs.add(videoUrl);
         }
         return refs;
+    }
+
+    private void deletePendingVideo(String videoUrl) {
+        if (StringUtils.hasText(videoUrl)) {
+            articleMediaHelper.deletePendingRefs(List.of(videoUrl));
+        }
     }
 
     private Map<String, String> normalizeParagraphs(ArticleDTO dto) {

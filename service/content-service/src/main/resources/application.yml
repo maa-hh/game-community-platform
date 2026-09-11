@@ -4,13 +4,6 @@ server:
 spring:
   application:
     name: content-service
-  # AI 配置
-  ai:
-    dashscope:
-      api-key: ${DASHSCOPE_API_KEY}
-      chat:
-        options:
-          model: ${DASHSCOPE_CHAT_MODEL:qwen-plus}
   # 数据源配置
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -27,7 +20,7 @@ spring:
   # 文件上传配置
   servlet:
     multipart:
-      # 图片 ≤5MB；媒体分片默认 1MB/片
+      # 图片 ≤5MB；媒体分片默认 3MiB/片
       max-file-size: 6MB
       max-request-size: 32MB
   # MongoDB 配置
@@ -110,13 +103,10 @@ minio:
   presigned-expire-seconds: ${MINIO_PRESIGNED_EXPIRE_SECONDS:900}
   max-read-bytes: ${MINIO_MAX_READ_BYTES:16777216}
   max-hash-bytes: ${MINIO_MAX_HASH_BYTES:0}
-
-# 审核配置
-audit:
-  dashscope:
-    text-model: ${AUDIT_DASHSCOPE_TEXT_MODEL:qwen-plus}
-    image-model: ${AUDIT_DASHSCOPE_IMAGE_MODEL:qwen3-vl-plus}
-    fail-open-on-unavailable: ${AUDIT_DASHSCOPE_FAIL_OPEN_ON_UNAVAILABLE:false}
+  max-requests: ${MINIO_MAX_REQUESTS:64}
+  max-requests-per-host: ${MINIO_MAX_REQUESTS_PER_HOST:16}
+  max-idle-connections: ${MINIO_MAX_IDLE_CONNECTIONS:32}
+  keep-alive-minutes: ${MINIO_KEEP_ALIVE_MINUTES:5}
 
 # MyBatis-Plus 配置
 mybatis-plus:
@@ -147,6 +137,8 @@ management:
       show-details: never
 
 content:
+  file-upload:
+    concurrency: ${CONTENT_FILE_UPLOAD_CONCURRENCY:8}
   outbox:
     poll-interval-ms: ${CONTENT_OUTBOX_POLL_INTERVAL_MS:1000}
 

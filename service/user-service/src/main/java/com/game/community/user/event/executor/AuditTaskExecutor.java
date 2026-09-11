@@ -3,29 +3,35 @@ package com.game.community.user.event.executor;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.game.community.common.constant.user.UserConstants;
+import com.game.community.feign.AiAgentFeignClient;
+import com.game.community.model.base.Result;
+import com.game.community.model.dto.aiagent.ModerationRequest;
 import com.game.community.model.entity.user.User;
 import com.game.community.model.entity.user.UserAuditRejectLog;
 import com.game.community.model.entity.user.UserAuditTask;
 import com.game.community.model.enums.user.AuditFieldType;
 import com.game.community.model.enums.user.AuditTaskStatus;
 import com.game.community.model.enums.user.UserStrings;
+import com.game.community.model.enums.aiagent.ModerationCheckResult;
+import com.game.community.model.enums.aiagent.ModerationContentType;
+import com.game.community.model.enums.aiagent.ModerationDecision;
 import com.game.community.model.payload.user.FieldAuditPayload;
+import com.game.community.model.vo.aiagent.ModerationResultVO;
 import com.game.community.user.common.audit.UserAuditHelper;
 import com.game.community.user.event.kafka.ModerationTaskProducer;
 import com.game.community.user.event.kafka.ProfileAuditNotificationProducer;
 import com.game.community.user.mapper.UserAuditRejectLogMapper;
 import com.game.community.user.mapper.UserAuditTaskMapper;
 import com.game.community.user.mapper.UserMapper;
-import com.game.community.utils.DfaAuditUtils;
 import com.game.community.utils.MinIOUtils;
-import com.game.community.utils.audit.AuditClient;
-import com.game.community.utils.audit.AuditResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.Base64;
+import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 
@@ -39,8 +45,7 @@ public class AuditTaskExecutor {
     private final UserAuditRejectLogMapper rejectLogMapper;
     private final UserMapper userMapper;
     private final UserAuditHelper auditHelper;
-    private final DfaAuditUtils dfaAuditUtils;
-    private final AuditClient auditClient;
+    private final AiAgentFeignClient aiAgentFeignClient;
     private final MinIOUtils minIOUtils;
     private final ProfileAuditNotificationProducer notificationProducer;
     private final ModerationTaskProducer moderationTaskProducer;
@@ -52,8 +57,7 @@ public class AuditTaskExecutor {
                              UserAuditRejectLogMapper rejectLogMapper,
                              UserMapper userMapper,
                              UserAuditHelper auditHelper,
-                             DfaAuditUtils dfaAuditUtils,
-                             AuditClient auditClient,
+                             AiAgentFeignClient aiAgentFeignClient,
                              MinIOUtils minIOUtils,
                              ProfileAuditNotificationProducer notificationProducer,
                              ModerationTaskProducer moderationTaskProducer,
@@ -63,8 +67,7 @@ public class AuditTaskExecutor {
         this.rejectLogMapper = rejectLogMapper;
         this.userMapper = userMapper;
         this.auditHelper = auditHelper;
-        this.dfaAuditUtils = dfaAuditUtils;
-        this.auditClient = auditClient;
+        this.aiAgentFeignClient = aiAgentFeignClient;
         this.minIOUtils = minIOUtils;
         this.notificationProducer = notificationProducer;
         this.moderationTaskProducer = moderationTaskProducer;
@@ -135,21 +138,24 @@ public class AuditTaskExecutor {
             AuditFieldResult result;
             if (task.getTaskType() == AuditFieldType.AVATAR) {
                 String url = minIOUtils.generatePrivateAvatarUrl(payload.getPendingObjectName());
+                ModerationRequest request = new ModerationRequest();
+                request.setType(ModerationContentType.IMAGE);
                 try {
                     MinIOUtils.FilePayload file = minIOUtils.readFileByUrl(url);
-                    result = result("头像", auditClient.auditImage(file.bytes(), file.contentType()));
+                    request.setImageBase64(Base64.getEncoder().encodeToString(file.bytes()));
+                    request.setMimeType(file.contentType());
                 } catch (Exception e) {
                     log.warn("头像图片读取失败，回退为 URL 审核: url={}", url, e);
-                    result = result("头像", auditClient.auditImageUrl(url));
+                    request.setImageUrl(url);
                 }
+                result = result("头像", moderate(request));
             } else if (!StringUtils.hasText(payload.getContent())) {
                 result = new AuditFieldResult(UserConstants.AuditScore.MAX, "空内容");
-            } else if (!dfaAuditUtils.pass(payload.getContent())) {
-                log.warn("{}本地敏感词未通过: {}", task.getTaskType().label(), payload.getContent());
-                result = new AuditFieldResult(UserConstants.AuditScore.REJECT_DEFAULT,
-                        task.getTaskType().label() + "包含敏感词");
             } else {
-                result = result(task.getTaskType().label(), auditClient.auditText(payload.getContent()));
+                ModerationRequest request = new ModerationRequest();
+                request.setType(ModerationContentType.TEXT);
+                request.setContent(payload.getContent());
+                result = result(task.getTaskType().label(), moderate(request));
             }
 
             Integer score = result.score();
@@ -246,7 +252,7 @@ public class AuditTaskExecutor {
     }
 
     /** 执行 result 对应的业务处理。 */
-    private AuditFieldResult result(String fieldLabel, AuditResult auditResult) {
+    private AuditFieldResult result(String fieldLabel, ModerationResultVO auditResult) {
         if (auditResult == null) {
             return new AuditFieldResult(UserConstants.AuditScore.REJECT_DEFAULT,
                     fieldLabel + "审核结果为空");
@@ -255,10 +261,39 @@ public class AuditTaskExecutor {
                 ? auditResult.getReason() : fieldLabel + "审核未通过";
         Integer score = auditResult.getScore();
         if (score == null) {
-            score = auditResult.isPass() ? UserConstants.AuditScore.PASS_DEFAULT
-                    : UserConstants.AuditScore.REJECT_DEFAULT;
+            score = auditResult.getResult() == ModerationDecision.PASS
+                    ? UserConstants.AuditScore.PASS_DEFAULT : UserConstants.AuditScore.REJECT_DEFAULT;
         }
         return new AuditFieldResult(score, reason);
+    }
+
+    /** 调用 AI Agent；网络或服务异常统一转人工审核。 */
+    private ModerationResultVO moderate(ModerationRequest request) {
+        try {
+            Result<ModerationResultVO> response = aiAgentFeignClient.moderate(request);
+            if (response != null && response.getCode() != null && response.getCode() == 200
+                    && response.getData() != null) {
+                return response.getData();
+            }
+            return unavailable(request.getType());
+        } catch (Exception e) {
+            log.warn("AI Agent 审核服务不可用: type={}, error={}", request.getType(), e.getMessage());
+            return unavailable(request.getType());
+        }
+    }
+
+    /** 构造跨服务失败时的统一人工复核结果。 */
+    private ModerationResultVO unavailable(ModerationContentType type) {
+        ModerationResultVO result = new ModerationResultVO();
+        result.setType(type);
+        result.setKeywordAudit(type == ModerationContentType.TEXT
+                ? ModerationCheckResult.PASS : ModerationCheckResult.NOT_APPLICABLE);
+        result.setMatchedKeywords(List.of());
+        result.setAiAudit(ModerationCheckResult.NOT_EXECUTED);
+        result.setScore(5);
+        result.setReason("AI审核服务不可用，转人工审核");
+        result.setResult(ModerationDecision.HUMAN_REVIEW);
+        return result;
     }
 
     /** 执行 updateTask 对应的业务处理。 */

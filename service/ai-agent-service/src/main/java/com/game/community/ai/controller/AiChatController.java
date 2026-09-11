@@ -30,7 +30,8 @@ public class AiChatController {
     @LoginCheck
     @PostMapping
     public Result<AiChatResponseVO> chat(@Valid @RequestBody AiChatRequest request) {
-        return Result.success(aiChatService.chat(request.getSessionId(), request.getMessage()));
+        return Result.success(aiChatService.chat(
+                request.getSessionId(), request.getMessage(), request.getProvider()));
     }
 
     @LoginCheck
