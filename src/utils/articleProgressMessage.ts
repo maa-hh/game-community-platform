@@ -19,6 +19,7 @@ export interface ArticleProgressBannerView {
   showUploadPercent: boolean;
   uploadPercent?: number;
   showUploadComplete: boolean;
+  showPreparation: boolean;
   showAuditWaiting: boolean;
 }
 
@@ -42,6 +43,9 @@ export function resolveArticleProgressStage(
   progress: IArticleProgress | null | undefined,
 ): string {
   if (!progress) return '审核处理中';
+  if (progress.uploadStatus === 'PREPARING') {
+    return '准备媒体上传';
+  }
   if (isArticleUploading(progress)) {
     return '媒体上传中';
   }
@@ -71,13 +75,15 @@ export function resolveArticleProgressBanner(
   const showUploadPercent =
     uploading && uploadPercent != null && uploadPercent >= 0;
   const showUploadComplete = progress?.uploadStatus === 'SAVED';
+  const showPreparation = progress?.uploadStatus === 'PREPARING';
 
   return {
     stage: resolveArticleProgressStage(progress),
     showUploadPercent,
     uploadPercent: showUploadPercent ? uploadPercent : undefined,
     showUploadComplete,
-    showAuditWaiting: !uploading && !showUploadComplete,
+    showPreparation,
+    showAuditWaiting: !uploading && !showUploadComplete && !showPreparation,
   };
 }
 

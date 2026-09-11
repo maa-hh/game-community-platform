@@ -55,7 +55,7 @@ const HeaderActions: FC<HeaderActionsProps> = ({
   );
 
   return (
-    <Space size={12} className="app-header__actions">
+    <Space size={12} wrap className="app-header__actions">
       <Button
         type="text"
         className="app-header__theme-btn"

@@ -18,6 +18,7 @@
 | `ContentCard`   | 信息流帖子卡（强制，见 `ContentCard/README.md`）       |
 | `CoverGallery`  | 横向滑动多图                                           |
 | `ImageLightbox` | 大图预览框                                             |
+| `ImageZoomControl` | 图片裁剪缩放控制（滑块 + 倍率输入）                  |
 | `ClampText`     | 两行截断 +「全文」                                     |
 | `VideoPlayer`   | DPlayer 16:9                                           |
 | `InfoCard`      | 演示用信息卡                                           |

@@ -1,7 +1,9 @@
 import React from 'react';
 import type { ComponentType, FC } from 'react';
 import ReactEasyCrop from 'react-easy-crop';
-import { Slider, Typography } from 'antd';
+import { Typography } from 'antd';
+
+import ImageZoomControl from '@/base-ui/ImageZoomControl';
 
 import { avatarCropperConfig } from '../config';
 import type { EasyCropperProps } from '../types';
@@ -38,6 +40,8 @@ const AvatarCropperBody: FC<IProps> = ({
           image={imageSrc}
           crop={crop}
           zoom={zoom}
+          minZoom={avatarCropperConfig.zoomMin}
+          maxZoom={avatarCropperConfig.zoomMax}
           aspect={avatarCropperConfig.aspect}
           cropShape={avatarCropperConfig.cropShape}
           showGrid={avatarCropperConfig.showGrid}
@@ -46,16 +50,15 @@ const AvatarCropperBody: FC<IProps> = ({
           onCropComplete={onCropComplete}
         />
       </div>
-      <div className="avatar-cropper__zoom">
-        <Text type="secondary">{avatarCropperConfig.zoomLabel}</Text>
-        <Slider
-          min={avatarCropperConfig.zoomMin}
-          max={avatarCropperConfig.zoomMax}
-          step={avatarCropperConfig.zoomStep}
-          value={zoom}
-          onChange={(value) => onZoomChange(Number(value))}
-        />
-      </div>
+      <ImageZoomControl
+        className="avatar-cropper__zoom"
+        label={avatarCropperConfig.zoomLabel}
+        min={avatarCropperConfig.zoomMin}
+        max={avatarCropperConfig.zoomMax}
+        step={avatarCropperConfig.zoomStep}
+        value={zoom}
+        onChange={onZoomChange}
+      />
       <Text type="secondary" className="avatar-cropper__hint">
         {avatarCropperConfig.hint}
       </Text>

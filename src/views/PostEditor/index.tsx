@@ -11,7 +11,6 @@ import {
   Form,
   Input,
   Modal,
-  Progress,
   Select,
   Segmented,
   Space,
@@ -30,25 +29,15 @@ import PageLoading from '@/base-ui/PageLoading';
 import {
   ARTICLE_STATUS,
   POST_TYPE,
-  TASK_STATUS,
-  bindChunkUploadApi,
   deleteArticleApi,
   listCategoriesApi,
   loadArticleForEditApi,
   saveArticleApi,
   unpublishArticleApi,
-  uploadFileWithProgress,
-  uploadVideoWithProgress,
   type ICategory,
   type PostType,
 } from '@/service/content';
 import { searchGamesApi } from '@/service/game';
-import { useAppDispatch } from '@/store';
-import {
-  clearArticleProgressTrack,
-  startArticleProgressTrack,
-  updateArticleProgress,
-} from '@/store/modules/articleProgress';
 import { useGoBack } from '@/hooks/useGoBack';
 import { getArticleProgressResultMessage } from '@/utils/articleProgressMessage';
 import { invalidateOwnProfilePostCaches } from '@/utils/profileDataCache';
@@ -57,6 +46,10 @@ import { formatApiError } from '@/utils/apiError';
 import { mapGameTagsFromRaw, mergeGameTagOptions } from '@/utils/mapGameTag';
 import { resolveGameCoverUrl } from '@/utils/steamImage';
 import { richHtmlToParagraphs, richHtmlToPlainText } from '@/utils/richText';
+import {
+  captureVideoFrame,
+  captureVideoFrameFromUrl,
+} from '@/utils/videoPoster';
 import type { IGameListItem, IGameTag } from '@/types/game';
 import type { EditorImage } from '@/views/PostEditor/types';
 import CoverImageManager from '@/views/PostEditor/components/CoverImageManager';
@@ -66,6 +59,14 @@ import {
   dedupeUrls,
   revokeBlobUrl,
 } from '@/views/PostEditor/utils';
+import {
+  discardPersistentPostUpload,
+  getPersistentPostUploadTask,
+  getPersistentPostUploadPromise,
+  startPersistentPostUpload,
+  updatePersistentPostUploadPayload,
+  type PersistentPostUploadFile,
+} from '@/utils/persistentPostUpload';
 
 import './style.less';
 
@@ -202,7 +203,6 @@ function createMultiSelectEnterKeyDown(
 
 const PostEditor: FC = () => {
   const navigate = useNavigate();
-  const dispatch = useAppDispatch();
   const goBack = useGoBack('draft');
   const { user } = useAppSelector((state) => state.auth);
   const [searchParams] = useSearchParams();
@@ -219,7 +219,7 @@ const PostEditor: FC = () => {
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
   const [pendingVideoFile, setPendingVideoFile] = useState<File | null>(null);
   const [videoName, setVideoName] = useState<string | null>(null);
-  const [uploadPercent, setUploadPercent] = useState(0);
+  const [videoCoverGenerating, setVideoCoverGenerating] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [articleId, setArticleId] = useState<string | undefined>();
@@ -232,10 +232,13 @@ const PostEditor: FC = () => {
   const [linkModalOpen, setLinkModalOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
   const [richTextComposing, setRichTextComposing] = useState(false);
-  const abortRef = useRef<AbortController | null>(null);
-  const uploadIdsRef = useRef<Set<string>>(new Set());
-  const uploadProgressIdRef = useRef<string | null>(null);
-  const uploadProgressAsDraftRef = useRef(false);
+  const uploadTaskIdRef = useRef<string | null>(null);
+  const videoCoverTokenRef = useRef(0);
+  const autoVideoCoverPromiseRef = useRef<Promise<void> | null>(null);
+  const autoVideoCoverFileRef = useRef<{
+    file: File;
+    token: number;
+  } | null>(null);
   const gameSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const titleComposingRef = useRef(false);
   const richQuillRef = useRef<ReactQuill | null>(null);
@@ -525,8 +528,35 @@ const PostEditor: FC = () => {
     };
   }, [editIdParam, form, navigate, user?.accountId]);
 
+  const cancelPersistentUpload = () => {
+    const taskId = uploadTaskIdRef.current;
+    if (!taskId) return;
+    const task = getPersistentPostUploadTask(taskId);
+    discardPersistentPostUpload(taskId);
+    uploadTaskIdRef.current = null;
+    if (!articleId && task?.articleId) {
+      setArticleId(task.articleId);
+      setArticleStatus(ARTICLE_STATUS.DRAFT);
+    }
+  };
+
+  const clearVideoCoverState = () => {
+    videoCoverTokenRef.current += 1;
+    autoVideoCoverPromiseRef.current = null;
+    autoVideoCoverFileRef.current = null;
+    setVideoCoverGenerating(false);
+    setCoverImages((previous) => {
+      const retained = previous.filter((image) => image.source !== 'video');
+      previous
+        .filter((image) => image.source === 'video')
+        .forEach((image) => revokeBlobUrl(image.previewUrl));
+      return retained;
+    });
+  };
+
   const clearVideoMedia = () => {
-    abortRef.current?.abort();
+    cancelPersistentUpload();
+    clearVideoCoverState();
     setVideoPreviewUrl((prev) => {
       revokeBlobUrl(prev);
       return null;
@@ -534,8 +564,6 @@ const PostEditor: FC = () => {
     setPendingVideoFile(null);
     setVideoPendingUrl(null);
     setVideoName(null);
-    setUploadPercent(0);
-    uploadIdsRef.current.clear();
   };
 
   const trimCoverImages = (max: number) => {
@@ -549,6 +577,7 @@ const PostEditor: FC = () => {
   const onModeChange = (value: string | number) => {
     const next = Number(value) as PostType;
     if (next === postType) return;
+    cancelPersistentUpload();
 
     if (next === POST_TYPE.VIDEO) {
       trimCoverImages(1);
@@ -559,15 +588,92 @@ const PostEditor: FC = () => {
     setPostType(next);
   };
 
+  const handleCoverImagesChange = (images: EditorImage[]) => {
+    videoCoverTokenRef.current += 1;
+    autoVideoCoverPromiseRef.current = null;
+    autoVideoCoverFileRef.current = null;
+    setVideoCoverGenerating(false);
+    cancelPersistentUpload();
+    setCoverImages(images);
+  };
+
+  const replaceWithVideoCover = (file: File) => {
+    videoCoverTokenRef.current += 1;
+    autoVideoCoverPromiseRef.current = null;
+    autoVideoCoverFileRef.current = null;
+    setVideoCoverGenerating(false);
+    setCoverImages((previous) => {
+      previous.forEach((image) => revokeBlobUrl(image.previewUrl));
+      return [
+        {
+          id: createImageId(),
+          file,
+          previewUrl: URL.createObjectURL(file),
+          source: 'video',
+        },
+      ];
+    });
+  };
+
+  const startAutoVideoCover = (file: File): Promise<void> => {
+    const token = ++videoCoverTokenRef.current;
+    autoVideoCoverFileRef.current = null;
+    setVideoCoverGenerating(true);
+    const promise = captureVideoFrame(file, 1)
+      .then((blob) => {
+        if (!blob) throw new Error('视频封面生成失败');
+        if (token !== videoCoverTokenRef.current) return;
+        const coverFile = new File([blob], 'video-cover-auto.jpg', {
+          type: 'image/jpeg',
+        });
+        autoVideoCoverFileRef.current = { file: coverFile, token };
+        setCoverImages((previous) => {
+          if (previous.length > 0 || token !== videoCoverTokenRef.current) {
+            return previous;
+          }
+          return [
+            {
+              id: createImageId(),
+              file: coverFile,
+              previewUrl: URL.createObjectURL(coverFile),
+              source: 'video',
+            },
+          ];
+        });
+      })
+      .catch((error) => {
+        if (token === videoCoverTokenRef.current) {
+          autoVideoCoverPromiseRef.current = null;
+          message.warning('自动生成封面失败，请手动从视频中选择');
+        }
+        throw error;
+      })
+      .finally(() => {
+        if (token === videoCoverTokenRef.current) {
+          setVideoCoverGenerating(false);
+        }
+      });
+    autoVideoCoverPromiseRef.current = promise;
+    void promise.catch(() => undefined);
+    return promise;
+  };
+
+  const ensureVideoCover = async () => {
+    if (!pendingVideoFile || coverImages.length > 0) return;
+    const pending =
+      autoVideoCoverPromiseRef.current || startAutoVideoCover(pendingVideoFile);
+    await pending;
+  };
+
   const buildPayload = (
     asDraft: boolean,
+    values: Record<string, any>,
     media?: {
       coverUrl?: string | null;
       videoUrl?: string | null;
       imageUrls?: string[];
     },
   ) => {
-    const values = form.getFieldsValue();
     const imageUrls = media?.imageUrls ?? [];
     const coverUrl = media?.coverUrl ?? imageUrls[0] ?? null;
     const savePostType =
@@ -577,7 +683,7 @@ const PostEditor: FC = () => {
 
     return {
       id: articleId,
-      title: values.title?.trim(),
+      title: stripSpaces(String(values.title || '')).trim(),
       summary: values.summary?.trim(),
       content: plainContent,
       contentHtml,
@@ -596,236 +702,9 @@ const PostEditor: FC = () => {
     };
   };
 
-  const hasVideoSource = Boolean(pendingVideoFile || videoPendingUrl);
-
-  const startUploadProgress = (title: string, asDraft: boolean) => {
-    const articleId = `upload:${Date.now()}:${Math.random().toString(36).slice(2)}`;
-    uploadProgressIdRef.current = articleId;
-    uploadProgressAsDraftRef.current = asDraft;
-    dispatch(
-      startArticleProgressTrack({
-        articleId,
-        title,
-        kind: 'upload',
-        progress: {
-          articleId,
-          status: asDraft ? ARTICLE_STATUS.DRAFT : ARTICLE_STATUS.PENDING,
-          uploadPercent: 0,
-          uploadStatus: 'UPLOADING',
-          auditStageText: '媒体上传中',
-        },
-      }),
-    );
-  };
-
-  const reportUploadProgress = (percent: number) => {
-    setUploadPercent(percent);
-    const articleId = uploadProgressIdRef.current;
-    if (!articleId) return;
-    dispatch(
-      updateArticleProgress({
-        articleId,
-        status: uploadProgressAsDraftRef.current
-          ? ARTICLE_STATUS.DRAFT
-          : ARTICLE_STATUS.PENDING,
-        uploadPercent: percent,
-        uploadStatus: 'UPLOADING',
-        auditStageText: '媒体上传中',
-      }),
-    );
-  };
-
-  const finishUploadProgress = (
-    articleId: string,
-    title: string,
-    asDraft: boolean,
-  ) => {
-    const uploadTaskId = uploadProgressIdRef.current;
-    if (uploadTaskId) {
-      dispatch(clearArticleProgressTrack(uploadTaskId));
-    }
-
-    if (asDraft) {
-      dispatch(
-        startArticleProgressTrack({
-          articleId,
-          title,
-          kind: 'draft',
-          progress: {
-            articleId,
-            status: ARTICLE_STATUS.DRAFT,
-            uploadPercent: 100,
-            uploadStatus: 'SAVED',
-            auditStageText: '草稿已保存',
-          },
-        }),
-      );
-      window.setTimeout(
-        () => dispatch(clearArticleProgressTrack(articleId)),
-        4000,
-      );
-    } else {
-      dispatch(
-        startArticleProgressTrack({
-          articleId,
-          title,
-          kind: 'audit',
-          progress: {
-            articleId,
-            status: ARTICLE_STATUS.PENDING,
-            uploadPercent: 100,
-            uploadStatus: 'MERGED',
-            auditStageText: '排队审核中',
-          },
-        }),
-      );
-    }
-
-    uploadProgressIdRef.current = null;
-  };
-
-  const failUploadProgress = (error: unknown) => {
-    const articleId = uploadProgressIdRef.current;
-    if (!articleId) return;
-    dispatch(
-      updateArticleProgress({
-        articleId,
-        status: uploadProgressAsDraftRef.current
-          ? ARTICLE_STATUS.DRAFT
-          : ARTICLE_STATUS.PENDING,
-        uploadPercent,
-        uploadStatus: 'FAILED',
-        taskStatus: TASK_STATUS.FAILED,
-        taskErrorMessage: formatApiError('上传失败', error),
-        auditStageText: '上传失败',
-      }),
-    );
-    window.setTimeout(
-      () => dispatch(clearArticleProgressTrack(articleId)),
-      5000,
-    );
-    uploadProgressIdRef.current = null;
-  };
-
-  const uploadEditorImages = async (
-    images: EditorImage[],
-    onProgress?: (percent: number) => void,
-  ) => {
-    const pending = images.filter((img) => img.file);
-    if (pending.length === 0) {
-      return {
-        urls: images.map((img) => img.pendingUrl).filter(Boolean) as string[],
-        nextImages: images,
-      };
-    }
-
-    const uploaded = new Map<
-      string,
-      Awaited<ReturnType<typeof uploadFileWithProgress>>
-    >();
-    let completed = 0;
-    for (const img of pending) {
-      if (!img.file) continue;
-      const completedBeforeCurrent = completed;
-      const media = await uploadFileWithProgress(
-        img.file,
-        (percent) => {
-          onProgress?.(
-            Math.round(
-              ((completedBeforeCurrent + percent / 100) / pending.length) * 100,
-            ),
-          );
-        },
-        {
-          bizType: 'image',
-          signal: abortRef.current?.signal,
-          onUploadId: (uploadId) => uploadIdsRef.current.add(uploadId),
-        },
-      );
-      uploaded.set(img.id, media);
-      completed += 1;
-      onProgress?.(Math.round((completed / pending.length) * 100));
-    }
-
-    const nextImages: EditorImage[] = [];
-    const urls: string[] = [];
-
-    images.forEach((img) => {
-      if (img.file) {
-        const item = uploaded.get(img.id);
-        if (!item) return;
-        revokeBlobUrl(img.previewUrl);
-        nextImages.push({
-          ...img,
-          file: undefined,
-          pendingUrl: item.pendingUrl,
-          previewUrl: item.previewUrl,
-        });
-        urls.push(item.pendingUrl);
-        return;
-      }
-      if (img.pendingUrl) {
-        nextImages.push(img);
-        urls.push(img.pendingUrl);
-      }
-    });
-
-    return { urls, nextImages };
-  };
-
-  /** 保存/提交时统一上传本地媒体 */
-  const uploadPendingMedia = async (): Promise<{
-    coverUrl: string | null;
-    videoUrl: string | null;
-    imageUrls: string[];
-  }> => {
-    let videoUrl = videoPendingUrl;
-    const pendingImageCount = coverImages.filter((img) => img.file).length;
-    const hasPendingMedia = pendingImageCount > 0 || Boolean(pendingVideoFile);
-    if (hasPendingMedia) {
-      abortRef.current?.abort();
-      abortRef.current = new AbortController();
-      setUploading(true);
-      reportUploadProgress(0);
-    }
-
-    try {
-      const coverResult = await uploadEditorImages(
-        coverImages,
-        pendingVideoFile
-          ? (percent) => reportUploadProgress(Math.round(percent / 2))
-          : reportUploadProgress,
-      );
-      setCoverImages(coverResult.nextImages);
-
-      const imageUrls = coverResult.urls;
-      const coverUrl = imageUrls[0] || null;
-
-      if (pendingVideoFile) {
-        const media = await uploadVideoWithProgress(
-          pendingVideoFile,
-          (percent) =>
-            reportUploadProgress(
-              pendingImageCount > 0 ? Math.round(50 + percent / 2) : percent,
-            ),
-          {
-            signal: abortRef.current?.signal,
-            onUploadId: (id) => {
-              uploadIdsRef.current.add(id);
-            },
-          },
-        );
-        videoUrl = media.pendingUrl;
-        setVideoPendingUrl(media.pendingUrl);
-        setVideoPreviewUrl(media.previewUrl);
-        setPendingVideoFile(null);
-      }
-
-      return { coverUrl, videoUrl, imageUrls };
-    } finally {
-      if (hasPendingMedia) setUploading(false);
-    }
-  };
+  const hasVideoSource = Boolean(
+    pendingVideoFile || videoPendingUrl || uploadTaskIdRef.current,
+  );
 
   const coverMaxCount = postType === POST_TYPE.VIDEO ? 1 : COVER_MAX;
 
@@ -839,29 +718,44 @@ const PostEditor: FC = () => {
       message.error('视频不能超过 500MB');
       return Upload.LIST_IGNORE;
     }
+    cancelPersistentUpload();
+    videoCoverTokenRef.current += 1;
+    autoVideoCoverPromiseRef.current = null;
+    autoVideoCoverFileRef.current = null;
+    setVideoCoverGenerating(false);
+    const retainedCovers = coverImages.filter(
+      (image) => image.source !== 'video',
+    );
+    coverImages
+      .filter((image) => image.source === 'video')
+      .forEach((image) => revokeBlobUrl(image.previewUrl));
+    if (retainedCovers.length !== coverImages.length) {
+      setCoverImages(retainedCovers);
+    }
     revokeBlobUrl(videoPreviewUrl);
     setPendingVideoFile(file);
     setVideoPendingUrl(null);
     setVideoPreviewUrl(URL.createObjectURL(file));
     setVideoName(file.name);
-    setUploadPercent(0);
+    if (retainedCovers.length === 0) {
+      void startAutoVideoCover(file).catch(() => undefined);
+    }
     return false;
   };
 
   const clearLocalVideo = () => {
-    abortRef.current?.abort();
+    cancelPersistentUpload();
+    clearVideoCoverState();
     revokeBlobUrl(videoPreviewUrl);
     setPendingVideoFile(null);
     setVideoPendingUrl(null);
     setVideoPreviewUrl(null);
     setVideoName(null);
-    setUploadPercent(0);
-    uploadIdsRef.current.clear();
   };
 
   const onSave = async (asDraft: boolean) => {
     try {
-      await form.validateFields(
+      const values = await form.validateFields(
         asDraft || postType === POST_TYPE.VIDEO
           ? ['title', 'categoryIds']
           : ['title', 'categoryIds', 'contentHtml'],
@@ -870,31 +764,103 @@ const PostEditor: FC = () => {
         message.warning('请选择视频');
         return;
       }
-      if (uploading) {
-        message.warning('正在上传，请稍候');
+      const normalizedValues = {
+        ...form.getFieldsValue(),
+        ...values,
+        title: stripSpaces(String(values.title || '')).trim(),
+      };
+      if (!normalizedValues.title) {
+        form.setFields([{ name: 'title', errors: ['请输入标题'] }]);
         return;
       }
-      const displayTitle = form.getFieldValue('title')?.trim() || '内容';
-      const hasPendingMedia =
-        coverImages.some((image) => Boolean(image.file)) ||
-        Boolean(pendingVideoFile);
+      const displayTitle = normalizedValues.title;
       setSubmitting(true);
-      if (hasPendingMedia) {
-        startUploadProgress(displayTitle, asDraft);
-      }
       if (!asDraft) {
         // 提交审核先放弃旧草稿快照，已发布缓存等审核最终结果为 PUBLISHED 再失效。
         invalidateOwnProfilePostCaches(user?.accountId, ['draft']);
       }
-      const media = await uploadPendingMedia();
-      const payload = buildPayload(asDraft, media);
-      const res = await saveArticleApi(payload);
-      for (const uploadId of Array.from(uploadIdsRef.current)) {
-        await bindChunkUploadApi(uploadId, res.data);
+      if (pendingVideoFile && coverImages.length === 0) {
+        await ensureVideoCover();
       }
-      uploadIdsRef.current.clear();
-      const title = payload.title || displayTitle;
-      finishUploadProgress(res.data, title, asDraft);
+      let savedVideoCover: File | null = null;
+      if (
+        !pendingVideoFile &&
+        videoPendingUrl &&
+        coverImages.length === 0 &&
+        videoPreviewUrl &&
+        !videoPreviewUrl.startsWith('pending://')
+      ) {
+        try {
+          setVideoCoverGenerating(true);
+          const blob = await captureVideoFrameFromUrl(videoPreviewUrl, 1);
+          if (!blob) throw new Error('视频封面生成失败');
+          savedVideoCover = new File([blob], 'video-cover-auto.jpg', {
+            type: 'image/jpeg',
+          });
+        } catch {
+          message.error('无法自动生成视频封面，请先从视频中选择封面');
+          return;
+        } finally {
+          setVideoCoverGenerating(false);
+        }
+      }
+      const pendingFiles: PersistentPostUploadFile[] = coverImages
+        .filter((image) => image.file)
+        .map((image) => ({ kind: 'image' as const, file: image.file! }));
+      const autoVideoCover =
+        coverImages.length === 0 &&
+        autoVideoCoverFileRef.current?.token === videoCoverTokenRef.current
+          ? autoVideoCoverFileRef.current.file
+          : null;
+      if (autoVideoCover) {
+        pendingFiles.unshift({ kind: 'image', file: autoVideoCover });
+      }
+      if (savedVideoCover) {
+        pendingFiles.unshift({ kind: 'image', file: savedVideoCover });
+      }
+      if (pendingVideoFile) {
+        pendingFiles.push({ kind: 'video', file: pendingVideoFile });
+      }
+      const existingImageUrls = coverImages
+        .filter((image) => !image.file && image.pendingUrl)
+        .map((image) => image.pendingUrl as string);
+      const payload = buildPayload(asDraft, normalizedValues, {
+        coverUrl: existingImageUrls[0] || null,
+        videoUrl: videoPendingUrl,
+        imageUrls: existingImageUrls,
+      });
+      let res: { data: string };
+      if (uploadTaskIdRef.current) {
+        updatePersistentPostUploadPayload(uploadTaskIdRef.current, payload);
+        const completedTask = await getPersistentPostUploadPromise(
+          uploadTaskIdRef.current,
+        );
+        res = { data: completedTask.articleId || '' };
+      } else if (pendingFiles.length > 0) {
+        if (user?.accountId == null) {
+          throw new Error('登录状态已失效，请重新登录');
+        }
+        const operation = startPersistentPostUpload({
+          accountId: user.accountId,
+          payload,
+          files: pendingFiles,
+        });
+        uploadTaskIdRef.current = operation.taskId;
+        setUploading(true);
+        setPendingVideoFile(null);
+        const completedTask = await operation.promise;
+        if (completedTask.uploadedVideo) {
+          setVideoPendingUrl(completedTask.uploadedVideo.pendingUrl);
+          setVideoPreviewUrl(completedTask.uploadedVideo.previewUrl);
+        }
+        uploadTaskIdRef.current = null;
+        res = { data: completedTask.articleId || '' };
+      } else {
+        const saved = await saveArticleApi(payload);
+        res = { data: saved.data };
+      }
+      if (!res.data) throw new Error('保存接口未返回文章 ID');
+      const title = displayTitle;
       if (asDraft) {
         invalidateOwnProfilePostCaches(
           user?.accountId,
@@ -925,9 +891,6 @@ const PostEditor: FC = () => {
       }
     } catch (err) {
       if ((err as { errorFields?: unknown })?.errorFields) return;
-      if (uploadProgressIdRef.current) {
-        failUploadProgress(err);
-      }
       if ((err as DOMException)?.name === 'AbortError') {
         message.info('已取消上传');
         return;
@@ -935,6 +898,7 @@ const PostEditor: FC = () => {
       message.error({ content: formatApiError('保存失败', err), duration: 1 });
     } finally {
       setSubmitting(false);
+      setUploading(false);
     }
   };
 
@@ -949,7 +913,7 @@ const PostEditor: FC = () => {
       okButtonProps: { danger: true },
       cancelText: '再想想',
       onOk: async () => {
-        abortRef.current?.abort();
+        cancelPersistentUpload();
         await unpublishArticleApi(articleId);
         setUploading(false);
         const { type, text } = getArticleProgressResultMessage(
@@ -976,7 +940,7 @@ const PostEditor: FC = () => {
       okButtonProps: { danger: true },
       cancelText: '再想想',
       onOk: async () => {
-        abortRef.current?.abort();
+        cancelPersistentUpload();
         await deleteArticleApi(articleId);
         message.success({ content: '已删除', duration: 1 });
         invalidateOwnProfilePostCaches(
@@ -1184,16 +1148,24 @@ const PostEditor: FC = () => {
           >
             <CoverImageManager
               images={coverImages}
-              onChange={setCoverImages}
+              onChange={handleCoverImagesChange}
               maxCount={coverMaxCount}
               multiple={isImageTextMode}
+              disabled={uploading || isPending}
               gameAppIds={gameAppIds}
               gameOptions={gameOptions}
+              videoFile={pendingVideoFile}
+              videoUrl={
+                pendingVideoFile ? null : videoPreviewUrl || videoPendingUrl
+              }
+              onVideoCoverConfirm={replaceWithVideoCover}
+              videoCoverLoading={videoCoverGenerating}
             />
             {uploading && postType === POST_TYPE.IMAGE_TEXT && (
               <div className="post-editor__progress">
-                <Progress percent={uploadPercent} status="active" />
-                <span className="post-editor__hint">图片上传中，请稍候</span>
+                <span className="post-editor__hint">
+                  图片上传中，切换页面后任务仍会继续
+                </span>
               </div>
             )}
           </Form.Item>
@@ -1217,13 +1189,14 @@ const PostEditor: FC = () => {
               </Upload>
               {(uploading || pendingVideoFile || videoPendingUrl) && (
                 <div className="post-editor__progress">
-                  {uploading && (
-                    <Progress percent={uploadPercent} status="active" />
-                  )}
                   {videoName && (
                     <span className="post-editor__hint">
                       {videoName}
-                      {!uploading && !videoPendingUrl ? '（待上传）' : ''}
+                      {uploading
+                        ? '（上传中，切换页面后任务仍会继续）'
+                        : !videoPendingUrl
+                          ? '（待上传）'
+                          : ''}
                     </span>
                   )}
                 </div>

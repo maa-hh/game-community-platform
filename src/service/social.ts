@@ -719,6 +719,7 @@ async function enrichRepostRef(
 
 export async function fetchPostDetailApi(
   id: string,
+  moderationPreview = false,
 ): Promise<IDataType<PostDetailData | null>> {
   if (!id?.trim() || id.startsWith('game-')) {
     return ok(null);
@@ -736,7 +737,7 @@ export async function fetchPostDetailApi(
   }
 
   try {
-    const detailRes = await getArticleDetailApi(id);
+    const detailRes = await getArticleDetailApi(id, moderationPreview);
     const raw = detailRes.data;
     if (!raw) return ok(null);
 

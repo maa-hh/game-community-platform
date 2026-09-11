@@ -12,6 +12,8 @@ export type EasyCropperProps = {
   image?: string;
   crop: { x: number; y: number };
   zoom: number;
+  minZoom?: number;
+  maxZoom?: number;
   aspect?: number;
   cropShape?: 'rect' | 'round';
   showGrid?: boolean;

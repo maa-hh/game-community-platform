@@ -14,7 +14,13 @@ export const coverCropperConfig = {
   okText: '确认使用',
   cancelText: '取消',
   width: 720,
-  hint: '拖动裁剪框移动，拖边角调整大小与比例；也可切换常用比例',
+  zoomMin: 0.1,
+  zoomDefault: 1,
+  zoomMax: 10,
+  zoomStep: 0.01,
+  zoomLabel: '缩放',
+  rotateText: '旋转 90°',
+  hint: '可缩小或放大图片；拖动裁剪框移动，拖边角调整大小与比例，也可切换比例或旋转图片',
   errorMessage: '裁剪失败，请换一张图片或稍后重试',
 } as const;
 

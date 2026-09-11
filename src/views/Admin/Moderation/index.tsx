@@ -5,7 +5,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Alert,
   App,
@@ -22,7 +22,6 @@ import {
   Typography,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-
 import {
   claimModerationTaskApi,
   fetchModerationTaskDetailApi,
@@ -35,6 +34,7 @@ import {
   type ModerationTaskType,
 } from '@/service/moderation';
 import { formatApiError } from '@/utils/apiError';
+import { createRandomId } from '@/utils/randomId';
 
 import './style.less';
 
@@ -100,6 +100,7 @@ function actionOptions(
 
 function ModerationPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { message: appMessage } = App.useApp();
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<IModerationTask[]>([]);
@@ -146,17 +147,35 @@ function ModerationPage() {
     void loadList();
   }, [loadList]);
 
-  const openDetail = async (record: IModerationTask) => {
-    try {
-      const res = await fetchModerationTaskDetailApi(record.taskKey);
-      if (res.code !== 200) {
-        throw new Error(res.message || '加载详情失败');
+  const openDetailByTaskKey = useCallback(
+    async (taskKey: string) => {
+      try {
+        const res = await fetchModerationTaskDetailApi(taskKey);
+        if (res.code !== 200) {
+          throw new Error(res.message || '加载详情失败');
+        }
+        setDetail(res.data);
+        setDetailOpen(true);
+      } catch (error) {
+        appMessage.error(formatApiError('加载详情失败', error));
       }
-      setDetail(res.data);
-      setDetailOpen(true);
-    } catch (error) {
-      appMessage.error(formatApiError('加载详情失败', error));
-    }
+    },
+    [appMessage],
+  );
+
+  useEffect(() => {
+    const state =
+      typeof location.state === 'object' && location.state !== null
+        ? (location.state as { moderationTaskKey?: unknown })
+        : null;
+    if (typeof state?.moderationTaskKey !== 'string') return;
+
+    void openDetailByTaskKey(state.moderationTaskKey);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate, openDetailByTaskKey]);
+
+  const openDetail = async (record: IModerationTask) => {
+    await openDetailByTaskKey(record.taskKey);
   };
 
   const prepareHandle = async (record: IModerationTask) => {
@@ -194,7 +213,7 @@ function ModerationPage() {
         leaseExpireTime: claim.leaseExpireTime,
       };
       setDetail(claimedDetail);
-      handleRequestIdRef.current = crypto.randomUUID();
+      handleRequestIdRef.current = createRandomId('moderation');
       form.setFieldsValue({
         handleAction: actionOptions(
           claimedDetail.taskType,
@@ -230,7 +249,7 @@ function ModerationPage() {
       handleRequestIdRef.current = null;
       setDetailOpen(false);
       setDetail(null);
-      void loadList();
+      await loadList();
     } catch (error) {
       if (error && typeof error === 'object' && 'errorFields' in error) {
         return;
@@ -254,9 +273,16 @@ function ModerationPage() {
       return (
         <Button
           type="link"
-          onClick={() =>
-            detail.targetPublicId && navigate(`/post/${detail.targetPublicId}`)
-          }
+          onClick={() => {
+            if (!detail.targetPublicId) return;
+            setDetailOpen(false);
+            navigate(`/post/${detail.targetPublicId}?moderationPreview=1`, {
+              state: {
+                returnTo: '/admin/moderation',
+                moderationTaskKey: detail.taskKey,
+              },
+            });
+          }}
         >
           查看帖子
         </Button>

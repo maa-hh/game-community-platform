@@ -172,7 +172,7 @@ export function useNotificationSse() {
             message.success(msg.previewText || '资料审核通过');
           } else if (msg.eventType === PROFILE_AUDIT_EVENT.REJECTED) {
             message.error(
-              msg.previewText || msg.resultText || '资料未通过，请修改后重试',
+              msg.resultText || msg.previewText || '资料未通过，请修改后重试',
             );
           } else if (msg.eventType === PROFILE_AUDIT_EVENT.HUMAN_REVIEW) {
             message.info(msg.previewText || '资料已进入人工审核');

@@ -19,6 +19,7 @@ import { createImageId, revokeBlobUrl } from '@/views/PostEditor/utils';
 
 import CoverCropperModal from '../CoverCropperModal';
 import GameCoverPickerModal from '../GameCoverPickerModal';
+import VideoFramePickerModal from '../VideoFramePickerModal';
 
 import './style.less';
 
@@ -47,8 +48,13 @@ export interface ICoverImageManagerProps {
   onChange: (images: EditorImage[]) => void;
   maxCount: number;
   multiple?: boolean;
+  disabled?: boolean;
   gameAppIds?: number[];
   gameOptions?: IGameTag[];
+  videoFile?: File | null;
+  videoUrl?: string | null;
+  onVideoCoverConfirm?: (file: File) => void;
+  videoCoverLoading?: boolean;
 }
 
 export default function CoverImageManager({
@@ -56,14 +62,20 @@ export default function CoverImageManager({
   onChange,
   maxCount,
   multiple = true,
+  disabled = false,
   gameAppIds = [],
   gameOptions = [],
+  videoFile = null,
+  videoUrl = null,
+  onVideoCoverConfirm,
+  videoCoverLoading = false,
 }: ICoverImageManagerProps) {
   const [gamePickerOpen, setGamePickerOpen] = useState(false);
   const [cropTarget, setCropTarget] = useState<EditorImage | null>(null);
   const [cropSrc, setCropSrc] = useState('');
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(0);
+  const [videoPickerOpen, setVideoPickerOpen] = useState(false);
   const cropSrcRef = useRef<string | null>(null);
 
   const remainingSlots = Math.max(0, maxCount - images.length);
@@ -208,11 +220,15 @@ export default function CoverImageManager({
               {image.source === 'game' ? (
                 <span className="cover-image-manager__source">游戏</span>
               ) : null}
+              {image.source === 'video' ? (
+                <span className="cover-image-manager__source">视频</span>
+              ) : null}
               <div className="cover-image-manager__actions">
                 {multiple && index > 0 ? (
                   <button
                     type="button"
                     aria-label="左移"
+                    disabled={disabled}
                     onClick={() => moveImage(index, -1)}
                   >
                     <ArrowLeftOutlined />
@@ -222,6 +238,7 @@ export default function CoverImageManager({
                   <button
                     type="button"
                     aria-label="右移"
+                    disabled={disabled}
                     onClick={() => moveImage(index, 1)}
                   >
                     <ArrowRightOutlined />
@@ -237,6 +254,7 @@ export default function CoverImageManager({
                 <button
                   type="button"
                   aria-label="裁剪"
+                  disabled={disabled}
                   onClick={() => void openCrop(image)}
                 >
                   <ScissorOutlined />
@@ -244,6 +262,7 @@ export default function CoverImageManager({
                 <button
                   type="button"
                   aria-label="删除"
+                  disabled={disabled}
                   onClick={() => removeImage(image.id)}
                 >
                   <DeleteOutlined />
@@ -260,19 +279,32 @@ export default function CoverImageManager({
           multiple={multiple}
           showUploadList={false}
           beforeUpload={addCoverImage}
-          disabled={remainingSlots <= 0}
+          disabled={disabled || remainingSlots <= 0}
         >
-          <Button icon={<PlusOutlined />} disabled={remainingSlots <= 0}>
+          <Button
+            icon={<PlusOutlined />}
+            disabled={disabled || remainingSlots <= 0}
+          >
             上传封面
           </Button>
         </Upload>
 
         {showGamePicker ? (
           <Button
-            disabled={remainingSlots <= 0}
+            disabled={disabled || remainingSlots <= 0}
             onClick={() => setGamePickerOpen(true)}
           >
             从游戏选封面
+          </Button>
+        ) : null}
+
+        {(videoFile || videoUrl) && onVideoCoverConfirm ? (
+          <Button
+            disabled={disabled}
+            loading={videoCoverLoading}
+            onClick={() => setVideoPickerOpen(true)}
+          >
+            从视频中选封面
           </Button>
         ) : null}
       </div>
@@ -292,6 +324,17 @@ export default function CoverImageManager({
         imageSrc={cropSrc}
         onCancel={releaseCropSrc}
         onConfirm={applyCrop}
+      />
+
+      <VideoFramePickerModal
+        open={videoPickerOpen}
+        file={videoFile}
+        videoUrl={videoUrl}
+        onCancel={() => setVideoPickerOpen(false)}
+        onConfirm={(file) => {
+          onVideoCoverConfirm?.(file);
+          setVideoPickerOpen(false);
+        }}
       />
 
       <ImageLightbox

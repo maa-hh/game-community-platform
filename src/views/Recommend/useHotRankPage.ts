@@ -17,6 +17,7 @@ import {
   defaultPeriodDate,
   formatPeriodKey,
   normalizePeriodDate,
+  parsePeriodKey,
 } from '@/utils/hotRankPeriod';
 
 const SSE_DEBOUNCE_MS = 300;
@@ -42,9 +43,8 @@ export function useHotRankPage() {
   const initialBoard = parseBoard(searchParams.get('tab'));
   const initialCategory = parseCategoryId(searchParams.get('category'));
   const initialPeriod =
-    searchParams.get('period') && dayjs(searchParams.get('period')).isValid()
-      ? normalizePeriodDate(initialBoard, dayjs(searchParams.get('period')))
-      : defaultPeriodDate(initialBoard);
+    parsePeriodKey(initialBoard, searchParams.get('period')) ??
+    defaultPeriodDate(initialBoard);
   const initialCacheKey = `recommend:${initialBoard}:${initialCategory ?? 'all'}:${formatPeriodKey(initialBoard, initialPeriod)}`;
   const initialCachedItems =
     getPageDataCache<LatestPostItem[]>(initialCacheKey);
@@ -82,9 +82,7 @@ export function useHotRankPage() {
     setCategoryId(parseCategoryId(searchParams.get('category')));
     const periodParam = searchParams.get('period');
     setPeriodDate(
-      periodParam && dayjs(periodParam).isValid()
-        ? normalizePeriodDate(nextBoard, dayjs(periodParam))
-        : defaultPeriodDate(nextBoard),
+      parsePeriodKey(nextBoard, periodParam) ?? defaultPeriodDate(nextBoard),
     );
   }, [searchParams]);
 

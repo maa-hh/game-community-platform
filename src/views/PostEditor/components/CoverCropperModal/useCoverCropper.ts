@@ -3,6 +3,7 @@ import type { SyntheticEvent } from 'react';
 import { message } from 'antd';
 import {
   centerCrop,
+  convertToPixelCrop,
   makeAspectCrop,
   type Crop,
   type PixelCrop,
@@ -11,6 +12,7 @@ import {
 import {
   blobToDataUrl,
   getCroppedImageBlobRect,
+  rotateImage90Blob,
   scalePixelCropToNatural,
 } from '@/utils/cropImage';
 
@@ -20,19 +22,54 @@ import {
   type CoverCropAspectKey,
 } from './config';
 
+const INITIAL_CROP_PERCENT = 90;
+
+function resolveCropPercent(zoom: number): number {
+  if (zoom >= 1) return INITIAL_CROP_PERCENT / zoom;
+  const zoomRange = 1 - coverCropperConfig.zoomMin;
+  if (!zoomRange) return INITIAL_CROP_PERCENT;
+  const progress = (zoom - coverCropperConfig.zoomMin) / zoomRange;
+  return 100 - (100 - INITIAL_CROP_PERCENT) * progress;
+}
+
 function buildInitialCrop(
   width: number,
   height: number,
   aspect?: number,
+  zoom: number = coverCropperConfig.zoomMin,
 ): Crop {
+  const initialWidth = Math.min(100, resolveCropPercent(zoom));
   if (aspect) {
     return centerCrop(
-      makeAspectCrop({ unit: '%', width: 90 }, aspect, width, height),
+      makeAspectCrop({ unit: '%', width: initialWidth }, aspect, width, height),
       width,
       height,
     );
   }
-  return { unit: '%', x: 5, y: 5, width: 90, height: 90 };
+  return {
+    unit: '%',
+    x: (100 - initialWidth) / 2,
+    y: (100 - initialWidth) / 2,
+    width: initialWidth,
+    height: initialWidth,
+  };
+}
+
+function scalePercentCrop(crop: Crop, scale: number): Crop {
+  if (crop.unit !== '%') return crop;
+  const boundedScale = Math.min(scale, 100 / crop.width, 100 / crop.height);
+  const width = crop.width * boundedScale;
+  const height = crop.height * boundedScale;
+  const centerX = crop.x + crop.width / 2;
+  const centerY = crop.y + crop.height / 2;
+
+  return {
+    unit: '%',
+    x: Math.min(100 - width, Math.max(0, centerX - width / 2)),
+    y: Math.min(100 - height, Math.max(0, centerY - height / 2)),
+    width,
+    height,
+  };
 }
 
 export function useCoverCropper(
@@ -40,17 +77,24 @@ export function useCoverCropper(
   onConfirm: (dataUrl: string, blob: Blob) => void,
 ) {
   const imgRef = useRef<HTMLImageElement | null>(null);
+  const cropRef = useRef<Crop | undefined>(undefined);
   const [crop, setCrop] = useState<Crop>();
   const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
   const [aspectKey, setAspectKey] = useState<CoverCropAspectKey>('free');
   const [confirming, setConfirming] = useState(false);
+  const [rotating, setRotating] = useState(false);
+  const [rotation, setRotation] = useState(0);
+  const [zoom, setZoom] = useState<number>(coverCropperConfig.zoomDefault);
+  const zoomRef = useRef<number>(coverCropperConfig.zoomDefault);
+  const [workingImageSrc, setWorkingImageSrc] = useState(imageSrc);
   const aspect = resolveCoverCropAspect(aspectKey);
 
   const applyInitialCrop = useCallback(
     (img: HTMLImageElement) => {
       const { width, height } = img;
       if (!width || !height) return;
-      const nextCrop = buildInitialCrop(width, height, aspect);
+      const nextCrop = buildInitialCrop(width, height, aspect, zoomRef.current);
+      cropRef.current = nextCrop;
       setCrop(nextCrop);
       setCompletedCrop(undefined);
     },
@@ -59,8 +103,13 @@ export function useCoverCropper(
 
   useEffect(() => {
     setAspectKey('free');
+    cropRef.current = undefined;
     setCrop(undefined);
     setCompletedCrop(undefined);
+    setRotation(0);
+    zoomRef.current = coverCropperConfig.zoomDefault;
+    setZoom(coverCropperConfig.zoomDefault);
+    setWorkingImageSrc(imageSrc);
   }, [imageSrc]);
 
   useEffect(() => {
@@ -76,12 +125,58 @@ export function useCoverCropper(
     [applyInitialCrop],
   );
 
+  const onRotate = useCallback(async () => {
+    if (rotating) return;
+    setRotating(true);
+    try {
+      const blob = await rotateImage90Blob(workingImageSrc);
+      const rotatedSrc = await blobToDataUrl(blob);
+      setWorkingImageSrc(rotatedSrc);
+      setRotation((previous) => (previous + 90) % 360);
+      cropRef.current = undefined;
+      setCrop(undefined);
+      setCompletedCrop(undefined);
+    } catch {
+      message.error('图片旋转失败，请稍后重试');
+    } finally {
+      setRotating(false);
+    }
+  }, [rotating, workingImageSrc]);
+
   const onCropChange = useCallback((_: PixelCrop, percentCrop: Crop) => {
+    cropRef.current = percentCrop;
     setCrop(percentCrop);
   }, []);
 
   const onCropComplete = useCallback((pixelCrop: PixelCrop) => {
     setCompletedCrop(pixelCrop);
+  }, []);
+
+  const onZoomChange = useCallback((nextZoom: number) => {
+    const clampedZoom = Math.min(
+      coverCropperConfig.zoomMax,
+      Math.max(coverCropperConfig.zoomMin, nextZoom),
+    );
+    const previousZoom = zoomRef.current;
+    if (clampedZoom === previousZoom) return;
+
+    zoomRef.current = clampedZoom;
+    setZoom(clampedZoom);
+    const currentCrop = cropRef.current;
+    if (!currentCrop) return;
+
+    const nextCrop = scalePercentCrop(
+      currentCrop,
+      resolveCropPercent(clampedZoom) / resolveCropPercent(previousZoom),
+    );
+    cropRef.current = nextCrop;
+    setCrop(nextCrop);
+    const img = imgRef.current;
+    if (img?.width && img.height) {
+      setCompletedCrop(convertToPixelCrop(nextCrop, img.width, img.height));
+    } else {
+      setCompletedCrop(undefined);
+    }
   }, []);
 
   const handleOk = async () => {
@@ -96,7 +191,7 @@ export function useCoverCropper(
         img.naturalWidth,
         img.naturalHeight,
       );
-      const blob = await getCroppedImageBlobRect(imageSrc, naturalCrop);
+      const blob = await getCroppedImageBlobRect(workingImageSrc, naturalCrop);
       const dataUrl = await blobToDataUrl(blob);
       onConfirm(dataUrl, blob);
     } catch {
@@ -112,10 +207,16 @@ export function useCoverCropper(
     aspect,
     imgRef,
     confirming,
+    zoom,
+    rotation,
+    rotating,
+    workingImageSrc,
     onCropChange,
     onCropComplete,
     onAspectKeyChange: setAspectKey,
     onImageLoad,
+    onZoomChange,
+    onRotate,
     handleOk,
   };
 }

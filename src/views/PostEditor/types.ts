@@ -1,4 +1,4 @@
-export type EditorImageSource = 'upload' | 'game';
+export type EditorImageSource = 'upload' | 'game' | 'video';
 
 export type EditorImage = {
   id: string;

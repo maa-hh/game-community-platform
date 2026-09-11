@@ -4,7 +4,8 @@
   right: 0;
   left: 0;
   z-index: 100;
-  height: var(--app-header-height);
+  height: 64px;
+  min-height: 64px;
   background: var(--header-bg);
   border-bottom: 1px solid var(--header-border);
   backdrop-filter: blur(12px);
@@ -15,6 +16,7 @@
     align-items: center;
     gap: 24px;
     height: 100%;
+    min-width: 0;
     max-width: var(--page-content-max-width);
     margin: 0 auto;
     padding: 0 var(--page-content-gutter);
@@ -295,20 +297,61 @@
   }
 
   @media (max-width: 768px) {
+    height: auto;
+    min-height: 64px;
+
+    &__inner {
+      align-content: center;
+      flex-wrap: wrap;
+      height: auto;
+      min-height: 64px;
+      gap: 8px 12px;
+      padding-top: 8px;
+      padding-bottom: 8px;
+    }
+
+    &__brand {
+      order: 1;
+      flex: 1 0 100%;
+      width: 100%;
+    }
+
     &__name {
-      display: none;
+      display: inline;
+      overflow-wrap: anywhere;
+      white-space: normal;
+    }
+
+    &__actions {
+      order: 2;
+      width: 100%;
+      flex-basis: 100%;
+      min-width: 0;
+      max-width: 100%;
+      margin-left: 0;
+      justify-content: flex-end;
+      flex-shrink: 1;
     }
 
     &__nav {
+      order: 3;
+      width: 100%;
+      flex-basis: 100%;
+      justify-content: space-between;
       gap: 0;
     }
 
     &__link {
       padding: 6px 10px;
+      white-space: normal;
+      text-align: center;
     }
 
     &__search {
-      max-width: 180px;
+      order: 4;
+      width: 100%;
+      max-width: none;
+      flex-basis: 100%;
     }
 
     &__avatar-caret {

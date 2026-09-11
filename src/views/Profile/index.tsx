@@ -808,24 +808,6 @@ function Profile() {
                   ) : null}
                 </div>
 
-                {isSelf &&
-                  (user?.usernameAuditMessage ||
-                    user?.signatureAuditMessage ||
-                    user?.avatarAuditMessage) && (
-                    <Text type="danger" className="profile-hero__audit-msg">
-                      {[
-                        user.usernameAuditMessage &&
-                          `昵称：${user.usernameAuditMessage}`,
-                        user.signatureAuditMessage &&
-                          `签名：${user.signatureAuditMessage}`,
-                        user.avatarAuditMessage &&
-                          `头像：${user.avatarAuditMessage}`,
-                      ]
-                        .filter(Boolean)
-                        .join('；')}
-                    </Text>
-                  )}
-
                 {isSelf ? (
                   <div className="profile-hero__stats">
                     {statItems.map((item) => (

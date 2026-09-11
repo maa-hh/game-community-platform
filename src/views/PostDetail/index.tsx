@@ -110,6 +110,7 @@ function PostDetail() {
   const { id = '' } = useParams();
   const location = useLocation();
   const [searchParams] = useSearchParams();
+  const moderationPreview = searchParams.get('moderationPreview') === '1';
   const commentHighlight = useMemo(
     () => ({
       commentId: searchParams.get('commentId') || undefined,
@@ -239,14 +240,28 @@ function PostDetail() {
 
   const locationState =
     typeof location.state === 'object' && location.state !== null
-      ? (location.state as { returnTo?: unknown })
+      ? (location.state as {
+          returnTo?: unknown;
+          moderationTaskKey?: unknown;
+        })
       : null;
   const returnTo =
     typeof locationState?.returnTo === 'string' ? locationState.returnTo : null;
+  const moderationTaskKey =
+    typeof locationState?.moderationTaskKey === 'string'
+      ? locationState.moderationTaskKey
+      : null;
 
   const handleBack = useCallback(() => {
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
+    }
+    if (returnTo === '/admin/moderation' && moderationTaskKey) {
+      navigate(returnTo, {
+        replace: true,
+        state: { moderationTaskKey },
+      });
+      return;
     }
     if (returnTo && canGoBackInApp()) {
       navigate(-1);
@@ -263,7 +278,7 @@ function PostDetail() {
       return;
     }
     goBack();
-  }, [goBack, navigate, returnTo]);
+  }, [goBack, moderationTaskKey, navigate, returnTo]);
 
   const { get: getAuthorDecoration } = useUserDecorations([
     postState?.author.accountId,
@@ -351,7 +366,7 @@ function PostDetail() {
   }, [searchParams]);
 
   const reloadDetail = useCallback(async () => {
-    const detailRes = await fetchPostDetailApi(id);
+    const detailRes = await fetchPostDetailApi(id, moderationPreview);
     if (!detailRes.data) {
       setPostState(null);
       setLoadError('帖子不存在、已删除或已下架');
@@ -362,7 +377,9 @@ function PostDetail() {
     const isOwner =
       user?.accountId != null &&
       Number(user.accountId) === Number(detail.author.accountId);
+    const isAdmin = user?.type === 1;
     if (
+      !isAdmin &&
       detail.status != null &&
       detail.status !== ARTICLE_STATUS.PUBLISHED &&
       !isOwner
@@ -384,7 +401,7 @@ function PostDetail() {
       favoriteCount: detail.stats.favoriteCount,
     });
     return true;
-  }, [id, updateInteraction, user?.accountId]);
+  }, [id, moderationPreview, updateInteraction, user?.accountId, user?.type]);
 
   const reloadAll = useCallback(async () => {
     await Promise.all([reloadDetail(), commentPager.reload()]);

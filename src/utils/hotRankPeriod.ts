@@ -20,6 +20,37 @@ export function formatPeriodKey(board: HotRankBoard, date: Dayjs): string {
   return date.format('YYYY-MM-DD');
 }
 
+/**
+ * 解析 URL 中的榜单周期键。
+ * 周榜使用后端约定的 ISO 周格式（YYYY-Www），不是 Dayjs 默认可解析的日期格式。
+ */
+export function parsePeriodKey(
+  board: HotRankBoard,
+  periodKey: string | null,
+): Dayjs | null {
+  if (!periodKey) return null;
+
+  if (board === 'weekly') {
+    const match = /^(\d{4})-W(\d{2})$/.exec(periodKey);
+    if (!match) return null;
+
+    const year = Number(match[1]);
+    const week = Number(match[2]);
+    if (week < 1 || week > 53) return null;
+
+    // ISO 第 1 周一定包含 1 月 4 日，以此计算目标周的周一。
+    const parsed = dayjs(`${year}-01-04`)
+      .startOf('isoWeek')
+      .add(week - 1, 'week');
+    return formatWeeklyPeriodKey(parsed) === periodKey ? parsed : null;
+  }
+
+  const parsed = dayjs(periodKey);
+  return parsed.isValid() && parsed.format('YYYY-MM-DD') === periodKey
+    ? parsed.startOf('day')
+    : null;
+}
+
 /** 周榜默认：上一完整自然周（上周一） */
 export function defaultWeeklyPeriodDate(): Dayjs {
   return dayjs().startOf('isoWeek').subtract(1, 'week');

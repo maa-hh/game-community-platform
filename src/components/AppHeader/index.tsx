@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import React, { memo, useLayoutEffect, useRef } from 'react';
 import type { FC } from 'react';
 
 import { useTheme } from '@/hooks/useTheme';
@@ -18,6 +18,7 @@ import { useHeaderActions } from './useHeaderActions';
 import './style.less';
 
 const AppHeader: FC = () => {
+  const headerRef = useRef<HTMLElement>(null);
   const { isDark, toggleMode } = useTheme();
   const {
     user,
@@ -33,8 +34,28 @@ const AppHeader: FC = () => {
     feedUnreadCount,
   } = useHeaderActions();
 
+  useLayoutEffect(() => {
+    const header = headerRef.current;
+    if (!header) return undefined;
+
+    const updateHeaderHeight = () => {
+      document.documentElement.style.setProperty(
+        '--app-header-height',
+        `${header.getBoundingClientRect().height}px`,
+      );
+    };
+
+    updateHeaderHeight();
+    const observer = new ResizeObserver(updateHeaderHeight);
+    observer.observe(header);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
   return (
-    <header className="app-header">
+    <header ref={headerRef} className="app-header">
       <div className="app-header__inner">
         <HeaderBrand brand={headerBrand} />
         <HeaderNav

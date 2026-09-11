@@ -87,7 +87,23 @@ export function useNotificationsPage() {
     });
   }, [isActiveRoute, location.key, message, openAuth, refreshNotifications]);
 
-  /** 只有已展开且已加载的分类，才消费 SSE 的刷新标记并请求列表。 */
+  const markCategoryRead = useCallback(
+    async (key: NotificationCategoryKey) => {
+      if (markingCategoryRef.current === key) return;
+
+      markingCategoryRef.current = key;
+      try {
+        await dispatch(markCategoryReadAction(key)).unwrap();
+      } finally {
+        if (markingCategoryRef.current === key) {
+          markingCategoryRef.current = null;
+        }
+      }
+    },
+    [dispatch],
+  );
+
+  /** 只有已展开的分类，才消费 SSE 的刷新标记并重新请求消息。 */
   useEffect(() => {
     if (!isActiveRoute || !expandedKey) return;
     const bucket = categoryMessages[expandedKey];
@@ -100,36 +116,18 @@ export function useNotificationsPage() {
       return;
     }
 
-    void dispatch(fetchCategoryMessagesAction({ category: expandedKey }));
+    void dispatch(fetchCategoryMessagesAction({ category: expandedKey }))
+      .unwrap()
+      .then(() => markCategoryRead(expandedKey))
+      .catch(() => undefined);
   }, [
     categoryMessages,
     categoryRefreshRequired,
     dispatch,
     expandedKey,
     isActiveRoute,
+    markCategoryRead,
   ]);
-
-  /** 分类保持展开时自动已读（含 SSE 推送新通知、列表 refetch 后） */
-  useEffect(() => {
-    if (!isActiveRoute || !expandedKey) return;
-    const bucket = categoryMessages[expandedKey];
-    if (!bucket?.loaded || bucket.loading) return;
-
-    const categoryUnread =
-      categories.find((c) => c.category === expandedKey)?.unreadCount ?? 0;
-    const hasUnreadItems = bucket.items.some(
-      (item) => (item.readStatus ?? 0) === 0,
-    );
-    if (categoryUnread <= 0 && !hasUnreadItems) return;
-    if (markingCategoryRef.current === expandedKey) return;
-
-    markingCategoryRef.current = expandedKey;
-    void dispatch(markCategoryReadAction(expandedKey)).finally(() => {
-      if (markingCategoryRef.current === expandedKey) {
-        markingCategoryRef.current = null;
-      }
-    });
-  }, [expandedKey, categoryMessages, categories, dispatch, isActiveRoute]);
 
   const toggleCategory = useCallback(
     async (key: NotificationCategoryKey) => {
@@ -144,15 +142,14 @@ export function useNotificationsPage() {
       }
 
       setExpandedKey(key);
-      const bucket = categoryMessages[key];
-      if (bucket?.loaded && !bucket.error) return;
       try {
         await dispatch(fetchCategoryMessagesAction({ category: key })).unwrap();
+        await markCategoryRead(key);
       } catch (err) {
         message.error(formatApiError('加载通知失败', err));
       }
     },
-    [categoryMessages, dispatch, expandedKey, message, openAuth],
+    [dispatch, expandedKey, markCategoryRead, message, openAuth],
   );
 
   usePageRefresh(refreshNotifications, true);

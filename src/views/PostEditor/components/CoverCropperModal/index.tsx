@@ -25,6 +25,12 @@ const CoverCropperModal: FC<ICoverCropperModalProps> = ({
     onCropComplete,
     onAspectKeyChange,
     onImageLoad,
+    zoom,
+    onZoomChange,
+    rotation,
+    rotating,
+    workingImageSrc,
+    onRotate,
     handleOk,
   } = useCoverCropper(imageSrc, onConfirm);
 
@@ -42,7 +48,7 @@ const CoverCropperModal: FC<ICoverCropperModalProps> = ({
       className="cover-cropper-modal"
     >
       <CoverCropperBody
-        imageSrc={imageSrc}
+        imageSrc={workingImageSrc}
         crop={crop}
         aspectKey={aspectKey}
         aspect={aspect}
@@ -51,6 +57,11 @@ const CoverCropperModal: FC<ICoverCropperModalProps> = ({
         onCropComplete={onCropComplete}
         onAspectKeyChange={onAspectKeyChange}
         onImageLoad={onImageLoad}
+        zoom={zoom}
+        onZoomChange={onZoomChange}
+        rotation={rotation}
+        rotating={rotating}
+        onRotate={onRotate}
       />
     </Modal>
   );

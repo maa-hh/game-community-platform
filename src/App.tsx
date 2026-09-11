@@ -9,11 +9,13 @@ import { AuthModalProvider } from '@/hooks/useAuthModal';
 import { useNotificationSse } from '@/hooks/useNotificationSse';
 import { useProfileAuditPoll } from '@/hooks/useProfileAuditPoll';
 import { useCrossTabAuthSync } from '@/hooks/useCrossTabAuthSync';
+import { usePersistentPostUploadRecovery } from '@/hooks/usePersistentPostUploadRecovery';
 
 function ThemedAppContent() {
   useCrossTabAuthSync();
   useNotificationSse();
   useProfileAuditPoll();
+  usePersistentPostUploadRecovery();
 
   return (
     <AuthModalProvider>

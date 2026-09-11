@@ -20,4 +20,9 @@ export interface CoverCropperBodyProps {
   onCropComplete: (crop: PixelCrop) => void;
   onAspectKeyChange: (key: CoverCropAspectKey) => void;
   onImageLoad: (event: SyntheticEvent<HTMLImageElement>) => void;
+  zoom: number;
+  onZoomChange: (zoom: number) => void;
+  rotation: number;
+  rotating: boolean;
+  onRotate: () => void;
 }

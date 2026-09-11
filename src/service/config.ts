@@ -13,6 +13,20 @@ export const BASE_URL =
 // 请求超时（毫秒）
 export const TIMEOUT = 10000;
 
+// 单个文件同时上传的分片数；可通过环境变量按网络和 MinIO 容量调整。
+const configuredUploadConcurrency = Number(
+  process.env.REACT_APP_UPLOAD_CONCURRENCY,
+);
+export const UPLOAD_CHUNK_CONCURRENCY =
+  Number.isInteger(configuredUploadConcurrency) &&
+  configuredUploadConcurrency > 0
+    ? Math.min(configuredUploadConcurrency, 8)
+    : 4;
+
+// 单个分片的最大重试次数；0 表示失败后直接保留会话，下一次保存时续传。
+export const UPLOAD_CHUNK_MAX_RETRIES = 3;
+export const UPLOAD_CHUNK_RETRY_BASE_DELAY_MS = 500;
+
 /**
  * Token 存储策略
  *

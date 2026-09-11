@@ -1,6 +1,14 @@
 .cover-cropper {
-  &__aspect {
+  &__toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
     margin-bottom: 12px;
+  }
+
+  &__aspect {
+    flex: 1;
   }
 
   &__stage {
@@ -26,6 +34,10 @@
     max-height: 420px;
     width: auto;
     height: auto;
+  }
+
+  &__zoom {
+    margin-top: 16px;
   }
 
   &__hint {

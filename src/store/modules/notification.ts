@@ -276,6 +276,11 @@ const notificationSlice = createSlice({
           state.categories = action.payload.categories;
         }
       })
+      // 本地已读操作会改变服务端的汇总；让已在途的旧元数据请求失效，
+      // 避免它在已读完成后把旧的未读数写回分类红点。
+      .addCase(markCategoryReadAction.pending, (state) => {
+        state.realtimeRevision += 1;
+      })
       .addCase(fetchCategoryMessagesAction.pending, (state, action) => {
         const category = action.meta.arg.category;
         const bucket =
@@ -314,6 +319,17 @@ const notificationSlice = createSlice({
         if (action.payload.realtimeRevision === state.realtimeRevision) {
           state.summary = action.payload.summary;
           state.categories = action.payload.categories;
+        } else {
+          // SSE 只会让发生新事件的分类变脏；其他分类仍可采用这次已读
+          // 请求返回的服务端结果，避免一个无关分类的事件阻止当前红点清零。
+          state.categories = action.payload.categories.map((incoming) => {
+            const current = state.categories.find(
+              (item) => item.category === incoming.category,
+            );
+            return current && state.categoryRefreshRequired[incoming.category]
+              ? current
+              : incoming;
+          });
         }
         const bucket = state.categoryMessages[action.payload.category];
         if (bucket) {
@@ -322,6 +338,9 @@ const notificationSlice = createSlice({
             readStatus: 1,
           }));
         }
+      })
+      .addCase(markFeedReadAction.pending, (state) => {
+        state.realtimeRevision += 1;
       })
       .addCase(markFeedReadAction.fulfilled, (state, action) => {
         if (action.payload.realtimeRevision === state.realtimeRevision) {

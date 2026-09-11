@@ -232,6 +232,7 @@ export function useArticleProgressPoll() {
         uploadPercent: banner.uploadPercent,
         showUploadPercent: banner.showUploadPercent,
         showUploadComplete: banner.showUploadComplete,
+        showPreparation: banner.showPreparation,
         showAuditWaiting: banner.showAuditWaiting,
       };
     })

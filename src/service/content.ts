@@ -1,4 +1,9 @@
 import hyRequest from './request';
+import {
+  UPLOAD_CHUNK_CONCURRENCY,
+  UPLOAD_CHUNK_MAX_RETRIES,
+  UPLOAD_CHUNK_RETRY_BASE_DELAY_MS,
+} from './config';
 import type { IDataType, IPageResult } from './types';
 import type { PostSubTabKey } from '@/types/profile';
 import { calculateFileMd5 } from '@/utils/fileMd5';
@@ -73,7 +78,12 @@ export interface IChunkUploadOptions {
   articleId?: number;
   signal?: AbortSignal;
   onUploadId?: (uploadId: string) => void;
+  onStage?: (stage: 'PREPARING' | 'UPLOADING') => void;
   bizType?: ChunkUploadBizType;
+  /** 单个文件同时上传的分片数，默认由 REACT_APP_UPLOAD_CONCURRENCY 控制。 */
+  concurrency?: number;
+  /** 单个分片失败后的重试次数，默认 3 次。 */
+  maxRetries?: number;
 }
 
 export interface IArticleSavePayload {
@@ -171,6 +181,79 @@ function normalizeArticleProgress(data: IArticleProgress): IArticleProgress {
   };
 }
 
+function getUploadErrorCode(error: unknown): number | undefined {
+  if (!error || typeof error !== 'object') return undefined;
+  const value = error as {
+    code?: unknown;
+    response?: { status?: unknown };
+  };
+  if (typeof value.code === 'number') return value.code;
+  if (typeof value.response?.status === 'number') return value.response.status;
+  return undefined;
+}
+
+/** 判断分片错误是否可能由网络/服务端瞬态故障引起。 */
+function isRetryableUploadError(error: unknown): boolean {
+  const code = getUploadErrorCode(error);
+  if (code == null) return true;
+  return code === 408 || code === 425 || code === 429 || code >= 500;
+}
+
+function waitForUploadRetry(
+  delayMs: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException('Upload aborted', 'AbortError'));
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, delayMs);
+    const onAbort = () => {
+      window.clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+      reject(new DOMException('Upload aborted', 'AbortError'));
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+async function uploadChunkWithRetry(
+  uploadId: string,
+  chunkIndex: number,
+  chunk: Blob,
+  signal: AbortSignal | undefined,
+  maxRetries: number,
+  onProgress?: (loaded: number, total?: number) => void,
+): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    if (signal?.aborted) {
+      throw new DOMException('Upload aborted', 'AbortError');
+    }
+    // 失败重试会重新发送整个分片，避免把上一次请求已经发送的字节重复计入。
+    onProgress?.(0, chunk.size);
+    try {
+      await uploadChunkApi(uploadId, chunkIndex, chunk, signal, onProgress);
+      return;
+    } catch (error) {
+      if (
+        attempt >= maxRetries ||
+        !isRetryableUploadError(error) ||
+        signal?.aborted
+      ) {
+        throw error;
+      }
+      await waitForUploadRetry(
+        Math.min(5000, UPLOAD_CHUNK_RETRY_BASE_DELAY_MS * 2 ** attempt),
+        signal,
+      );
+    }
+  }
+}
+
 export function listCategoriesApi(page = 1, size = 50) {
   return hyRequest.get<IDataType<ICategory[]>>({
     url: '/category/list',
@@ -206,6 +289,8 @@ export function uploadChunkApi(
   uploadId: string,
   chunkIndex: number,
   chunk: Blob,
+  signal?: AbortSignal,
+  onProgress?: (loaded: number, total?: number) => void,
 ) {
   const formData = new FormData();
   formData.append('uploadId', uploadId);
@@ -215,6 +300,10 @@ export function uploadChunkApi(
     url: '/file/upload/chunk',
     data: formData,
     timeout: 120_000,
+    signal,
+    onUploadProgress: onProgress
+      ? (event) => onProgress(event.loaded, event.total)
+      : undefined,
   });
 }
 
@@ -328,7 +417,7 @@ export async function getAuthorPublishedArticlesByAccountApi(
   };
 }
 
-export function getArticleDetailApi(id: string) {
+export function getArticleDetailApi(id: string, moderationPreview = false) {
   return hyRequest.get<
     IDataType<
       IArticleItem & {
@@ -357,7 +446,9 @@ export function getArticleDetailApi(id: string) {
       }
     >
   >({
-    url: `/article/${id}`,
+    url: moderationPreview
+      ? `/article/${id}/moderation-preview`
+      : `/article/${id}`,
   });
 }
 
@@ -465,6 +556,7 @@ export async function uploadFileWithProgress(
   onProgress: (percent: number) => void,
   options?: IChunkUploadOptions,
 ): Promise<IMediaUpload> {
+  options?.onStage?.('PREPARING');
   const fileMd5 = await calculateFileMd5(file, options?.signal);
   if (options?.signal?.aborted) {
     throw new DOMException('Upload aborted', 'AbortError');
@@ -487,37 +579,111 @@ export async function uploadFileWithProgress(
       previewUrl: initRes.data.previewUrl || '',
     };
   }
+  options?.onStage?.('UPLOADING');
   const done = new Set(uploadedChunks || []);
+  const getChunkByteLength = (chunkIndex: number) => {
+    const start = chunkIndex * chunkSize;
+    return Math.max(0, Math.min(file.size, start + chunkSize) - start);
+  };
+  let uploadedBytes = Array.from(done).reduce(
+    (sum, chunkIndex) => sum + getChunkByteLength(chunkIndex),
+    0,
+  );
+  const inFlightBytes = new Map<number, number>();
+  const reportProgress = () => {
+    const inFlightUploadedBytes = Array.from(inFlightBytes.values()).reduce(
+      (sum, bytes) => sum + bytes,
+      0,
+    );
+    const percent = file.size
+      ? ((uploadedBytes + inFlightUploadedBytes) / file.size) * 100
+      : 100;
+    onProgress(Math.min(100, Number(percent.toFixed(1))));
+  };
+  reportProgress();
+  const pendingChunks = Array.from(
+    { length: totalChunks },
+    (_, index) => index,
+  ).filter((index) => !done.has(index));
+  const concurrency = Math.min(
+    Math.max(1, Math.floor(options?.concurrency ?? UPLOAD_CHUNK_CONCURRENCY)),
+    pendingChunks.length || 1,
+  );
+  const maxRetries = Math.max(
+    0,
+    Math.floor(options?.maxRetries ?? UPLOAD_CHUNK_MAX_RETRIES),
+  );
+  let nextChunkIndex = 0;
+  let firstError: unknown;
+  let abortPromise: Promise<void> | null = null;
 
-  const abortIfNeeded = async () => {
-    if (options?.signal?.aborted) {
-      await abortChunkUploadApi(uploadId).catch(() => undefined);
-      throw new DOMException('Upload aborted', 'AbortError');
+  const abortRemoteUpload = (): Promise<void> => {
+    if (!abortPromise) {
+      abortPromise = abortChunkUploadApi(uploadId).then(
+        () => undefined,
+        () => undefined,
+      );
+    }
+    return abortPromise;
+  };
+
+  const uploadWorker = async (): Promise<void> => {
+    while (firstError === undefined) {
+      if (options?.signal?.aborted) {
+        firstError = new DOMException('Upload aborted', 'AbortError');
+        return;
+      }
+      const position = nextChunkIndex;
+      nextChunkIndex += 1;
+      const chunkIndex = pendingChunks[position];
+      if (chunkIndex === undefined) return;
+
+      const start = chunkIndex * chunkSize;
+      const end = Math.min(file.size, start + chunkSize);
+      const currentChunkBytes = end - start;
+      try {
+        await uploadChunkWithRetry(
+          uploadId,
+          chunkIndex,
+          file.slice(start, end),
+          options?.signal,
+          maxRetries,
+          (loaded, total) => {
+            const progressTotal =
+              total && total > 0 ? total : currentChunkBytes;
+            const normalizedLoaded = Math.min(
+              currentChunkBytes,
+              Math.max(0, (loaded * currentChunkBytes) / progressTotal),
+            );
+            inFlightBytes.set(chunkIndex, normalizedLoaded);
+            reportProgress();
+          },
+        );
+        inFlightBytes.delete(chunkIndex);
+        uploadedBytes += currentChunkBytes;
+        done.add(chunkIndex);
+        reportProgress();
+      } catch (error) {
+        inFlightBytes.delete(chunkIndex);
+        if (firstError === undefined) {
+          firstError = options?.signal?.aborted
+            ? new DOMException('Upload aborted', 'AbortError')
+            : error;
+        }
+      }
     }
   };
 
-  for (let i = 0; i < totalChunks; i += 1) {
-    await abortIfNeeded();
-    if (done.has(i)) {
-      onProgress(Math.round(((done.size || i + 1) / totalChunks) * 100));
-      continue;
-    }
-    const start = i * chunkSize;
-    const end = Math.min(file.size, start + chunkSize);
-    const blob = file.slice(start, end);
-    try {
-      const statusRes = await uploadChunkApi(uploadId, i, blob);
-      done.add(i);
-      onProgress(
-        statusRes.data.percent ?? Math.round((done.size / totalChunks) * 100),
-      );
-    } catch (err) {
-      await abortIfNeeded();
-      throw err;
-    }
+  await Promise.all(Array.from({ length: concurrency }, () => uploadWorker()));
+  if (firstError !== undefined) {
+    if (options?.signal?.aborted) await abortRemoteUpload();
+    throw firstError;
   }
 
-  await abortIfNeeded();
+  if (options?.signal?.aborted) {
+    await abortRemoteUpload();
+    throw new DOMException('Upload aborted', 'AbortError');
+  }
   const merged = await mergeChunkUploadApi(uploadId);
   onProgress(100);
   return merged.data;
