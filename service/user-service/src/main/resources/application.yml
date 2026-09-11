@@ -11,13 +11,6 @@ spring:
     multipart:
       max-file-size: ${MULTIPART_MAX_FILE_SIZE:5MB}
       max-request-size: ${MULTIPART_MAX_REQUEST_SIZE:6MB}
-  # AI 配置
-  ai:
-    dashscope:
-      api-key: ${DASHSCOPE_API_KEY}
-      chat:
-        options:
-          model: ${DASHSCOPE_CHAT_MODEL:qwen-plus}
   # 数据源配置
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -69,21 +62,20 @@ minio:
   public-file-prefix: ${MINIO_PUBLIC_FILE_PREFIX:user-files/public}
   private-file-prefix: ${MINIO_PRIVATE_FILE_PREFIX:user-files/pending}
   presigned-expire-seconds: ${MINIO_PRESIGNED_EXPIRE_SECONDS:900}
+  max-requests: ${MINIO_MAX_REQUESTS:64}
+  max-requests-per-host: ${MINIO_MAX_REQUESTS_PER_HOST:16}
+  max-idle-connections: ${MINIO_MAX_IDLE_CONNECTIONS:32}
+  keep-alive-minutes: ${MINIO_KEEP_ALIVE_MINUTES:5}
 
-# 审核配置（mode: mock | llm）
+# 审核任务配置；实际模型调用统一由 ai-agent-service 完成。
 audit:
-  mode: ${AUDIT_MODE:mock}
+  mode: ${AUDIT_MODE:llm}
   async:
     core-pool-size: ${AUDIT_ASYNC_CORE_POOL_SIZE:2}
     max-pool-size: ${AUDIT_ASYNC_MAX_POOL_SIZE:4}
     queue-capacity: ${AUDIT_ASYNC_QUEUE_CAPACITY:200}
     keep-alive-seconds: ${AUDIT_ASYNC_KEEP_ALIVE_SECONDS:60}
     thread-name-prefix: ${AUDIT_ASYNC_THREAD_NAME_PREFIX:audit-}
-  dashscope:
-    text-model: ${AUDIT_DASHSCOPE_TEXT_MODEL:qwen-plus}
-    image-model: ${AUDIT_DASHSCOPE_IMAGE_MODEL:qwen3-vl-plus}
-    fail-open-on-unavailable: ${AUDIT_DASHSCOPE_FAIL_OPEN_ON_UNAVAILABLE:false}
-
 # MyBatis-Plus 配置
 mybatis-plus:
   mapper-locations: classpath*:mapper/*.xml

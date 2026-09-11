@@ -88,6 +88,8 @@ spring:
             allowed-origin-patterns:
               - 'http://localhost:*'
               - 'http://127.0.0.1:*'
+              - 'http://game1.3q.hair'
+              - 'https://game1.3q.hair'
               - 'https://game.viphk.nnhk.cc'
               - 'https://game.3s.tunnelfrp.com'
             allowed-methods: '*'

@@ -107,6 +107,8 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         int postType = normalizePostType(dto.getPostType());
         boolean isUpdate = dto.getId() != null;
         Article existingArticle = isUpdate ? requireOwnedArticle(dto.getId(), userId) : null;
+        boolean wasPublished = existingArticle != null
+                && Objects.equals(existingArticle.getStatus(), ContentConstants.ArticleStatus.PUBLISHED);
         ArticleContent existingContent = isUpdate ? articleContentService.getByArticleId(dto.getId()) : null;
         List<String> oldMediaRefs = collectMediaRefs(existingArticle, existingContent);
         Article refArticle = resolveRefArticleIfRepost(postType, dto.getRefArticleId());
@@ -174,6 +176,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                     contentParagraphs, articleImages, userId);
             articleGameService.saveArticleGames(article.getId(), dto.getGameAppIds());
             articleSearchSyncProducer.delete(article.getId());
+            if (wasPublished) {
+                articleSocialFeedProducer.remove(article.getId());
+            }
             articleNotificationEventProducer.publishProfileInvalidation(userId,
                     NotificationConstants.ProfileDataDomain.POSTS);
             cleanupReplacedMedia(oldMediaRefs, collectMediaRefs(article, articleContentService.getByArticleId(article.getId())));
@@ -194,6 +199,11 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         articleContentService.saveContent(articleId, contentText, contentHtml,
                 contentParagraphs, articleImages, userId);
         articleGameService.saveArticleGames(articleId, dto.getGameAppIds());
+        // 已发布文章重新提交审核时，必须先撤出公开检索和动态，否则审核期间仍会被用户看到。
+        articleSearchSyncProducer.delete(articleId);
+        if (wasPublished) {
+            articleSocialFeedProducer.remove(articleId);
+        }
         cleanupReplacedMedia(oldMediaRefs, collectMediaRefs(article, articleContentService.getByArticleId(articleId)));
         articleNotificationEventProducer.publishProfileInvalidation(userId,
                 NotificationConstants.ProfileDataDomain.POSTS);
@@ -347,6 +357,16 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         }
         assertReadable(article);
         return buildDetailVo(article, false);
+    }
+
+    @Override
+    public ArticleDetailVO getArticleDetailForAdminPreview(String publicId) {
+        Long id = resolvePublicId(publicId);
+        Article article = getById(id);
+        if (article == null) {
+            throw new BusinessException("文章不存在");
+        }
+        return buildDetailVo(article, true);
     }
 
     @Override
@@ -1164,7 +1184,12 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
     @Override
     public Result<List<ArticleListVO>> queryByIds(List<Long> ids) {
-        List<ArticleListVO> records = toEnrichedListVOs(listByIds(ids));
+        if (ids == null || ids.isEmpty()) {
+            return Result.success(List.of());
+        }
+        List<ArticleListVO> records = toEnrichedListVOs(list(new LambdaQueryWrapper<Article>()
+                .in(Article::getId, ids)
+                .eq(Article::getStatus, ContentConstants.ArticleStatus.PUBLISHED)));
         return Result.success(records);
     }
 
@@ -1174,7 +1199,8 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             return Result.success(List.of());
         }
         List<Article> articles = list(new LambdaQueryWrapper<Article>()
-                .in(Article::getPublicId, publicIds));
+                .in(Article::getPublicId, publicIds)
+                .eq(Article::getStatus, ContentConstants.ArticleStatus.PUBLISHED));
         Map<String, Article> articleMap = articles.stream()
                 .collect(Collectors.toMap(Article::getPublicId, article -> article, (left, right) -> left));
         List<Article> ordered = publicIds.stream()

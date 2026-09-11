@@ -26,9 +26,6 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 public class SseServiceImpl implements SseService {
 
-    /** 兼容部分 HTTP/2 代理对 SSE 小数据块的缓冲。 */
-    private static final String SSE_FLUSH_PADDING = " ".repeat(1536);
-
     private final Map<Long, Set<SseEmitter>> emitters = new ConcurrentHashMap<>();
 
     private final StringRedisTemplate redisTemplate;
@@ -105,19 +102,45 @@ public class SseServiceImpl implements SseService {
         );
         for (Long userId : emitters.keySet()) {
             sendLocal(new NotificationSseBroadcast(userId,
-                    NotificationConstants.SseEventType.HEARTBEAT, payload), true);
+                    NotificationConstants.SseEventType.HEARTBEAT, payload));
         }
     }
 
     public void sendLocal(NotificationSseBroadcast broadcast) {
-        sendLocal(broadcast, false);
-    }
-
-    private void sendLocal(NotificationSseBroadcast broadcast, boolean prependFlushPadding) {
         if (broadcast == null || broadcast.getUserId() == null) {
             return;
         }
-        sendLocal(broadcast.getUserId(), broadcast.getEventName(), broadcast.getPayload(), prependFlushPadding);
+        Set<SseEmitter> connections = emitters.get(broadcast.getUserId());
+        if (connections == null || connections.isEmpty()) {
+            return;
+        }
+        Iterator<SseEmitter> iterator = connections.iterator();
+        while (iterator.hasNext()) {
+            SseEmitter emitter = iterator.next();
+            try {
+                synchronized (emitter) {
+                    NotificationSseEventVO payload = broadcast.getPayload();
+                    SseEmitter.SseEventBuilder builder = SseEmitter.event()
+                            .name(broadcast.getEventName())
+                            .data(payload);
+                    if (payload != null && payload.getEventId() != null) {
+                        builder.id(payload.getEventId());
+                    } else if (payload != null && payload.getMessage() != null
+                            && payload.getMessage().getId() != null) {
+                        builder.id(String.valueOf(payload.getMessage().getId()));
+                    }
+                    emitter.send(builder);
+                }
+            } catch (IOException | RuntimeException e) {
+                log.warn("SSE发送失败, userId={}, event={}, error={}",
+                        broadcast.getUserId(), broadcast.getEventName(), e.getMessage());
+                iterator.remove();
+                safeComplete(emitter);
+            }
+        }
+        if (connections.isEmpty()) {
+            emitters.remove(broadcast.getUserId(), connections);
+        }
     }
 
     private void publish(NotificationSseBroadcast broadcast) {
@@ -129,45 +152,6 @@ public class SseServiceImpl implements SseService {
             log.warn("通知 SSE Redis 广播失败，回退本机推送: userId={}, event={}",
                     broadcast.getUserId(), broadcast.getEventName(), e);
             sendLocal(broadcast);
-        }
-    }
-
-    private void sendLocal(
-            Long userId,
-            String eventName,
-            NotificationSseEventVO payload,
-            boolean prependFlushPadding) {
-        Set<SseEmitter> connections = emitters.get(userId);
-        if (connections == null || connections.isEmpty()) {
-            return;
-        }
-        Iterator<SseEmitter> iterator = connections.iterator();
-        while (iterator.hasNext()) {
-            SseEmitter emitter = iterator.next();
-            try {
-                synchronized (emitter) {
-                    if (prependFlushPadding) {
-                        emitter.send(SseEmitter.event().comment(SSE_FLUSH_PADDING));
-                    }
-                    SseEmitter.SseEventBuilder builder = SseEmitter.event()
-                            .name(eventName)
-                            .data(payload);
-                    if (payload != null && payload.getEventId() != null) {
-                        builder.id(payload.getEventId());
-                    } else if (payload != null && payload.getMessage() != null
-                            && payload.getMessage().getId() != null) {
-                        builder.id(String.valueOf(payload.getMessage().getId()));
-                    }
-                    emitter.send(builder);
-                }
-            } catch (IOException | RuntimeException e) {
-                log.warn("SSE发送失败, userId={}, event={}, error={}", userId, eventName, e.getMessage());
-                iterator.remove();
-                safeComplete(emitter);
-            }
-        }
-        if (connections.isEmpty()) {
-            emitters.remove(userId, connections);
         }
     }
 

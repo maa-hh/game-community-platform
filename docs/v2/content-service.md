@@ -1351,6 +1351,8 @@ public void cancelTask(Long taskId) {
 
 ### 3.10 审核链详解
 
+> 当前实现已收口到 ai-agent-service：content-service 通过 `AiAgentFeignClient` 发送文本或图片，统一结果为 `ModerationResultVO`。文本的 AC 自动机、模型选择、Prompt 和评分阈值均由 AI Agent 维护；本节后续旧代码仅保留为迁移背景，不能作为当前实现依据。当前协议详见 `docs/v2/ai-agent-service.md` §8。
+
 #### 3.10.1 审核链总览
 
 审核链由 `ArticleAuditServiceImpl.auditArticle()` 实现，按顺序执行三个阶段，任一阶段不通过即短路返回：
@@ -1910,11 +1912,7 @@ minio:
   private-file-prefix: ${MINIO_PRIVATE_FILE_PREFIX:user-files/pending}
   presigned-expire-seconds: ${MINIO_PRESIGNED_EXPIRE_SECONDS:900}
 
-audit:
-  dashscope:
-    text-model: ${AUDIT_DASHSCOPE_TEXT_MODEL:qwen-plus}
-    image-model: ${AUDIT_DASHSCOPE_IMAGE_MODEL:qwen3-vl-plus}
-    fail-open-on-unavailable: ${AUDIT_DASHSCOPE_FAIL_OPEN_ON_UNAVAILABLE:false}
+# 审核模型配置已迁移至 ai-agent-service；content-service 不再持有模型密钥。
 
 mybatis-plus:
   mapper-locations: classpath*:mapper/*.xml

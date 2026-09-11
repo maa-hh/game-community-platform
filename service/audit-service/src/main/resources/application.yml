@@ -45,6 +45,10 @@ spring:
           default:
             connect-timeout: ${AUDIT_FEIGN_CONNECT_TIMEOUT:1000}
             read-timeout: ${AUDIT_FEIGN_READ_TIMEOUT:3000}
+          content-service:
+            # 人工通过帖子时可能同步搬运待审媒体，不能使用通用的短超时。
+            connect-timeout: ${AUDIT_CONTENT_FEIGN_CONNECT_TIMEOUT:1000}
+            read-timeout: ${AUDIT_CONTENT_FEIGN_READ_TIMEOUT:10000}
   # Kafka 配置
   kafka:
     bootstrap-servers: ${KAFKA_SERVERS:localhost:9093}

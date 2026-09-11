@@ -63,6 +63,13 @@ public class ArticleController {
         return articleService.queryArticleDetail(publicId);
     }
 
+    @AdminCheck
+    @GetMapping("/{id}/moderation-preview")
+    @JsonView(ApiJsonViews.Public.class)
+    public Result<ArticleDetailVO> getArticleModerationPreview(@PathVariable("id") String publicId) {
+        return Result.success(articleService.getArticleDetailForAdminPreview(publicId));
+    }
+
     @LoginCheck
     @GetMapping("/{id}/mine")
     @JsonView(ApiJsonViews.Public.class)

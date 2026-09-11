@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Configuration;
 @ConfigurationProperties(prefix = "ai-agent")
 public class AiAgentProperties {
 
+    private String apiKey;
     private String embeddingEndpoint;
     private String chatEndpoint;
     private String embeddingModel;

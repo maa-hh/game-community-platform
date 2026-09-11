@@ -86,6 +86,9 @@ public class ArticleMediaHelper {
             if (!isPending(ref)) {
                 continue;
             }
+            if (isGlobalDedupeRef(ref)) {
+                continue;
+            }
             try {
                 minIOUtils.deletePrivateObject(toObjectKey(ref));
                 removeFromBlacklist(ref);
@@ -97,6 +100,9 @@ public class ArticleMediaHelper {
 
     public void deleteRef(String ref) {
         if (!StringUtils.hasText(ref)) {
+            return;
+        }
+        if (isGlobalDedupeRef(ref)) {
             return;
         }
         try {
@@ -127,6 +133,9 @@ public class ArticleMediaHelper {
         }
         for (String ref : refs) {
             if (!StringUtils.hasText(ref)) {
+                continue;
+            }
+            if (isGlobalDedupeRef(ref)) {
                 continue;
             }
             if (isPending(ref)) {
@@ -171,6 +180,7 @@ public class ArticleMediaHelper {
         }
         List<String> keys = refs.stream()
                 .filter(StringUtils::hasText)
+                .filter(ref -> !isGlobalDedupeRef(ref))
                 .map(this::blacklistKey)
                 .distinct()
                 .toList();
@@ -205,6 +215,20 @@ public class ArticleMediaHelper {
             return normalized;
         }
         return minIOUtils.resolvePublicUrl(normalized);
+    }
+
+    /** 全局去重对象是跨文章共享的，不允许某一篇文章的清理或下架删除/屏蔽它。 */
+    private boolean isGlobalDedupeRef(String ref) {
+        if (!StringUtils.hasText(ref)) {
+            return false;
+        }
+        String normalized = ref.trim();
+        if (isPending(normalized)) {
+            return toObjectKey(normalized).startsWith(ContentConstants.UploadRedis.GLOBAL_OBJECT_PREFIX);
+        }
+        String publicUrl = minIOUtils.resolvePublicUrl(normalized);
+        return StringUtils.hasText(publicUrl)
+                && publicUrl.contains("/" + ContentConstants.UploadRedis.GLOBAL_OBJECT_PREFIX);
     }
 
     public record PromotedGallery(String coverUrl, List<String> imageUrls) {

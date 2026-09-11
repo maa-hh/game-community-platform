@@ -13,7 +13,7 @@
 这次重构基于 `demo` 的 `content-service` 迁入，但按当前项目规范做了收敛：
 
 - 去掉了旧版对 `Kafka / XXL-Job / ES / 后台待审核表 / 粉丝 Feed` 的强耦合
-- 审核能力统一改为 `DfaAuditUtils + AuditClient(MiniMax)` 链路
+- 审核能力通过 `AiAgentFeignClient` 收口到 ai-agent-service（AC 自动机 + Spring AI 文本/图片评分）
 - 任务系统改为“事务提交后入 Redis + 数据库补偿回灌”
 - 公共模型统一放到 `model` / `common` / `utils`，不在 `content-service` 内部造重复结构
 

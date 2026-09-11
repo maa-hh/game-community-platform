@@ -33,6 +33,7 @@ import com.game.community.model.vo.danmaku.DanmakuVO;
 import com.game.community.model.vo.user.UserAuditTaskBriefVO;
 import com.game.community.model.vo.user.UserCardInternalVO;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,6 +52,7 @@ import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ModerationServiceImpl implements ModerationService {
 
     private static final Set<String> REPORT_ACTIONS = Set.of(
@@ -69,6 +71,7 @@ public class ModerationServiceImpl implements ModerationService {
     );
 
     private final ModerationTaskMapper taskMapper;
+    private final ModerationTaskPersistenceService taskPersistenceService;
     private final ContentFeignClient contentFeignClient;
     private final DanmakuFeignClient danmakuFeignClient;
     private final SocialFeignClient socialFeignClient;
@@ -196,6 +199,9 @@ public class ModerationServiceImpl implements ModerationService {
                     && StringUtils.hasText(task.getClaimToken())) {
                 return claimVO(task);
             }
+            if (StringUtils.hasText(task.getActionRequestId())) {
+                throw new BusinessException("该工单正在处理，请稍后重试");
+            }
             if (task.getLeaseExpireTime() == null || task.getLeaseExpireTime().isAfter(now)) {
                 throw new BusinessException("该工单正由其他管理员处理");
             }
@@ -208,7 +214,6 @@ public class ModerationServiceImpl implements ModerationService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public void handle(String taskKey, Long handlerId, HandleModerationTaskDTO dto) {
         if (dto == null) {
             throw new BusinessException("处理参数不能为空");
@@ -230,17 +235,9 @@ public class ModerationServiceImpl implements ModerationService {
         }
         validateBeforeHandle(task, dto.getHandleAction());
         int expectedVersion = task.getVersion() == null ? 0 : task.getVersion();
-        int started = taskMapper.update(null, new LambdaUpdateWrapper<ModerationTask>()
-                .eq(ModerationTask::getId, task.getId())
-                .eq(ModerationTask::getStatus, ModerationConstants.TaskStatus.PROCESSING)
-                .eq(ModerationTask::getHandlerId, handlerId)
-                .eq(ModerationTask::getClaimToken, dto.getClaimToken())
-                .eq(ModerationTask::getActionRequestId, "")
-                .eq(ModerationTask::getVersion, expectedVersion)
-                .set(ModerationTask::getActionRequestId, dto.getRequestId())
-                .setSql("version = version + 1")
-                .set(ModerationTask::getUpdateTime, LocalDateTime.now()));
-        if (started == 0) {
+        boolean started = taskPersistenceService.markActionStarted(task.getId(), handlerId,
+                dto.getClaimToken(), dto.getRequestId(), expectedVersion);
+        if (!started) {
             ModerationTask latest = requireTaskById(task.getId());
             if (Objects.equals(latest.getStatus(), ModerationConstants.TaskStatus.COMPLETED)
                     && Objects.equals(latest.getActionRequestId(), dto.getRequestId())) {
@@ -250,40 +247,21 @@ public class ModerationServiceImpl implements ModerationService {
         }
         try {
             applyAction(task, dto.getHandleAction(), dto.getHandleRemark(), handlerId);
-            int finished = taskMapper.update(null, new LambdaUpdateWrapper<ModerationTask>()
-                    .eq(ModerationTask::getId, task.getId())
-                    .eq(ModerationTask::getStatus, ModerationConstants.TaskStatus.PROCESSING)
-                    .eq(ModerationTask::getHandlerId, handlerId)
-                    .eq(ModerationTask::getClaimToken, dto.getClaimToken())
-                    .eq(ModerationTask::getActionRequestId, dto.getRequestId())
-                    .set(ModerationTask::getStatus, ModerationConstants.TaskStatus.COMPLETED)
-                    .set(ModerationTask::getHandleAction, dto.getHandleAction())
-                    .set(ModerationTask::getHandleRemark, dto.getHandleRemark())
-                    .set(ModerationTask::getHandleTime, LocalDateTime.now())
-                    .set(ModerationTask::getLeaseExpireTime, LocalDateTime.of(1970, 1, 1, 0, 0))
-                    .set(ModerationTask::getLastError, "")
-                    .setSql("version = version + 1")
-                    .set(ModerationTask::getUpdateTime, LocalDateTime.now()));
+            int finished = taskPersistenceService.markCompleted(task.getId(), handlerId,
+                    dto.getClaimToken(), dto.getRequestId(), dto.getHandleAction(), dto.getHandleRemark());
             if (finished == 0) {
                 throw new BusinessException("处理失败，请刷新后重试");
             }
+        } catch (RuntimeException e) {
+            taskPersistenceService.releaseAction(task.getId(), handlerId, dto.getClaimToken(),
+                    dto.getRequestId(), abbreviate(e.getMessage()));
+            throw e;
+        }
+        try {
             publishNotifications(task, dto.getHandleAction(), dto.getHandleRemark());
         } catch (RuntimeException e) {
-            taskMapper.update(null, new LambdaUpdateWrapper<ModerationTask>()
-                    .eq(ModerationTask::getId, task.getId())
-                    .eq(ModerationTask::getStatus, ModerationConstants.TaskStatus.PROCESSING)
-                    .eq(ModerationTask::getClaimToken, dto.getClaimToken())
-                    .eq(ModerationTask::getActionRequestId, dto.getRequestId())
-                    .eq(ModerationTask::getHandlerId, handlerId)
-                    .set(ModerationTask::getStatus, ModerationConstants.TaskStatus.PENDING)
-                    .set(ModerationTask::getHandlerId, null)
-                    .set(ModerationTask::getClaimTime, null)
-                    .set(ModerationTask::getLeaseExpireTime, LocalDateTime.of(1970, 1, 1, 0, 0))
-                    .set(ModerationTask::getActionRequestId, "")
-                    .set(ModerationTask::getLastError, abbreviate(e.getMessage()))
-                    .setSql("version = version + 1")
-                    .set(ModerationTask::getUpdateTime, LocalDateTime.now()));
-            throw e;
+            log.error("审核任务已完成，但通知发布失败: taskKey={}, action={}",
+                    taskKey, dto.getHandleAction(), e);
         }
     }
 
@@ -340,6 +318,7 @@ public class ModerationServiceImpl implements ModerationService {
     public int recoverExpiredClaims() {
         return taskMapper.update(null, new LambdaUpdateWrapper<ModerationTask>()
                 .eq(ModerationTask::getStatus, ModerationConstants.TaskStatus.PROCESSING)
+                .eq(ModerationTask::getActionRequestId, "")
                 .lt(ModerationTask::getLeaseExpireTime, LocalDateTime.now())
                 .set(ModerationTask::getStatus, ModerationConstants.TaskStatus.PENDING)
                 .set(ModerationTask::getHandlerId, null)
