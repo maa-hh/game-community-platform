@@ -368,7 +368,6 @@ public class UserProfileServiceImpl implements UserProfileService {
         boolean updated = userAuthMapper.update(null, new LambdaUpdateWrapper<UserAuth>()
                 .eq(UserAuth::getUserId, userId)
                 .eq(UserAuth::getVersion, userAuth.getVersion())
-                .set(UserAuth::getSalt, "")
                 .set(UserAuth::getPassword, EncryptUtils.bcryptEncode(dto.getNewPassword()))
                 .set(UserAuth::getFailCount, 0)
                 .set(UserAuth::getLockUntil, null)

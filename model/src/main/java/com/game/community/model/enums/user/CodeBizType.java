@@ -34,7 +34,8 @@ public enum CodeBizType {
         try {
             return CodeBizType.valueOf(raw.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException ex) {
-            return REGISTER;
+            // 非法业务类型不能静默降级为注册验证码，否则可能绕过业务边界。
+            throw new IllegalArgumentException("不支持的验证码业务类型: " + raw, ex);
         }
     }
 }

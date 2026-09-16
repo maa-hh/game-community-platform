@@ -28,8 +28,6 @@ public class UserAuth implements Serializable {
 
     private String password;
 
-    private String salt;
-
     /** 连续登录失败次数，成功后清零 */
     private Integer failCount;
 

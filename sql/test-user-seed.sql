@@ -63,9 +63,9 @@ INSERT INTO t_user_account (
 
 -- 登录凭证（BCrypt: Test123456）
 INSERT INTO t_user_auth (
-    user_id, password, salt, fail_count, version, create_time, update_time, deleted
+    user_id, password, fail_count, version, create_time, update_time, deleted
 ) VALUES (
-    @test_user_id, @test_password_hash, '', 0, 0, NOW(), NOW(), 0
+    @test_user_id, @test_password_hash, 0, 0, NOW(), NOW(), 0
 );
 
 -- 占用账号号池

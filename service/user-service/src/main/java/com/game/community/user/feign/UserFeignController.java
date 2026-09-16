@@ -1,5 +1,6 @@
 package com.game.community.user.feign;
 
+import com.game.community.common.constant.user.UserConstants;
 import com.game.community.model.base.Result;
 import com.game.community.model.dto.cosmetic.BatchUserIdsDTO;
 import com.game.community.model.dto.cosmetic.GrantCosmeticDTO;
@@ -15,6 +16,7 @@ import com.game.community.user.service.CosmeticService;
 import com.game.community.user.service.UserAccountService;
 import com.game.community.user.service.UserFieldAuditTaskService;
 import com.game.community.user.service.UserQueryService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -63,13 +65,14 @@ public class UserFeignController {
     public Result<Void> banUser(@PathVariable("accountId") Long accountId,
                                 @RequestParam("reason") String reason,
                                 @RequestParam(value = "durationHours", required = false) Integer durationHours) {
-        return userAccountService.banUserByAccountId(accountId, reason, durationHours, null);
+        return userAccountService.banUserByAccountId(accountId, reason, durationHours,
+                UserConstants.SYSTEM_OPERATOR_ID);
     }
 
     /** 解封用户 */
     @PostMapping("/account/{accountId}/unban")
     public Result<Void> unbanUser(@PathVariable("accountId") Long accountId) {
-        return userAccountService.unbanUserByAccountId(accountId, null);
+        return userAccountService.unbanUserByAccountId(accountId, UserConstants.SYSTEM_OPERATOR_ID);
     }
 
     /** 查询用户账户状态 */
@@ -99,7 +102,7 @@ public class UserFeignController {
 
     /** 执行 grantCosmetic 对应的业务处理。 */
     @PostMapping("/cosmetic/grant")
-    public Result<CosmeticGrantResultVO> grantCosmetic(@RequestBody GrantCosmeticDTO dto) {
+    public Result<CosmeticGrantResultVO> grantCosmetic(@Valid @RequestBody GrantCosmeticDTO dto) {
         return Result.success(cosmeticService.grantCosmetic(dto));
     }
 
@@ -119,7 +122,7 @@ public class UserFeignController {
 
     /** 执行 batchDecorations 对应的业务处理。 */
     @PostMapping("/cosmetic/decorations/batch")
-    public Result<Map<Long, UserDecorationVO>> batchDecorations(@RequestBody BatchUserIdsDTO dto) {
+    public Result<Map<Long, UserDecorationVO>> batchDecorations(@Valid @RequestBody BatchUserIdsDTO dto) {
         return Result.success(cosmeticService.batchDecorationsByAccountIds(dto.getAccountIds()));
     }
 

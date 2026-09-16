@@ -9,12 +9,12 @@ import com.game.community.user.service.UserFieldAuditTaskService;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.util.Set;
 
@@ -41,10 +41,10 @@ public abstract class AbstractUserServiceIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    @MockBean
+    @MockitoBean
     protected UserFieldAuditTaskService userFieldAuditTaskService;
 
-    @MockBean
+    @MockitoBean
     protected KafkaTemplate<String, NotificationEventMessage> kafkaTemplate;
 
     @BeforeEach

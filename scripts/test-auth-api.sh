@@ -47,18 +47,19 @@ curl_json() {
   local method="$1" path="$2" body="${3:-}"
   local extra_args=()
   if [[ -n "${4:-}" ]]; then
-  read -r -a extra_args <<< "$4"
+    # set -u 下显式初始化数组，避免无额外参数时展开未绑定数组导致脚本提前退出。
+    read -r -a extra_args <<< "$4"
   fi
   if [[ -n "$body" ]]; then
     curl -s -X "$method" "$API$path" \
       -H 'Content-Type: application/json' \
       -b "$COOKIE_JAR" -c "$COOKIE_JAR" \
-      "${extra_args[@]}" \
+      ${extra_args[@]+"${extra_args[@]}"} \
       -d "$body" >"$TMP"
   else
     curl -s -X "$method" "$API$path" \
       -b "$COOKIE_JAR" -c "$COOKIE_JAR" \
-      "${extra_args[@]}" >"$TMP"
+      ${extra_args[@]+"${extra_args[@]}"} >"$TMP"
   fi
   cat "$TMP"
 }

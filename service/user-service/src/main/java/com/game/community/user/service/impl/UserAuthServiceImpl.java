@@ -136,7 +136,12 @@ public class UserAuthServiceImpl implements UserAuthService {
 
         User user = new User();
         int at = email.indexOf('@');
-        user.setUsername(at > 0 ? email.substring(0, at) : UserConstants.DEFAULT_NICKNAME);
+        String generatedUsername = at > 0 ? email.substring(0, at) : UserConstants.DEFAULT_NICKNAME;
+        // 邮箱本地部分可能超过 t_user.username 的 20 字符上限；截断初始昵称，用户仍可后续提交审核修改。
+        if (generatedUsername.length() > UserConstants.USERNAME_MAX_LENGTH) {
+            generatedUsername = generatedUsername.substring(0, UserConstants.USERNAME_MAX_LENGTH);
+        }
+        user.setUsername(generatedUsername);
         user.setEmail(email);
         user.setSteamAccount("");
         user.setVersion(UserConstants.INITIAL_VERSION);
@@ -192,7 +197,6 @@ public class UserAuthServiceImpl implements UserAuthService {
                 .eq(UserAuth::getId, userAuth.getId())
                 .eq(UserAuth::getVersion, userAuth.getVersion())
                 .set(UserAuth::getPassword, EncryptUtils.bcryptEncode(dto.getPassword()))
-                .set(UserAuth::getSalt, "")
                 .set(UserAuth::getFailCount, UserConstants.INITIAL_FAIL_COUNT)
                 .set(UserAuth::getLockUntil, null)
                 .set(UserAuth::getLastPasswordChange, LocalDateTime.now())
@@ -547,7 +551,6 @@ public class UserAuthServiceImpl implements UserAuthService {
         UserAuth userAuth = new UserAuth();
         userAuth.setUserId(userId);
         userAuth.setPassword(EncryptUtils.bcryptEncode(password));
-        userAuth.setSalt("");
         userAuth.setFailCount(UserConstants.INITIAL_FAIL_COUNT);
         userAuth.setVersion(UserConstants.INITIAL_VERSION);
         userAuth.setCreateTime(now);
