@@ -20,8 +20,12 @@ import jakarta.annotation.Resource;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
  * 游戏卡片指标和价格的懒更新器。
@@ -43,6 +47,9 @@ public class SteamCatalogMetricsRefreshService {
     @Resource(name = "steamMetricsRefreshExecutor")
     private Executor metricsRefreshExecutor;
 
+    /** 同一 JVM 内按 appId 合并重复指标/价格任务，避免重复任务占满线程池队列。 */
+    private final Map<Long, CompletableFuture<Void>> inFlight = new ConcurrentHashMap<>();
+
     /** 异步刷新卡片中已过期的评分人数和价格。 */
     public void refreshIfStaleAsync(List<Long> appIds) {
         if (appIds == null || appIds.isEmpty()) {
@@ -53,7 +60,22 @@ public class SteamCatalogMetricsRefreshService {
                 .distinct()
                 .limit(GameCatalogConstants.METRICS_REFRESH_BATCH_SIZE)
                 .toList();
-        metricsRefreshExecutor.execute(() -> ids.forEach(this::refreshOne));
+        ids.forEach(this::submitRefresh);
+    }
+
+    private void submitRefresh(Long appId) {
+        try {
+            inFlight.computeIfAbsent(appId, this::startRefresh);
+        } catch (RejectedExecutionException e) {
+            log.warn("Steam 游戏指标/价格刷新线程池已满: appId={}", appId);
+        }
+    }
+
+    private CompletableFuture<Void> startRefresh(Long appId) {
+        CompletableFuture<Void> future = CompletableFuture.runAsync(
+                () -> refreshOne(appId), metricsRefreshExecutor);
+        future.whenComplete((result, error) -> inFlight.remove(appId, future));
+        return future;
     }
 
     /** 启动或定时任务使用的过期数据批量刷新入口。 */

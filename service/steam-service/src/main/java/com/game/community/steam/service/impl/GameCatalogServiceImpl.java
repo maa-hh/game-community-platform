@@ -52,10 +52,13 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Objects;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -246,23 +249,61 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         if (game == null || game.getAppId() == null) {
             return;
         }
+        upsertBasicCatalogBatch(List.of(game));
+    }
+
+    /** 先批量读取已有目录，再用单条批量 upsert 写回，保留基础数据的保护规则。 */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void upsertBasicCatalogBatch(List<GameListItemVO> games) {
+        if (games == null || games.isEmpty()) {
+            return;
+        }
+        Map<Long, GameListItemVO> distinctGames = new LinkedHashMap<>();
+        for (GameListItemVO game : games) {
+            if (game != null && game.getAppId() != null) {
+                distinctGames.putIfAbsent(game.getAppId(), game);
+            }
+        }
+        if (distinctGames.isEmpty()) {
+            return;
+        }
+        Map<Long, GameCatalog> existingMap = gameCatalogMapper.selectBatchIds(distinctGames.keySet()).stream()
+                .collect(Collectors.toMap(GameCatalog::getAppId, Function.identity(), (a, b) -> a));
         LocalDateTime now = LocalDateTime.now();
-        GameCatalog catalog = gameCatalogMapper.selectById(game.getAppId());
+        List<GameCatalog> catalogs = distinctGames.values().stream()
+                .map(game -> prepareBasicCatalog(existingMap.get(game.getAppId()), game, now))
+                .toList();
+        gameCatalogMapper.upsertBasicCatalogBatch(catalogs);
+        catalogs.forEach(gameSearchIndexProducer::upsertCatalog);
+    }
+
+    private GameCatalog prepareBasicCatalog(GameCatalog catalog, GameListItemVO game, LocalDateTime now) {
         boolean newCatalog = catalog == null;
-        if (catalog == null) {
+        if (newCatalog) {
             catalog = new GameCatalog();
             catalog.setAppId(game.getAppId());
             catalog.setCreateTime(now);
+            catalog.setDescSource("COMMUNITY_FIRST");
+            catalog.setDiscussCount(0);
+            catalog.setReviewCount(0);
+            catalog.setAvgScore(BigDecimal.ZERO);
+            catalog.setSteamReviewScore(0);
+            catalog.setSteamReviewCount(0);
+            catalog.setSteamIsFree(false);
+            catalog.setPriceCurrency("CNY");
+            catalog.setPriceInitial(0);
+            catalog.setPriceFinal(0);
+            catalog.setPriceDiscount(0);
+            catalog.setPriceFormatted("暂无价格");
             catalog.setDetailReady(false);
             catalog.setStatus(GameCatalogStatus.ENABLED.getCode());
             catalog.setRefreshStatus(GameCatalogRefreshStatus.BASIC_READY.getCode());
-            // 数据库要求两个时间字段非空，但基础卡片还没有真正拉取指标/价格。
-            // 写入过期时间，让后续卡片懒更新或启动批处理立即接管。
+            // 基础卡片还没有真正拉取指标/价格，写入过期时间让后续刷新立即接管。
             LocalDateTime pendingRefreshAt = now.minusDays(GameCatalogConstants.METRICS_TTL_DAYS)
                     .minusMinutes(GameCatalogConstants.REFRESH_GRACE_MINUTES);
             catalog.setMetricsSyncedAt(pendingRefreshAt);
             catalog.setPriceSyncedAt(pendingRefreshAt);
-            // 基础卡片没有富详情，设置为过期状态，进入详情时由七天懒更新流程接管。
             catalog.setRichSyncedAt(now.minusDays(GameCatalogConstants.STALE_DAYS)
                     .minusMinutes(GameCatalogConstants.REFRESH_GRACE_MINUTES));
             catalog.setNextRefreshAt(now.minusMinutes(GameCatalogConstants.REFRESH_GRACE_MINUTES));
@@ -287,12 +328,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         if (catalog.getStatus() == null) {
             catalog.setStatus(GameCatalogStatus.ENABLED.getCode());
         }
-        if (newCatalog) {
-            gameCatalogMapper.insert(catalog);
-        } else {
-            gameCatalogMapper.updateById(catalog);
-        }
-        gameSearchIndexProducer.upsertCatalog(catalog);
+        return catalog;
     }
 
     private void applyBasicPrice(GameCatalog catalog, GamePriceVO price) {
@@ -481,15 +517,19 @@ public class GameCatalogServiceImpl implements GameCatalogService {
             return toDetailVO(catalog);
         }
         if (catalog == null) {
-            SteamGameDetailsPayload fetched = steamStoreClient.fetchAppDetails(appId);
-            catalog = toCatalog(fetched);
-            gameCatalogMapper.insert(catalog);
             try {
-                steamGameDetailService.save(fetched);
-            } catch (Exception e) {
-                log.warn("保存 Steam Mongo 富详情失败: appId={}", appId, e);
+                steamGameDetailRefreshService.refresh(appId).get(
+                        SteamRedisConstants.DETAIL_REFRESH_WAIT_MILLIS, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new BusinessException("获取游戏详情被中断");
+            } catch (ExecutionException | TimeoutException e) {
+                log.info("等待 Steam 游戏详情刷新超时，稍后重试: appId={}", appId);
             }
-            gameSearchIndexProducer.upsert(toListItemVO(catalog));
+            catalog = gameCatalogMapper.selectById(appId);
+            if (catalog == null) {
+                throw new BusinessException("游戏详情正在更新，请稍后重试");
+            }
         }
         return toDetailVO(catalog);
     }

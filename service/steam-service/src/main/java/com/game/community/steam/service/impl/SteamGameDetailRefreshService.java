@@ -11,13 +11,19 @@ import com.game.community.steam.event.GameSearchIndexProducer;
 import com.game.community.steam.mapper.GameCatalogMapper;
 import com.game.community.steam.service.SteamGameDetailService;
 import com.game.community.utils.RedisUtils;
+import jakarta.annotation.Resource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -30,18 +36,61 @@ public class SteamGameDetailRefreshService {
     private final GameCatalogMapper gameCatalogMapper;
     private final GameSearchIndexProducer gameSearchIndexProducer;
 
+    @Resource(name = "steamDetailRefreshExecutor")
+    private Executor detailRefreshExecutor;
+
+    /** 同一 JVM 内按 appId 合并重复详情刷新任务，避免重复任务先进入线程池再被丢弃。 */
+    private final Map<Long, CompletableFuture<Void>> inFlight = new ConcurrentHashMap<>();
+
     /** 异步刷新指定游戏的 Steam 富详情，并在成功后更新目录与搜索索引。 */
-    @Async("steamDetailRefreshExecutor")
-    public void refresh(Long appId) {
+    public CompletableFuture<Void> refresh(Long appId) {
         if (appId == null) {
-            return;
+            return CompletableFuture.completedFuture(null);
         }
+        try {
+            return inFlight.computeIfAbsent(appId, this::submitRefresh);
+        } catch (RejectedExecutionException e) {
+            log.warn("Steam 游戏富详情刷新线程池已满: appId={}", appId);
+            return CompletableFuture.failedFuture(e);
+        }
+    }
+
+    private CompletableFuture<Void> submitRefresh(Long appId) {
+        CompletableFuture<Void> future = CompletableFuture.runAsync(
+                () -> refreshWithDistributedLock(appId), detailRefreshExecutor);
+        future.whenComplete((result, error) -> inFlight.remove(appId, future));
+        return future;
+    }
+
+    /** 在本地 SingleFlight 之外，再用 Redis 锁协调多实例刷新。 */
+    private void refreshWithDistributedLock(Long appId) {
+        GameCatalog before = gameCatalogMapper.selectById(appId);
         String lockKey = SteamRedisConstants.DETAIL_REFRESH_LOCK_PREFIX + appId;
         String lockToken = UUID.randomUUID().toString();
-        if (Boolean.FALSE.equals(redisUtils.setIfAbsent(
+        if (Boolean.TRUE.equals(redisUtils.setIfAbsent(
                 lockKey, lockToken, SteamRedisConstants.DETAIL_REFRESH_LOCK_SECONDS))) {
-            return;
+            try {
+                refreshAsOwner(appId);
+                return;
+            } finally {
+                redisUtils.unlock(lockKey, lockToken);
+            }
         }
+
+        // 已有其他实例持锁时只等待其结果，不在对方失败后立即重新抢锁重试，
+        // 避免多个实例接力发起同一个 Steam 请求。
+        long deadline = System.currentTimeMillis() + SteamRedisConstants.DETAIL_REFRESH_WAIT_MILLIS;
+        while (System.currentTimeMillis() <= deadline) {
+            if (isCompletedSince(before, appId)) {
+                return;
+            }
+            sleepBeforeRetry();
+        }
+        log.info("Steam 游戏富详情已有其他实例刷新，本次等待超时: appId={}", appId);
+    }
+
+    /** 持有分布式锁后再次检查，避免锁等待期间已经完成刷新。 */
+    private void refreshAsOwner(Long appId) {
         try {
             GameCatalog existing = gameCatalogMapper.selectById(appId);
             var existingDetail = steamGameDetailService.find(appId);
@@ -68,8 +117,32 @@ public class SteamGameDetailRefreshService {
             redisUtils.del(SteamRedisConstants.GAME_DETAIL_KEY_PREFIX + appId);
         } catch (Exception e) {
             log.warn("Steam 游戏富详情懒更新失败: appId={}", appId, e);
-        } finally {
-            redisUtils.unlock(lockKey, lockToken);
+        }
+    }
+
+    /** 判断其他实例是否已经将详情版本推进。 */
+    private boolean isCompletedSince(GameCatalog before, Long appId) {
+        GameCatalog current = gameCatalogMapper.selectById(appId);
+        if (current == null) {
+            return false;
+        }
+        if (before == null) {
+            return Boolean.TRUE.equals(current.getDetailReady());
+        }
+        if (!Boolean.TRUE.equals(before.getDetailReady())) {
+            return Boolean.TRUE.equals(current.getDetailReady());
+        }
+        return current.getSteamSyncedAt() != null
+                && (before.getSteamSyncedAt() == null
+                || current.getSteamSyncedAt().isAfter(before.getSteamSyncedAt()));
+    }
+
+    private void sleepBeforeRetry() {
+        try {
+            TimeUnit.MILLISECONDS.sleep(SteamRedisConstants.DETAIL_REFRESH_POLL_MILLIS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("等待 Steam 游戏详情刷新被中断", e);
         }
     }
 

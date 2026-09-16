@@ -91,7 +91,7 @@ public class SteamServiceImpl implements SteamService {
     /**
      * 处理 Steam OpenID 回调并完成账号绑定，游戏库由前端随后分页触发同步。
      *
-     * <p>state 在后续校验前删除，保证授权请求只能使用一次；Steam API、Redis
+     * <p>state 在后续校验前原子消费，保证授权请求只能使用一次；Steam API、Redis
      * 和用户服务属于外部 IO，数据库事务不能回滚这些外部操作。</p>
      */
     @Override
@@ -104,12 +104,12 @@ public class SteamServiceImpl implements SteamService {
         if (!StringUtils.hasText(state)) {
             throw new BusinessException("绑定状态无效");
         }
-        String userIdText = redisUtils.get(SteamRedisConstants.BIND_STATE_KEY_PREFIX + state);
+        String userIdText = redisUtils.getAndDelete(
+                SteamRedisConstants.BIND_STATE_KEY_PREFIX + state);
         if (!StringUtils.hasText(userIdText)) {
             throw new BusinessException("绑定状态已过期，请重新发起授权");
         }
         Long userId = Long.parseLong(userIdText);
-        redisUtils.del(SteamRedisConstants.BIND_STATE_KEY_PREFIX + state);
 
         String steamId = steamOpenIdService.verifyCallback(request.getOpenIdParams());
         UserSteamBind existing = userSteamBindMapper.selectBySteamId(steamId);

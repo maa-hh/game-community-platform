@@ -56,7 +56,8 @@ public class SteamOpenIdService {
         }
         MultiValueMap<String, String> verifyParams = new LinkedMultiValueMap<>();
         params.forEach((key, value) -> {
-            if (StringUtils.hasText(key) && value != null) {
+            // state 等业务参数只用于社区侧关联用户，不属于 OpenID 验证报文。
+            if (StringUtils.hasText(key) && key.startsWith("openid.") && value != null) {
                 verifyParams.add(key, value);
             }
         });
