@@ -32,4 +32,10 @@ public class SteamProperties {
 
     /** Steam 返回 429 后的首次退避时长，后续按尝试次数递增。 */
     private long rateLimitRetryDelayMs = 3000L;
+
+    /** Steam HTTP 连接建立超时时长，单位为毫秒。 */
+    private long connectTimeoutMs = 2000L;
+
+    /** Steam HTTP 响应读取超时时长，单位为毫秒。 */
+    private long readTimeoutMs = 5000L;
 }

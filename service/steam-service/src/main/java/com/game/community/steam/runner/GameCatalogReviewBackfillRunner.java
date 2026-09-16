@@ -29,6 +29,7 @@ public class GameCatalogReviewBackfillRunner implements ApplicationRunner {
     private final GameCatalogMapper gameCatalogMapper;
     private final SteamReviewClient steamReviewClient;
 
+    /** 启动后台线程补全历史目录缺失的 Steam 评价指标。 */
     @Override
     public void run(ApplicationArguments args) {
         Thread thread = new Thread(this::backfillMissingReviews, "game-review-backfill");
@@ -36,6 +37,7 @@ public class GameCatalogReviewBackfillRunner implements ApplicationRunner {
         thread.start();
     }
 
+    /** 分批查询缺失评价数据的目录，并按节奏调用 Steam 接口回填。 */
     private void backfillMissingReviews() {
         while (true) {
             List<GameCatalog> batch = gameCatalogMapper.selectList(

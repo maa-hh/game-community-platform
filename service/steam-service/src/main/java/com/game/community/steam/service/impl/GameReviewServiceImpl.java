@@ -227,6 +227,7 @@ public class GameReviewServiceImpl implements GameReviewService {
         return vo;
     }
 
+    /** 优先按社交热度查询短评，依赖失败时回退到发布时间排序。 */
     private Page<GameReview> listBySocialHot(Long appId, long pageNo, long pageSize) {
         try {
             Long viewerId = UserThreadLocal.getUserId();
@@ -252,6 +253,7 @@ public class GameReviewServiceImpl implements GameReviewService {
                         .orderByDesc(GameReview::getCreateTime));
     }
 
+    /** 批量获取短评点赞和回复统计，失败时返回空映射降级。 */
     private Map<String, GameReviewSocialStatsVO> socialStats(List<GameReview> reviews) {
         if (reviews == null || reviews.isEmpty()) return Map.of();
         try {
@@ -266,6 +268,7 @@ public class GameReviewServiceImpl implements GameReviewService {
         }
     }
 
+    /** 创建指定短评的零值社交统计。 */
     private GameReviewSocialStatsVO emptyStats(String reviewId) {
         GameReviewSocialStatsVO stats = new GameReviewSocialStatsVO();
         stats.setReviewId(reviewId);
@@ -275,6 +278,7 @@ public class GameReviewServiceImpl implements GameReviewService {
         return stats;
     }
 
+    /** 确保短评在社交服务存在，并同步最新正文和作者信息。 */
     private void syncReviewToSocial(GameReview review) {
         if (review == null || !StringUtils.hasText(review.getReviewId())) return;
         try {
@@ -285,6 +289,7 @@ public class GameReviewServiceImpl implements GameReviewService {
         }
     }
 
+    /** 通知社交服务移除已删除短评的互动元数据。 */
     private void syncReviewRemovalToSocial(GameReview review) {
         if (review == null || !StringUtils.hasText(review.getReviewId())) return;
         try {
@@ -330,6 +335,7 @@ public class GameReviewServiceImpl implements GameReviewService {
         gameReviewMapper.updateById(review);
     }
 
+    /** 生成不暴露数据库自增主键的公开短评标识。 */
     private String newPublicReviewId() {
         return UUID.randomUUID().toString().replace("-", "");
     }

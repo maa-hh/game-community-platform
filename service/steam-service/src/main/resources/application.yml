@@ -85,6 +85,8 @@ steam:
   request-interval-ms: ${STEAM_REQUEST_INTERVAL_MS:600}
   rate-limit-max-attempts: ${STEAM_RATE_LIMIT_MAX_ATTEMPTS:3}
   rate-limit-retry-delay-ms: ${STEAM_RATE_LIMIT_RETRY_DELAY_MS:3000}
+  connect-timeout-ms: ${STEAM_CONNECT_TIMEOUT_MS:2000}
+  read-timeout-ms: ${STEAM_READ_TIMEOUT_MS:5000}
 
 xxl:
   job:

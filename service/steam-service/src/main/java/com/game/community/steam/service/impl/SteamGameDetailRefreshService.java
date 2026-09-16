@@ -55,6 +55,7 @@ public class SteamGameDetailRefreshService {
         }
     }
 
+    /** 将单个游戏详情刷新任务提交到有界线程池，并在结束后释放本地合并状态。 */
     private CompletableFuture<Void> submitRefresh(Long appId) {
         CompletableFuture<Void> future = CompletableFuture.runAsync(
                 () -> refreshWithDistributedLock(appId), detailRefreshExecutor);
@@ -77,12 +78,22 @@ public class SteamGameDetailRefreshService {
             }
         }
 
-        // 已有其他实例持锁时只等待其结果，不在对方失败后立即重新抢锁重试，
-        // 避免多个实例接力发起同一个 Steam 请求。
+        // 已有其他实例持锁时先等待结果；持锁实例失败或锁过期后，等待者通过 SETNX 原子接管。
+        // 同一时刻仍只有一个实例能成为 owner，既不重复并发请求，也不会因 owner 失败而永久无结果。
         long deadline = System.currentTimeMillis() + SteamRedisConstants.DETAIL_REFRESH_WAIT_MILLIS;
         while (System.currentTimeMillis() <= deadline) {
             if (isCompletedSince(before, appId)) {
                 return;
+            }
+            if (redisUtils.get(lockKey) == null
+                    && Boolean.TRUE.equals(redisUtils.setIfAbsent(
+                    lockKey, lockToken, SteamRedisConstants.DETAIL_REFRESH_LOCK_SECONDS))) {
+                try {
+                    refreshAsOwner(appId);
+                    return;
+                } finally {
+                    redisUtils.unlock(lockKey, lockToken);
+                }
             }
             sleepBeforeRetry();
         }
@@ -137,6 +148,7 @@ public class SteamGameDetailRefreshService {
                 || current.getSteamSyncedAt().isAfter(before.getSteamSyncedAt()));
     }
 
+    /** 轮询其他实例刷新结果前短暂休眠，避免持续查询数据库。 */
     private void sleepBeforeRetry() {
         try {
             TimeUnit.MILLISECONDS.sleep(SteamRedisConstants.DETAIL_REFRESH_POLL_MILLIS);

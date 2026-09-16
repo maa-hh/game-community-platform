@@ -20,6 +20,7 @@ import java.io.IOException;
 @Component
 public class UserFilter implements Filter {
 
+    /** 从网关请求头恢复用户上下文，并在请求结束后清理线程变量。 */
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
             throws IOException, ServletException {

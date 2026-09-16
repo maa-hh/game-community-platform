@@ -14,6 +14,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class AuthAspect {
 
+    /** 拦截需要登录的接口，校验网关写入的用户上下文。 */
     @Around("@annotation(com.game.community.common.annotation.LoginCheck)")
     public Object aroundLoginCheck(ProceedingJoinPoint joinPoint) throws Throwable {
         if (UserThreadLocal.getUserId() == null) {
@@ -22,6 +23,7 @@ public class AuthAspect {
         return joinPoint.proceed();
     }
 
+    /** 拦截管理员接口，校验当前用户登录状态和账号类型。 */
     @Around("@annotation(com.game.community.common.annotation.AdminCheck)")
     public Object aroundAdminCheck(ProceedingJoinPoint joinPoint) throws Throwable {
         Long userId = UserThreadLocal.getUserId();

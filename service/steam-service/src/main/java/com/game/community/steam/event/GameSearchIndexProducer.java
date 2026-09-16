@@ -19,6 +19,7 @@ public class GameSearchIndexProducer {
 
     private final KafkaTemplate<String, GameSearchSyncMessage> kafkaTemplate;
 
+    /** 发布游戏卡片索引更新事件，由搜索服务异步写入 ES。 */
     public void upsert(GameListItemVO game) {
         if (game == null || game.getAppId() == null) {
             return;
@@ -34,6 +35,7 @@ public class GameSearchIndexProducer {
                 });
     }
 
+    /** 将目录实体转换为索引消息并发布，供详情或评分更新复用。 */
     public void upsertCatalog(GameCatalog catalog) {
         if (catalog == null) {
             return;

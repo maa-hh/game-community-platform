@@ -154,6 +154,7 @@ public class SteamServiceImpl implements SteamService {
         log.info("Steam 绑定成功: userId={}, steamId={}", userId, steamId);
     }
 
+    /** 在绑定成功后提交首次游戏库同步，避免阻塞 OpenID 回调。 */
     private void scheduleInitialLibrarySync(Long userId) {
         try {
             CompletableFuture.runAsync(() -> {
@@ -275,8 +276,9 @@ public class SteamServiceImpl implements SteamService {
         }
 
         String lockKey = SteamRedisConstants.SYNC_LIBRARY_LOCK_PREFIX + userId;
+        String lockToken = UUID.randomUUID().toString();
         if (Boolean.FALSE.equals(redisUtils.setIfAbsent(
-                lockKey, "1", SteamRedisConstants.SYNC_LIBRARY_LOCK_SECONDS))) {
+                lockKey, lockToken, SteamRedisConstants.SYNC_LIBRARY_LOCK_SECONDS))) {
             throw new BusinessException("游戏库正在同步中，请稍后再试");
         }
         try {
@@ -340,7 +342,7 @@ public class SteamServiceImpl implements SteamService {
                     completed,
                     !completed);
         } finally {
-            redisUtils.del(lockKey);
+            redisUtils.unlock(lockKey, lockToken);
         }
     }
 
@@ -639,6 +641,7 @@ public class SteamServiceImpl implements SteamService {
         return gameStats(appId);
     }
 
+    /** 将用户已缓存的成就进度合并到 Steam 成就定义，生成稳定展示顺序。 */
     private List<SteamUserAchievementVO> mergeCachedAchievements(
             List<GameAchievement> definitions,
             Map<String, UserGameAchievement> userMap) {

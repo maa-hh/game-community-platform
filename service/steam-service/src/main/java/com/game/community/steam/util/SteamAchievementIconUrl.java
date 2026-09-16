@@ -47,6 +47,7 @@ public final class SteamAchievementIconUrl {
                 + appId + "/" + fileName;
     }
 
+    /** 删除图标地址查询参数，便于比较和拼接稳定的当前地址。 */
     private static String stripQuery(String value) {
         int queryIndex = value.indexOf('?');
         return queryIndex >= 0 ? value.substring(0, queryIndex) : value;

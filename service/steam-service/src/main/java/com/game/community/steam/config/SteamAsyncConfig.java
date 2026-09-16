@@ -12,6 +12,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 @EnableAsync
 public class SteamAsyncConfig {
 
+    /** 创建富详情刷新线程池，隔离外部 Steam 慢请求。 */
     @Bean("steamDetailRefreshExecutor")
     public Executor steamDetailRefreshExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
@@ -50,6 +51,7 @@ public class SteamAsyncConfig {
         return executor;
     }
 
+    /** 创建成就刷新线程池，限制单实例并发避免放大 Steam 请求。 */
     @Bean("steamAchievementRefreshExecutor")
     public Executor steamAchievementRefreshExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();

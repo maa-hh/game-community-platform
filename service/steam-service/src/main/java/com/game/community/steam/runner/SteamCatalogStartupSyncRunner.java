@@ -17,6 +17,7 @@ public class SteamCatalogStartupSyncRunner implements ApplicationRunner {
 
     private final GameChartSyncScheduler gameChartSyncScheduler;
 
+    /** 启动守护线程异步预热榜单，避免阻塞 Spring 应用启动完成。 */
     @Override
     public void run(ApplicationArguments args) {
         Thread thread = new Thread(() -> {
