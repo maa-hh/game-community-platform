@@ -68,6 +68,32 @@ public class RedisUtils {
                     + "redis.call('del', KEYS[1]); end; return count",
             Long.class);
 
+    private static final DefaultRedisScript<Long> VERIFY_CODE_SCRIPT = new DefaultRedisScript<>(
+            "if redis.call('get', KEYS[1]) ~= ARGV[1] then return 0 end; "
+                    + "if ARGV[2] == '1' then redis.call('del', KEYS[1]); end; return 1",
+            Long.class);
+
+    private static final DefaultRedisScript<Long> RELEASE_VERIFY_CODE_SCRIPT = new DefaultRedisScript<>(
+            "if redis.call('get', KEYS[2]) ~= ARGV[1] then return 0 end; "
+                    + "redis.call('del', KEYS[1]); redis.call('del', KEYS[2]); return 1",
+            Long.class);
+
+    private static final DefaultRedisScript<String> GET_AND_DELETE_SCRIPT = new DefaultRedisScript<>(
+            "local value = redis.call('get', KEYS[1]); "
+                    + "if value then redis.call('del', KEYS[1]); end; "
+                    + "return value",
+            String.class);
+
+    private static final DefaultRedisScript<Long> RESERVE_RATE_LIMIT_SLOT_SCRIPT = new DefaultRedisScript<>(
+            "local serverTime = redis.call('TIME'); "
+                    + "local nowMs = tonumber(serverTime[1]) * 1000 "
+                    + "+ math.floor(tonumber(serverTime[2]) / 1000); "
+                    + "local previous = tonumber(redis.call('get', KEYS[1]) or '0'); "
+                    + "local scheduled = math.max(nowMs, previous + tonumber(ARGV[1])); "
+                    + "redis.call('set', KEYS[1], tostring(scheduled)); "
+                    + "return scheduled - nowMs",
+            Long.class);
+
     private static final DefaultRedisScript<Double> Z_INCREMENT_AND_TRIM_SCRIPT = new DefaultRedisScript<>(
             "local score = redis.call('ZINCRBY', KEYS[1], ARGV[1], ARGV[2]); "
                     + "if tonumber(score) <= 0 then "
@@ -105,6 +131,13 @@ public class RedisUtils {
 
     public String get(String key) {
         return stringRedisTemplate.opsForValue().get(key);
+    }
+
+    /** 原子读取并删除一次性 Redis 值，避免并发请求重复消费同一状态。 */
+    public String getAndDelete(String key) {
+        return stringRedisTemplate.execute(
+                GET_AND_DELETE_SCRIPT,
+                Collections.singletonList(key));
     }
 
     /**
@@ -152,6 +185,18 @@ public class RedisUtils {
 
     public Boolean setIfAbsent(String key, String value, long seconds) {
         return stringRedisTemplate.opsForValue().setIfAbsent(key, value, Duration.ofSeconds(seconds));
+    }
+
+    /**
+     * 原子预定一个限流时间槽，返回当前请求还需要等待的毫秒数。
+     * Redis 服务端时间让多个应用实例共享同一时钟和时间序列。
+     */
+    public long reserveRateLimitSlot(String key, long intervalMs) {
+        Long waitMs = stringRedisTemplate.execute(
+                RESERVE_RATE_LIMIT_SLOT_SCRIPT,
+                Collections.singletonList(key),
+                String.valueOf(Math.max(0L, intervalMs)));
+        return waitMs == null ? 0L : Math.max(0L, waitMs);
     }
 
     /** 仅删除当前持有者创建的锁，避免误删其他实例的新锁。 */
@@ -217,6 +262,20 @@ public class RedisUtils {
                 Arrays.asList(failureKey, lockKey),
                 String.valueOf(failureSeconds), String.valueOf(threshold), String.valueOf(lockSeconds));
         return result == null ? -1L : result;
+    }
+
+    /** 原子校验验证码，并按需消费，避免并发请求重复使用同一个验证码。 */
+    public boolean verifyCode(String key, String expected, boolean consume) {
+        Long result = stringRedisTemplate.execute(VERIFY_CODE_SCRIPT,
+                Collections.singletonList(key), expected == null ? "" : expected, consume ? "1" : "0");
+        return result != null && result == 1L;
+    }
+
+    /** 邮件任务入队失败时，仅释放本次验证码和冷却，避免队列背压导致用户被无故锁等待。 */
+    public boolean releaseVerificationCode(String cooldownKey, String codeKey, String code) {
+        Long result = stringRedisTemplate.execute(RELEASE_VERIFY_CODE_SCRIPT,
+                Arrays.asList(cooldownKey, codeKey), code == null ? "" : code);
+        return result != null && result == 1L;
     }
 
     public Long getExpireSeconds(String key) {

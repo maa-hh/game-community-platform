@@ -184,26 +184,47 @@ public class CosmeticServiceImpl implements CosmeticService {
     /** 执行 getDecoration 对应的业务处理。 */
     @Override
     public UserDecorationVO getDecoration(Long userId) {
+        if (userId == null) {
+            throw new BusinessException("用户不存在");
+        }
         User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
         UserCosmeticLoadout loadout = loadoutMapper.selectById(userId);
         Map<String, CosmeticDef> defs = loadDefs(loadoutCodes(loadout));
         List<UserActiveEffect> effects = loadActiveEffects(List.of(userId), LocalDateTime.now());
-        return buildDecoration(user == null ? null : user.getAccountId(), loadout, defs, effects);
+        return buildDecoration(user.getAccountId(), loadout, defs, effects);
+    }
+
+    /** 执行 getDecorationByAccountId 对应的业务处理。 */
+    @Override
+    public UserDecorationVO getDecorationByAccountId(Long accountId) {
+        Result<UserCardInternalVO> result = userQueryService.getUserInternalByAccountId(accountId);
+        if (result == null || result.getData() == null) {
+            throw new BusinessException("用户不存在");
+        }
+        return getDecoration(result.getData().getUserId());
     }
 
     /** 执行 grantCosmetic 对应的业务处理。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public CosmeticGrantResultVO grantCosmetic(GrantCosmeticDTO dto) {
-        CosmeticDef def = requireEnabledDef(dto.getCosmeticCode());
-        int quantity = dto.getQuantity() == null || dto.getQuantity() < CosmeticConstants.DEFAULT_QUANTITY
-                ? CosmeticConstants.DEFAULT_QUANTITY : dto.getQuantity();
-        CosmeticGrantRecord existing = grantRecordMapper.selectByOrderNo(dto.getOrderNo());
-        if (existing != null) {
-            return buildGrantResult(def.getCode(), existing.getQuantity(), true);
+        String cosmeticCode = normalizeRequired(dto.getCosmeticCode(), "装扮编码不能为空");
+        String orderNo = normalizeRequired(dto.getOrderNo(), "订单号不能为空");
+        int quantity = dto.getQuantity() == null ? CosmeticConstants.DEFAULT_QUANTITY : dto.getQuantity();
+        if (quantity < CosmeticConstants.DEFAULT_QUANTITY) {
+            throw new BusinessException(ApiErrorCodes.BAD_REQUEST, "数量至少为1");
         }
+        CosmeticGrantRecord existing = grantRecordMapper.selectByOrderNo(orderNo);
+        if (existing != null) {
+            assertGrantReplay(existing, dto.getUserId(), cosmeticCode, quantity);
+            return buildGrantResult(existing.getCosmeticCode(), existing.getQuantity(), true);
+        }
+        CosmeticDef def = requireEnabledDef(cosmeticCode);
         CosmeticGrantRecord record = new CosmeticGrantRecord();
-        record.setOrderNo(dto.getOrderNo());
+        record.setOrderNo(orderNo);
         record.setUserId(dto.getUserId());
         record.setCosmeticCode(def.getCode());
         record.setQuantity(quantity);
@@ -211,16 +232,38 @@ public class CosmeticServiceImpl implements CosmeticService {
         try {
             grantRecordMapper.insert(record);
         } catch (DuplicateKeyException e) {
-            CosmeticGrantRecord concurrent = grantRecordMapper.selectByOrderNo(dto.getOrderNo());
-            return buildGrantResult(def.getCode(), concurrent == null ? quantity : concurrent.getQuantity(), true);
+            CosmeticGrantRecord concurrent = grantRecordMapper.selectByOrderNo(orderNo);
+            if (concurrent == null) {
+                throw new BusinessException(ApiErrorCodes.CONFLICT, "发放请求冲突，请重试");
+            }
+            assertGrantReplay(concurrent, dto.getUserId(), def.getCode(), quantity);
+            return buildGrantResult(concurrent.getCosmeticCode(), concurrent.getQuantity(), true);
         }
         boolean stackable = CosmeticConstants.EffectMode.CONSUMABLE.equals(def.getEffectMode());
         userCosmeticMapper.upsertOwned(
                 dto.getUserId(), def.getCode(), stackable ? quantity : CosmeticConstants.DEFAULT_QUANTITY,
                 StringUtils.hasText(dto.getSourceType())
                         ? dto.getSourceType() : CosmeticConstants.SourceType.SHOP,
-                dto.getOrderNo(), stackable ? CosmeticConstants.STACKABLE : CosmeticConstants.NON_STACKABLE);
+                orderNo, stackable ? CosmeticConstants.STACKABLE : CosmeticConstants.NON_STACKABLE);
         return buildGrantResult(def.getCode(), quantity, true);
+    }
+
+    /** 规范化幂等接口的必填字符串，避免同一业务请求产生多个幂等键。 */
+    private String normalizeRequired(String value, String message) {
+        if (!StringUtils.hasText(value)) {
+            throw new BusinessException(ApiErrorCodes.BAD_REQUEST, message);
+        }
+        return value.trim();
+    }
+
+    /** 校验重复订单的业务参数，防止复用订单号给其他用户或装扮发放。 */
+    private void assertGrantReplay(CosmeticGrantRecord record, Long userId,
+                                   String cosmeticCode, int quantity) {
+        if (!Objects.equals(record.getUserId(), userId)
+                || !Objects.equals(record.getCosmeticCode(), cosmeticCode)
+                || !Objects.equals(record.getQuantity(), quantity)) {
+            throw new BusinessException(ApiErrorCodes.CONFLICT, "订单号已被其他发放请求使用");
+        }
     }
 
     /** 执行 checkOwnershipBlock 对应的业务处理。 */

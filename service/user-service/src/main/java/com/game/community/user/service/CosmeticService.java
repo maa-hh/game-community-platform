@@ -33,6 +33,9 @@ public interface CosmeticService {
     /** 查询用户当前已装备的装扮。 */
     UserDecorationVO getDecoration(Long userId);
 
+    /** 按对外 accountId 查询用户当前已装备的装扮。 */
+    UserDecorationVO getDecorationByAccountId(Long accountId);
+
     /** 发放装扮并返回发放结果。 */
     CosmeticGrantResultVO grantCosmetic(GrantCosmeticDTO dto);
 

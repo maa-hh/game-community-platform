@@ -87,7 +87,8 @@ public class AuditTaskExecutor {
         FieldAuditPayload payload = task == null ? null : auditHelper.readPayload(task);
         if (task != null) {
             rollbackField(task.getTaskType(), task.getUserId(), payload);
-            updateTask(task.getId(), AuditTaskStatus.FAILED, null, "审核服务繁忙，队列已满");
+            updateTaskIfStatus(task.getId(), AuditTaskStatus.PENDING,
+                    AuditTaskStatus.FAILED, null, "审核服务繁忙，队列已满");
         } else if (taskType != null && userId != null) {
             rollbackField(taskType, userId, null);
         }
@@ -128,7 +129,8 @@ public class AuditTaskExecutor {
         FieldAuditPayload payload = auditHelper.readPayload(task);
         if (payload == null || payload.getField() == null) {
             rollbackField(task.getTaskType(), task.getUserId(), payload);
-            updateTask(taskId, AuditTaskStatus.FAILED, null, "审核任务负载异常");
+            updateTaskIfStatus(taskId, AuditTaskStatus.PROCESSING,
+                    AuditTaskStatus.FAILED, null, "审核任务负载异常");
             notificationProducer.publishRejected(task.getUserId(), task.getTaskType(),
                     UserConstants.AuditScore.MIN, "审核任务负载异常");
             return;
@@ -161,10 +163,14 @@ public class AuditTaskExecutor {
             Integer score = result.score();
             String reason = result.reason();
             // 先保存审核分数，再按分数推进最终状态，便于人工排查和后续通知。
-            updateTask(taskId, AuditTaskStatus.PROCESSING, score, reason);
+            if (!updateTaskIfStatus(taskId, AuditTaskStatus.PROCESSING,
+                    AuditTaskStatus.PROCESSING, score, reason)) {
+                return;
+            }
             if (result.reject()) {
                 rollbackField(task.getTaskType(), task.getUserId(), payload);
-                updateTask(taskId, AuditTaskStatus.REJECTED, null, reason);
+                updateTaskIfStatus(taskId, AuditTaskStatus.PROCESSING,
+                        AuditTaskStatus.REJECTED, null, reason);
                 notificationProducer.publishRejected(task.getUserId(), task.getTaskType(), score, reason);
                 return;
             }
@@ -175,7 +181,10 @@ public class AuditTaskExecutor {
                     case SIGNATURE -> auditHelper.markSignatureHumanReview(task.getUserId());
                     case AVATAR -> auditHelper.markAvatarHumanReview(task.getUserId());
                 }
-                updateTask(taskId, AuditTaskStatus.HUMAN_REVIEW, null, reason);
+                if (!updateTaskIfStatus(taskId, AuditTaskStatus.PROCESSING,
+                        AuditTaskStatus.HUMAN_REVIEW, null, reason)) {
+                    return;
+                }
                 notificationProducer.publishHumanReview(task.getUserId(), task.getTaskType(), score, reason);
                 UserAuditTask current = taskMapper.selectById(taskId);
                 moderationTaskProducer.publishProfileAudit(taskId, task.getUserId(),
@@ -185,17 +194,20 @@ public class AuditTaskExecutor {
             }
             if (!applyPassed(task.getTaskType(), task.getUserId(), payload)) {
                 rollbackField(task.getTaskType(), task.getUserId(), payload);
-                updateTask(taskId, AuditTaskStatus.FAILED, null, "审核结果回写失败");
+                updateTaskIfStatus(taskId, AuditTaskStatus.PROCESSING,
+                        AuditTaskStatus.FAILED, null, "审核结果回写失败");
                 notificationProducer.publishRejected(task.getUserId(), task.getTaskType(), score, "审核结果回写失败");
                 return;
             }
             // 资料回写成功后才标记 PASSED，避免任务状态领先于业务数据。
-            updateTask(taskId, AuditTaskStatus.PASSED, null, UserStrings.EMPTY);
+            updateTaskIfStatus(taskId, AuditTaskStatus.PROCESSING,
+                    AuditTaskStatus.PASSED, null, UserStrings.EMPTY);
             notificationProducer.publishPassed(task.getUserId(), task.getTaskType(), score, reason);
         } catch (Exception e) {
             String message = abbreviate("字段审核异常: " + e.getMessage());
             rollbackField(task.getTaskType(), task.getUserId(), payload);
-            updateTask(taskId, AuditTaskStatus.FAILED, null, message);
+            updateTaskIfStatus(taskId, AuditTaskStatus.PROCESSING,
+                    AuditTaskStatus.FAILED, null, message);
             notificationProducer.publishRejected(task.getUserId(), task.getTaskType(),
                     UserConstants.AuditScore.MIN, message);
             log.warn("字段审核异常: taskId={}, type={}", taskId, task.getTaskType(), e);
@@ -296,10 +308,18 @@ public class AuditTaskExecutor {
         return result;
     }
 
-    /** 执行 updateTask 对应的业务处理。 */
-    public void updateTask(Long taskId, AuditTaskStatus status, Integer score, String errorMessage) {
+    /** 原子抢占人工复核任务，防止同一任务被同时通过和拒绝。 */
+    public boolean claimHumanReview(Long taskId) {
+        return updateTaskIfStatus(taskId, AuditTaskStatus.HUMAN_REVIEW,
+                AuditTaskStatus.PROCESSING, null, null);
+    }
+
+    /** 仅在任务仍处于预期状态时更新，避免迟到线程覆盖最终审核结果。 */
+    public boolean updateTaskIfStatus(Long taskId, AuditTaskStatus expectedStatus,
+                                      AuditTaskStatus status, Integer score, String errorMessage) {
         LambdaUpdateWrapper<UserAuditTask> update = new LambdaUpdateWrapper<UserAuditTask>()
                 .eq(UserAuditTask::getId, taskId)
+                .eq(UserAuditTask::getStatus, expectedStatus)
                 .set(UserAuditTask::getUpdateTime, LocalDateTime.now());
         if (status != null) {
             update.set(UserAuditTask::getStatus, status);
@@ -308,7 +328,7 @@ public class AuditTaskExecutor {
             update.set(UserAuditTask::getScore, score);
         }
         update.set(UserAuditTask::getErrorMessage, abbreviate(errorMessage));
-        taskMapper.update(null, update);
+        return taskMapper.update(null, update) == 1;
     }
 
     /** 执行 abbreviate 对应的业务处理。 */

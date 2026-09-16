@@ -41,6 +41,7 @@ public class VerificationCodeHelper {
 
         String cooldownKey = RedisConstants.SEND_CODE_COOLDOWN_PREFIX + typeCode + ":" + normalized;
         String dailyKey = RedisConstants.SEND_CODE_DAILY_PREFIX + typeCode + ":" + normalized;
+        String codeKey = RedisConstants.codeKey(typeCode, normalized);
         long configuredExpireSeconds = emailProperties.getCode().getExpireSeconds();
         long expireSeconds = configuredExpireSeconds > 0
                 ? configuredExpireSeconds : UserConstants.CODE_EXPIRE;
@@ -55,7 +56,7 @@ public class VerificationCodeHelper {
         long reserved = redisUtils.reserveVerificationCode(
                 cooldownKey,
                 dailyKey,
-                RedisConstants.codeKey(typeCode, normalized),
+                codeKey,
                 RedisConstants.CODE_VERIFY_FAIL_PREFIX + normalized,
                 code,
                 expireSeconds,
@@ -74,7 +75,13 @@ public class VerificationCodeHelper {
             throw new BusinessException(ApiErrorCodes.INTERNAL_ERROR, "验证码服务暂不可用");
         }
 
-        emailService.sendVerificationCode(normalized, code, type);
+        try {
+            emailService.sendVerificationCode(normalized, code, type);
+        } catch (RuntimeException e) {
+            // 线程池拒绝时回收本次验证码和冷却；每日计数保留，防止借失败请求刷额度。
+            redisUtils.releaseVerificationCode(cooldownKey, codeKey, code);
+            throw e;
+        }
         // 返回 TTL 给前端倒计时，实际 SMTP 发送由 EmailTaskExecutor 异步完成。
         return (int) expireSeconds;
     }
@@ -101,16 +108,13 @@ public class VerificationCodeHelper {
         if (storedCode == null) {
             throw new BusinessException(ApiErrorCodes.BAD_REQUEST, "验证码已过期，请重新获取");
         }
-        if (!storedCode.equals(inputCode)) {
+        if (!redisUtils.verifyCode(codeKey, inputCode, consume)) {
             // 错误次数写 Redis 并在达到阈值后锁定，防止验证码被暴力试探。
             handleVerifyFailure(normalized);
             throw new BusinessException(ApiErrorCodes.BAD_REQUEST, "验证码错误");
         }
 
         redisUtils.del(RedisConstants.CODE_VERIFY_FAIL_PREFIX + normalized);
-        if (consume) {
-            redisUtils.del(codeKey);
-        }
     }
 
     /** 执行 assertNotVerifyLocked 对应的业务处理。 */

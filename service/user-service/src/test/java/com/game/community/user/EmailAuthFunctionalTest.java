@@ -87,6 +87,28 @@ class EmailAuthFunctionalTest extends AbstractUserServiceIntegrationTest {
     }
 
     @Test
+    void registerShouldBoundGeneratedUsernameToColumnLimit() {
+        String email = "abcdefghijklmnopqrstuvwx@game.com";
+        String password = "abc123";
+
+        userAuthService.sendCode(sendCodeDto(email, CodeBizType.REGISTER));
+        String code = redisUtils.get(RedisConstants.codeKey(CodeBizType.REGISTER.getCode(), email));
+        RegisterDTO registerDTO = new RegisterDTO();
+        registerDTO.setEmail(email);
+        registerDTO.setPassword(password);
+        registerDTO.setCode(code);
+
+        userAuthService.register(registerDTO);
+
+        AccountLoginDTO loginDTO = new AccountLoginDTO();
+        loginDTO.setEmail(email);
+        loginDTO.setPassword(password);
+        LoginVO loginVO = userAuthService.login(loginDTO, clientInfo()).getData();
+        assertThat(loginVO.getUser().getUsername())
+                .isEqualTo(email.substring(0, UserConstants.USERNAME_MAX_LENGTH));
+    }
+
+    @Test
     void loginShouldRejectUnknownEmail() {
         AccountLoginDTO loginDTO = new AccountLoginDTO();
         loginDTO.setEmail("missing@game.com");

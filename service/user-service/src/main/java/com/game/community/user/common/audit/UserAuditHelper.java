@@ -183,7 +183,9 @@ public class UserAuditHelper {
         }
         int auditRows = profileAuditMapper.update(null, new LambdaUpdateWrapper<UserProfileAudit>()
                 .eq(UserProfileAudit::getUserId, userId)
-                .eq(UserProfileAudit::getUsernameAuditStatus, FieldAuditStatus.AUDITING)
+                // 异步审核和人工审核都允许回写为通过，避免 HUMAN_REVIEW 无法完成。
+                .in(UserProfileAudit::getUsernameAuditStatus,
+                        FieldAuditStatus.AUDITING, FieldAuditStatus.HUMAN_REVIEW)
                 .eq(UserProfileAudit::getPendingUsername, username)
                 .set(UserProfileAudit::getPendingUsername, UserStrings.EMPTY)
                 .set(UserProfileAudit::getUsernameAuditStatus, FieldAuditStatus.NONE)
@@ -211,7 +213,8 @@ public class UserAuditHelper {
         }
         int auditRows = profileAuditMapper.update(null, new LambdaUpdateWrapper<UserProfileAudit>()
                 .eq(UserProfileAudit::getUserId, userId)
-                .eq(UserProfileAudit::getSignatureAuditStatus, FieldAuditStatus.AUDITING)
+                .in(UserProfileAudit::getSignatureAuditStatus,
+                        FieldAuditStatus.AUDITING, FieldAuditStatus.HUMAN_REVIEW)
                 .eq(UserProfileAudit::getPendingSignature, signature)
                 .set(UserProfileAudit::getPendingSignature, UserStrings.EMPTY)
                 .set(UserProfileAudit::getSignatureAuditStatus, FieldAuditStatus.NONE)
@@ -240,7 +243,8 @@ public class UserAuditHelper {
         }
         int auditRows = profileAuditMapper.update(null, new LambdaUpdateWrapper<UserProfileAudit>()
                 .eq(UserProfileAudit::getUserId, userId)
-                .eq(UserProfileAudit::getAvatarAuditStatus, FieldAuditStatus.AUDITING)
+                .in(UserProfileAudit::getAvatarAuditStatus,
+                        FieldAuditStatus.AUDITING, FieldAuditStatus.HUMAN_REVIEW)
                 .eq(UserProfileAudit::getPendingAvatar, pendingAvatar)
                 .set(UserProfileAudit::getPendingAvatar, UserStrings.EMPTY)
                 .set(UserProfileAudit::getAvatarAuditStatus, FieldAuditStatus.NONE)

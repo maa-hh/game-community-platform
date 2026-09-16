@@ -13,6 +13,8 @@ import java.util.Set;
 public class UserConstants {
 
     public static final int INITIAL_VERSION = 0;
+    /** 服务间自动处理使用的审计操作人标识。 */
+    public static final long SYSTEM_OPERATOR_ID = 0L;
     public static final int INITIAL_FAIL_COUNT = 0;
     public static final int NOT_DELETED = 0;
     public static final int DELETED = 1;

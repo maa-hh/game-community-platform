@@ -14,9 +14,7 @@ import com.game.community.model.vo.cosmetic.CosmeticDefVO;
 import com.game.community.model.vo.cosmetic.CosmeticItemStateVO;
 import com.game.community.model.vo.cosmetic.UserCosmeticVO;
 import com.game.community.model.vo.cosmetic.UserDecorationVO;
-import com.game.community.model.vo.user.UserCardInternalVO;
 import com.game.community.user.service.CosmeticService;
-import com.game.community.user.service.UserQueryService;
 import com.game.community.utils.ThreadLocal.UserThreadLocal;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -37,7 +35,6 @@ import java.util.Map;
 public class CosmeticController {
 
     private final CosmeticService cosmeticService;
-    private final UserQueryService userQueryService;
 
     @LoginCheck
     /** 执行 backpackPage 对应的业务处理。 */
@@ -54,11 +51,11 @@ public class CosmeticController {
                 effectMode, category, equipped, state, keyword);
     }
 
+    @LoginCheck
     /** 执行 decoration 对应的业务处理。 */
     @GetMapping("/decoration/{accountId}")
     public Result<UserDecorationVO> decoration(@PathVariable("accountId") Long accountId) {
-        UserCardInternalVO user = requireUserByAccountId(accountId);
-        return Result.success(cosmeticService.getDecoration(user.getUserId()));
+        return Result.success(cosmeticService.getDecorationByAccountId(accountId));
     }
 
     /** 执行 batchDecorations 对应的业务处理。 */
@@ -66,15 +63,6 @@ public class CosmeticController {
     public Result<Map<Long, UserDecorationVO>> batchDecorations(
             @Valid @RequestBody BatchUserIdsDTO dto) {
         return Result.success(cosmeticService.batchDecorationsByAccountIds(dto.getAccountIds()));
-    }
-
-    /** 执行 requireUserByAccountId 对应的业务处理。 */
-    private UserCardInternalVO requireUserByAccountId(Long accountId) {
-        Result<UserCardInternalVO> result = userQueryService.getUserInternalByAccountId(accountId);
-        if (result == null || result.getData() == null) {
-            throw new com.game.community.common.exception.BusinessException("用户不存在");
-        }
-        return result.getData();
     }
 
     @LoginCheck

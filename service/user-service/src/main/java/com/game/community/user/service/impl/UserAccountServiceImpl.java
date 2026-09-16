@@ -180,6 +180,12 @@ public class UserAccountServiceImpl implements UserAccountService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<Void> banUser(Long userId, String reason, Integer durationHours, Long operatorId) {
+        if (!StringUtils.hasText(reason)) {
+            throw new BusinessException(ApiErrorCodes.BAD_REQUEST, "封禁原因不能为空");
+        }
+        if (durationHours != null && durationHours < 0) {
+            throw new BusinessException(ApiErrorCodes.BAD_REQUEST, "封禁时长不能为负数");
+        }
         Long operator = operatorId;
         if (operator == null) {
             operator = UserThreadLocal.getUserId();
@@ -204,7 +210,7 @@ public class UserAccountServiceImpl implements UserAccountService {
                 .eq(UserAccount::getVersion, account.getVersion())
                 .set(UserAccount::getStatus, UserAccountStatus.BANNED)
                 .set(UserAccount::getBanUntil, banUntil)
-                .set(UserAccount::getBanReason, reason)
+                .set(UserAccount::getBanReason, reason.trim())
                 .set(UserAccount::getVersion, account.getVersion() + 1)
                 .set(UserAccount::getUpdateTime, LocalDateTime.now()));
         if (updated == 0) {
@@ -216,7 +222,7 @@ public class UserAccountServiceImpl implements UserAccountService {
         try {
             UserOperationLog logEntry = new UserOperationLog();
             logEntry.setUserId(userId);
-            logEntry.setOperatorId(userId);
+            logEntry.setOperatorId(operator);
             logEntry.setOperation(OperationType.BAN);
             logEntry.setDetail("reason=" + reason + ", durationHours=" + durationHours
                     + ", operatorId=" + operator);
@@ -257,7 +263,7 @@ public class UserAccountServiceImpl implements UserAccountService {
         try {
             UserOperationLog logEntry = new UserOperationLog();
             logEntry.setUserId(userId);
-            logEntry.setOperatorId(userId);
+            logEntry.setOperatorId(operator);
             logEntry.setOperation(OperationType.UNBAN);
             logEntry.setDetail("operatorId=" + operator);
             logEntry.setIp(UserStrings.EMPTY);
@@ -298,7 +304,7 @@ public class UserAccountServiceImpl implements UserAccountService {
 
         if (account.getStatus() == UserAccountStatus.BANNED
                 && account.getBanUntil() != null
-                && account.getBanUntil().isBefore(now)) {
+                && !account.getBanUntil().isAfter(now)) {
             clearBan(account);
             log.info("被动解封: userId={}", account.getUserId());
             return getAccount(account.getUserId());
@@ -306,7 +312,7 @@ public class UserAccountServiceImpl implements UserAccountService {
 
         if (account.getStatus() == UserAccountStatus.CANCELLING
                 && account.getCancelAt() != null
-                && account.getCancelAt().isBefore(now)) {
+                && !account.getCancelAt().isAfter(now)) {
             completeCancellation(account, invalidateSession);
             log.info("被动完成注销: userId={}", account.getUserId());
             return getAccount(account.getUserId());
@@ -372,15 +378,20 @@ public class UserAccountServiceImpl implements UserAccountService {
         }
 
         User user = userMapper.selectById(account.getUserId());
-        if (user != null) {
-            userMapper.update(null, new LambdaUpdateWrapper<User>()
-                    .eq(User::getId, user.getId())
-                    .eq(User::getVersion, user.getVersion())
-                    .set(User::getEmail, UserConstants.CANCELLED_EMAIL_PREFIX + user.getId()
-                            + UserConstants.INVALID_EMAIL_DOMAIN)
-                    .set(User::getVersion, user.getVersion() + 1)
-                    .set(User::getDeleted, UserConstants.DELETED)
-                    .set(User::getUpdateTime, LocalDateTime.now()));
+        if (user == null) {
+            throw new BusinessException(ApiErrorCodes.INTERNAL_ERROR, "用户资料数据异常");
+        }
+        int userUpdated = userMapper.update(null, new LambdaUpdateWrapper<User>()
+                .eq(User::getId, user.getId())
+                .eq(User::getVersion, user.getVersion())
+                .set(User::getEmail, UserConstants.CANCELLED_EMAIL_PREFIX + user.getId()
+                        + UserConstants.INVALID_EMAIL_DOMAIN)
+                .set(User::getVersion, user.getVersion() + 1)
+                .set(User::getDeleted, UserConstants.DELETED)
+                .set(User::getUpdateTime, LocalDateTime.now()));
+        if (userUpdated == 0) {
+            // 账户状态和用户资料必须在同一事务中完成，不能留下半注销数据。
+            throw new BusinessException(ApiErrorCodes.CONFLICT, "用户资料已变化，请稍后重试");
         }
 
         if (invalidateSession) {

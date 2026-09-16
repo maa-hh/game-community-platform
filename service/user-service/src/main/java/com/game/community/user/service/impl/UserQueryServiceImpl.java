@@ -72,7 +72,7 @@ public class UserQueryServiceImpl implements UserQueryService {
         if (userIds.size() > UserConstants.MAX_BATCH_QUERY_SIZE) {
             throw new BusinessException("批量查询不能超过" + UserConstants.MAX_BATCH_QUERY_SIZE + "个");
         }
-        List<User> users = userMapper.selectBatchIds(userIds);
+        List<User> users = userMapper.selectByIds(userIds);
         List<UserCardInternalVO> list = users.stream().map(this::convertToInternalCardVO).toList();
         return Result.success("查询成功", list);
     }

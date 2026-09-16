@@ -42,13 +42,20 @@ public class UserFieldAuditTaskServiceImpl implements UserFieldAuditTaskService 
         if (task.getStatus() != AuditTaskStatus.HUMAN_REVIEW) {
             throw new BusinessException("资料审核任务状态不可处理");
         }
+        if (!auditTaskExecutor.claimHumanReview(taskId)) {
+            throw new BusinessException("资料审核任务已被其他操作处理");
+        }
         FieldAuditPayload payload = auditHelper.readPayload(task);
         if (!auditTaskExecutor.applyPassed(task.getTaskType(), task.getUserId(), payload)) {
             auditTaskExecutor.rollbackField(task.getTaskType(), task.getUserId(), payload);
-            auditTaskExecutor.updateTask(task.getId(), AuditTaskStatus.FAILED, null, "人工审核回写失败");
+            auditTaskExecutor.updateTaskIfStatus(task.getId(), AuditTaskStatus.PROCESSING,
+                    AuditTaskStatus.FAILED, null, "人工审核回写失败");
             throw new BusinessException("资料审核回写失败");
         }
-        auditTaskExecutor.updateTask(task.getId(), AuditTaskStatus.PASSED, null, "");
+        if (!auditTaskExecutor.updateTaskIfStatus(task.getId(), AuditTaskStatus.PROCESSING,
+                AuditTaskStatus.PASSED, null, "")) {
+            throw new BusinessException("资料审核任务状态已变化");
+        }
         notificationProducer.publishPassed(task.getUserId(), task.getTaskType(),
                 UserConstants.AuditScore.HUMAN_REVIEW_PASS, "人工审核通过");
         return Result.success(null);
@@ -65,10 +72,16 @@ public class UserFieldAuditTaskServiceImpl implements UserFieldAuditTaskService 
         if (task.getStatus() != AuditTaskStatus.HUMAN_REVIEW) {
             throw new BusinessException("资料审核任务状态不可处理");
         }
+        if (!auditTaskExecutor.claimHumanReview(taskId)) {
+            throw new BusinessException("资料审核任务已被其他操作处理");
+        }
         FieldAuditPayload payload = auditHelper.readPayload(task);
         auditTaskExecutor.rollbackField(task.getTaskType(), task.getUserId(), payload);
         String finalReason = StringUtils.hasText(reason) ? reason : "人工审核未通过";
-        auditTaskExecutor.updateTask(task.getId(), AuditTaskStatus.REJECTED, null, finalReason);
+        if (!auditTaskExecutor.updateTaskIfStatus(task.getId(), AuditTaskStatus.PROCESSING,
+                AuditTaskStatus.REJECTED, null, finalReason)) {
+            throw new BusinessException("资料审核任务状态已变化");
+        }
         notificationProducer.publishRejected(task.getUserId(), task.getTaskType(),
                 UserConstants.AuditScore.REJECT_MAX, finalReason);
         return Result.success(null);

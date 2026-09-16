@@ -20,6 +20,7 @@ public interface UserActiveEffectMapper extends BaseMapper<UserActiveEffect> {
             "<foreach collection='userIds' item='userId' open='(' separator=',' close=')'>",
             "#{userId}",
             "</foreach>",
+            "AND start_at &lt;= #{now}",
             "AND (expire_at IS NULL OR expire_at &gt; #{now})",
             "</script>"
     })
