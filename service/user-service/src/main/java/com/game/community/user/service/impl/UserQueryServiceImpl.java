@@ -35,20 +35,20 @@ public class UserQueryServiceImpl implements UserQueryService {
     private final UserAccountService userAccountService;
     private final MinIOUtils minIOUtils;
 
-    /** 执行 getUserPublicByAccountId 对应的业务处理。 */
+    /** 按 accountId 查询公开资料并裁剪为公开 VO。 */
     @Override
     public Result<UserPublicVO> getUserPublicByAccountId(Long accountId) {
         User user = getByAccountId(accountId);
         return Result.success("查询成功", convertToPublicVO(user));
     }
 
-    /** 执行 getUserCardByAccountId 对应的业务处理。 */
+    /** 按 accountId 查询用户卡片资料。 */
     @Override
     public Result<UserCardVO> getUserCardByAccountId(Long accountId) {
         return Result.success("查询成功", convertToCardVO(getByAccountId(accountId)));
     }
 
-    /** 执行 getUsersByAccountIds 对应的业务处理。 */
+    /** 批量按 accountId 查询用户卡片，限制单次输入规模。 */
     @Override
     public Result<List<UserCardVO>> getUsersByAccountIds(List<Long> accountIds) {
         if (accountIds == null || accountIds.isEmpty()) {
@@ -63,7 +63,7 @@ public class UserQueryServiceImpl implements UserQueryService {
         return Result.success("查询成功", list);
     }
 
-    /** 执行 getUsersByUserIds 对应的业务处理。 */
+    /** 批量按内部 userId 查询服务间用户卡片。 */
     @Override
     public Result<List<UserCardInternalVO>> getUsersByUserIds(List<Long> userIds) {
         if (userIds == null || userIds.isEmpty()) {
@@ -77,13 +77,13 @@ public class UserQueryServiceImpl implements UserQueryService {
         return Result.success("查询成功", list);
     }
 
-    /** 执行 getUserInternalByAccountId 对应的业务处理。 */
+    /** 按 accountId 查询含内部 userId 的服务间卡片。 */
     @Override
     public Result<UserCardInternalVO> getUserInternalByAccountId(Long accountId) {
         return Result.success("查询成功", convertToInternalCardVO(getByAccountId(accountId)));
     }
 
-    /** 执行 getUsersInternalByAccountIds 对应的业务处理。 */
+    /** 批量按 accountId 查询含内部 userId 的服务间卡片。 */
     @Override
     public Result<List<UserCardInternalVO>> getUsersInternalByAccountIds(List<Long> accountIds) {
         if (accountIds == null || accountIds.isEmpty()) {
@@ -100,7 +100,7 @@ public class UserQueryServiceImpl implements UserQueryService {
         return Result.success("查询成功", list);
     }
 
-    /** 执行 searchUsers 对应的业务处理。 */
+    /** 按 accountId 精确匹配或按昵称前缀分页搜索用户。 */
     @Override
     public PageResult<UserCardVO> searchUsers(UserSearchPageDTO dto) {
         int current = dto == null || dto.getPage() == null || dto.getPage() < UserConstants.FIRST_PAGE
@@ -141,7 +141,7 @@ public class UserQueryServiceImpl implements UserQueryService {
         return PageResult.of(records, (long) current, (long) pageSize, userPage.getTotal());
     }
 
-    /** 执行 getUserAccountVO 对应的业务处理。 */
+    /** 查询并被动刷新账户状态，转换为服务间账户 VO。 */
     @Override
     public Result<UserAccountVO> getUserAccountVO(Long userId) {
         UserAccount account;
@@ -160,7 +160,7 @@ public class UserQueryServiceImpl implements UserQueryService {
         return Result.success("查询成功", vo);
     }
 
-    /** 执行 getByAccountId 对应的业务处理。 */
+    /** 按 accountId 查询未删除用户，不存在时抛出业务异常。 */
     private User getByAccountId(Long accountId) {
         if (accountId == null) {
             throw new BusinessException("用户不存在");
@@ -173,7 +173,7 @@ public class UserQueryServiceImpl implements UserQueryService {
         return user;
     }
 
-    /** 执行 convertToPublicVO 对应的业务处理。 */
+    /** 将用户实体转换为脱敏公开资料 VO。 */
     private UserPublicVO convertToPublicVO(User user) {
         UserPublicVO vo = new UserPublicVO();
         BeanUtils.copyProperties(user, vo);
@@ -183,7 +183,7 @@ public class UserQueryServiceImpl implements UserQueryService {
         return vo;
     }
 
-    /** 执行 convertToCardVO 对应的业务处理。 */
+    /** 将用户实体转换为公开卡片 VO。 */
     private UserCardVO convertToCardVO(User user) {
         UserCardVO vo = new UserCardVO();
         BeanUtils.copyProperties(user, vo);
@@ -191,7 +191,7 @@ public class UserQueryServiceImpl implements UserQueryService {
         return vo;
     }
 
-    /** 执行 convertToInternalCardVO 对应的业务处理。 */
+    /** 将用户实体转换为仅供服务间使用的内部卡片 VO。 */
     private UserCardInternalVO convertToInternalCardVO(User user) {
         UserCardInternalVO vo = new UserCardInternalVO();
         BeanUtils.copyProperties(user, vo);

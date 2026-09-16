@@ -31,7 +31,7 @@ public class UserFilter implements Filter {
     @Value("${gateway.internal-secret}")
     private String internalSecret;
 
-    /** 执行 doFilter 对应的业务处理。 */
+    /** 校验网关内部凭证，解析用户 Header 并在请求结束时清理 ThreadLocal。 */
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
             throws IOException, ServletException {
@@ -59,6 +59,8 @@ public class UserFilter implements Filter {
                         userId, userType, steamAccount, sessionId);
             } catch (NumberFormatException e) {
                 log.warn("用户 Header 解析失败: userId={}, type={}", userIdStr, userTypeStr);
+                httpResponse.sendError(HttpServletResponse.SC_UNAUTHORIZED, "用户身份信息无效");
+                return;
             }
         }
 

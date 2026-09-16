@@ -77,7 +77,7 @@ public class UserSessionHelper {
         return vo;
     }
 
-    /** 执行 generateAccessToken 对应的业务处理。 */
+    /** 生成短期 access JWT，仅携带访问所需的会话和账号声明。 */
     public String generateAccessToken(User user, UserAccount account, String sessionId) {
         Map<String, Object> claims = new HashMap<>();
         claims.put(UserSessionConstants.CLAIM_ACCOUNT_ID, user.getAccountId());
@@ -88,7 +88,7 @@ public class UserSessionHelper {
         return JwtUtils.generateToken(Constants.ACCESS_JWT_SECRET, claims, Constants.ACCESS_TOKEN_EXPIRE_TIME * 1000);
     }
 
-    /** 执行 generateRefreshToken 对应的业务处理。 */
+    /** 生成仅用于轮换的长期 refresh JWT。 */
     public String generateRefreshToken(String sessionId) {
         Map<String, Object> claims = new HashMap<>();
         claims.put(UserSessionConstants.CLAIM_SESSION_ID, sessionId);
@@ -96,7 +96,7 @@ public class UserSessionHelper {
         return JwtUtils.generateToken(Constants.REFRESH_JWT_SECRET, claims, Constants.REFRESH_TOKEN_EXPIRE_TIME * 1000);
     }
 
-    /** 执行 saveSession 对应的业务处理。 */
+    /** 使用一条 Redis Lua 操作保存会话正文、活跃标记和用户会话指针。 */
     public void saveSession(String sessionId, Long userId, UserSessionVO session) {
         // 三个 Redis 索引一起写入，保证按 sessionId 和 userId 都能找到当前会话。
         boolean saved = redisUtils.saveSession(
@@ -120,7 +120,7 @@ public class UserSessionHelper {
         }
     }
 
-    /** 执行 getSession 对应的业务处理。 */
+    /** 读取指定会话，用于登出等不要求活跃标记的场景。 */
     public UserSessionVO getSession(String sessionId) {
         try {
             return sessionRedisReader.loadSession(sessionId);
@@ -172,7 +172,7 @@ public class UserSessionHelper {
         }
     }
 
-    /** 执行 hashToken 对应的业务处理。 */
+    /** 使用 SHA-256 生成 refresh 摘要，Redis 只保存摘要而不保存明文令牌。 */
     public String hashToken(String token) {
         try {
             MessageDigest digest = MessageDigest.getInstance(UserSessionConstants.TOKEN_DIGEST_ALGORITHM);
@@ -187,12 +187,12 @@ public class UserSessionHelper {
         }
     }
 
-    /** 执行 isSessionOnline 对应的业务处理。 */
+    /** 判断会话是否仍处于在线状态。 */
     public boolean isSessionOnline(UserSessionVO session) {
         return session != null && SessionStatus.ONLINE == session.getStatus();
     }
 
-    /** 执行 writeSession 对应的业务处理。 */
+    /** 序列化 Redis 会话对象并转换为业务异常。 */
     private String writeSession(UserSessionVO session) {
         try {
             return objectMapper.writeValueAsString(session);

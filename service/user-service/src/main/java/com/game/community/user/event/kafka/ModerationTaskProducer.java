@@ -12,6 +12,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 
+/** 将人工复核任务发送给审核服务的 Kafka 生产者。 */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -19,7 +20,7 @@ public class ModerationTaskProducer {
 
     private final KafkaTemplate<String, ModerationTaskMessage> kafkaTemplate;
 
-    /** 执行 publishProfileAudit 对应的业务处理。 */
+    /** 发布资料人工复核工单，失败仅记录日志并由审核侧补偿。 */
     public void publishProfileAudit(Long taskId, Long userId, String fieldLabel, String content, String reason,
                                     LocalDateTime targetUpdatedAt) {
         if (taskId == null) {

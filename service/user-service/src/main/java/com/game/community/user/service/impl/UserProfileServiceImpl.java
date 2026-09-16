@@ -72,7 +72,7 @@ public class UserProfileServiceImpl implements UserProfileService {
     private final UserAccountService userAccountService;
     private final TransactionTemplate transactionTemplate;
 
-    /** 执行 getCurrentUser 对应的业务处理。 */
+    /** 查询当前用户资料、账户状态及各字段审核中的待审值。 */
     @Override
     public Result<UserMeVO> getCurrentUser() {
         Long userId = UserThreadLocal.getUserId();
@@ -104,7 +104,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         return Result.success("查询成功", vo);
     }
 
-    /** 执行 updateUsername 对应的业务处理。 */
+    /** 校验并提交昵称字段审核任务，成功后仅暂存待审昵称。 */
     @Override
     public Result<ProfileFieldSubmitVO> updateUsername(UpdateUsernameDTO dto) {
         // 资料版本和审核占用共同实现乐观并发控制，避免覆盖别人的修改。
@@ -160,7 +160,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         return Result.success("昵称已提交审核", vo);
     }
 
-    /** 执行 updateSignature 对应的业务处理。 */
+    /** 校验并提交个性签名字段审核任务，成功后仅暂存待审签名。 */
     @Override
     public Result<ProfileFieldSubmitVO> updateSignature(UpdateSignatureDTO dto) {
         // 签名与用户名使用同样的版本校验和字段级审核占用规则。
@@ -213,7 +213,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         return Result.success("签名已提交审核", vo);
     }
 
-    /** 执行 uploadAvatar 对应的业务处理。 */
+    /** 校验头像并上传到私有对象存储，再创建头像审核任务。 */
     @Override
     public Result<ProfileFieldSubmitVO> uploadAvatar(MultipartFile avatarFile, Integer version) {
         // 头像先存私有对象，审核通过后才发布为公开对象，避免未审核内容被访问。
@@ -300,7 +300,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         }
     }
 
-    /** 执行 updateUserInfo 对应的业务处理。 */
+    /** 更新无需内容审核的资料字段，并用版本号防止并发覆盖。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<Void> updateUserInfo(UpdateUserInfoDTO dto) {
@@ -331,7 +331,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         return Result.success("资料更新成功");
     }
 
-    /** 执行 changePassword 对应的业务处理。 */
+    /** 校验旧密码并更新 BCrypt 密码，同时使该用户全部会话失效。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<Void> changePassword(ChangePasswordDTO dto) {
@@ -382,7 +382,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         return Result.success("密码修改成功，请重新登录");
     }
 
-    /** 执行 sendChangeEmailOldCode 对应的业务处理。 */
+    /** 向当前绑定邮箱发送修改邮箱流程的第一步验证码。 */
     @Override
     public Result<SendCodeVO> sendChangeEmailOldCode() {
         Long userId = UserThreadLocal.getUserId();
@@ -397,7 +397,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         return Result.success("验证码发送任务已提交，请留意邮箱", vo);
     }
 
-    /** 执行 prepareChangeEmail 对应的业务处理。 */
+    /** 校验原邮箱验证码并向新邮箱发送第二步验证码。 */
     @Override
     public Result<SendCodeVO> prepareChangeEmail(PrepareChangeEmailDTO dto) {
         Long userId = UserThreadLocal.getUserId();
@@ -417,7 +417,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         return Result.success("新邮箱验证码发送任务已提交，请留意邮箱", vo);
     }
 
-    /** 执行 confirmChangeEmail 对应的业务处理。 */
+    /** 校验新旧邮箱验证码、更新邮箱并使该用户全部会话失效。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<ChangeEmailVO> confirmChangeEmail(ConfirmChangeEmailDTO dto) {
@@ -456,7 +456,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         return Result.success("邮箱修改成功，请重新登录", vo);
     }
 
-    /** 执行 requireEditableUser 对应的业务处理。 */
+    /** 查询并校验用户存在且当前账户允许修改资料。 */
     private User requireEditableUser(Long userId) {
         User user = userMapper.selectById(userId);
         if (user == null) {
@@ -467,7 +467,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         return user;
     }
 
-    /** 执行 validateChangeEmailTarget 对应的业务处理。 */
+    /** 规范化新邮箱并校验它与当前邮箱不同且未被占用。 */
     private String validateChangeEmailTarget(String oldEmail, String rawNewEmail) {
         String newEmail = EmailValidator.normalize(rawNewEmail);
         if (oldEmail.equalsIgnoreCase(newEmail)) {
@@ -480,7 +480,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         return newEmail;
     }
 
-    /** 执行 convertToMeVO 对应的业务处理。 */
+    /** 将用户、账户和审核状态组装为当前用户资料视图。 */
     private UserMeVO convertToMeVO(User user, UserAccount account, UserProfileAudit profileAudit) {
         UserMeVO vo = new UserMeVO();
         BeanUtils.copyProperties(user, vo);
@@ -498,7 +498,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         return vo;
     }
 
-    /** 执行 requireBoundEmail 对应的业务处理。 */
+    /** 读取并规范化用户已绑定邮箱；未绑定时抛出业务异常。 */
     private String requireBoundEmail(User user) {
         if (user == null || !StringUtils.hasText(user.getEmail())) {
             throw new BusinessException(ApiErrorCodes.BAD_REQUEST, "当前账号未绑定邮箱");
@@ -506,7 +506,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         return EmailValidator.normalize(user.getEmail());
     }
 
-    /** 执行 validateAvatar 对应的业务处理。 */
+    /** 校验头像非空、大小和允许的图片媒体类型。 */
     private void validateAvatar(MultipartFile avatarFile) {
         if (avatarFile == null || avatarFile.isEmpty()) {
             throw new BusinessException("请选择头像文件");

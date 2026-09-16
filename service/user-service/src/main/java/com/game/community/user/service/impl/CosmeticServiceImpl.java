@@ -75,7 +75,7 @@ public class CosmeticServiceImpl implements CosmeticService {
     private final UserMapper userMapper;
     private final UserQueryService userQueryService;
 
-    /** 执行 pageDefs 对应的业务处理。 */
+    /** 分页查询装扮定义并转换为后台展示 VO。 */
     @Override
     public PageResult<CosmeticDefVO> pageDefs(Long page, Long size, String category, Integer status) {
         long current = page == null || page < CosmeticConstants.FIRST_PAGE
@@ -90,7 +90,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return PageResult.of(result.getRecords().stream().map(this::toDefVO).toList(), current, pageSize, result.getTotal());
     }
 
-    /** 执行 saveDef 对应的业务处理。 */
+    /** 新增或更新装扮定义，并原子刷新 Redis 定义缓存。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public CosmeticDefVO saveDef(SaveCosmeticDefDTO dto) {
@@ -134,7 +134,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return toDefVO(entity);
     }
 
-    /** 执行 pageBackpack 对应的业务处理。 */
+    /** 规范化背包筛选条件，批量加载定义后分页返回用户库存。 */
     @Override
     public PageResult<UserCosmeticVO> pageBackpack(Long userId, Long page, Long size,
                                                     String effectMode, String category,
@@ -172,7 +172,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return PageResult.of(result, current, pageSize, pageResult.getTotal());
     }
 
-    /** 执行 normalizeFilter 对应的业务处理。 */
+    /** 将枚举型筛选值规范化为允许值，非法值按未筛选处理。 */
     private String normalizeFilter(String value, Set<String> allowedValues) {
         if (!StringUtils.hasText(value)) {
             return null;
@@ -181,7 +181,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return allowedValues.contains(normalized) ? normalized : null;
     }
 
-    /** 执行 getDecoration 对应的业务处理。 */
+    /** 按内部 userId 批量读取槽位和生效效果，构造装扮展示。 */
     @Override
     public UserDecorationVO getDecoration(Long userId) {
         if (userId == null) {
@@ -191,23 +191,28 @@ public class CosmeticServiceImpl implements CosmeticService {
         if (user == null) {
             throw new BusinessException("用户不存在");
         }
+        return getDecorationInternal(userId, user.getAccountId());
+    }
+
+    /** 按已解析的用户标识读取装扮数据，避免 accountId 入口重复查询用户表。 */
+    private UserDecorationVO getDecorationInternal(Long userId, Long accountId) {
         UserCosmeticLoadout loadout = loadoutMapper.selectById(userId);
         Map<String, CosmeticDef> defs = loadDefs(loadoutCodes(loadout));
         List<UserActiveEffect> effects = loadActiveEffects(List.of(userId), LocalDateTime.now());
-        return buildDecoration(user.getAccountId(), loadout, defs, effects);
+        return buildDecoration(accountId, loadout, defs, effects);
     }
 
-    /** 执行 getDecorationByAccountId 对应的业务处理。 */
+    /** 将对外 accountId 解析为内部 userId 后查询装扮展示。 */
     @Override
     public UserDecorationVO getDecorationByAccountId(Long accountId) {
         Result<UserCardInternalVO> result = userQueryService.getUserInternalByAccountId(accountId);
         if (result == null || result.getData() == null) {
             throw new BusinessException("用户不存在");
         }
-        return getDecoration(result.getData().getUserId());
+        return getDecorationInternal(result.getData().getUserId(), result.getData().getAccountId());
     }
 
-    /** 执行 grantCosmetic 对应的业务处理。 */
+    /** 按订单号幂等写入发放记录并增加用户装扮库存。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public CosmeticGrantResultVO grantCosmetic(GrantCosmeticDTO dto) {
@@ -240,11 +245,14 @@ public class CosmeticServiceImpl implements CosmeticService {
             return buildGrantResult(concurrent.getCosmeticCode(), concurrent.getQuantity(), true);
         }
         boolean stackable = CosmeticConstants.EffectMode.CONSUMABLE.equals(def.getEffectMode());
-        userCosmeticMapper.upsertOwned(
+        int ownedUpdated = userCosmeticMapper.upsertOwned(
                 dto.getUserId(), def.getCode(), stackable ? quantity : CosmeticConstants.DEFAULT_QUANTITY,
                 StringUtils.hasText(dto.getSourceType())
                         ? dto.getSourceType() : CosmeticConstants.SourceType.SHOP,
                 orderNo, stackable ? CosmeticConstants.STACKABLE : CosmeticConstants.NON_STACKABLE);
+        if (ownedUpdated != 1) {
+            throw new BusinessException(ApiErrorCodes.INTERNAL_ERROR, "装扮库存写入失败");
+        }
         return buildGrantResult(def.getCode(), quantity, true);
     }
 
@@ -266,12 +274,13 @@ public class CosmeticServiceImpl implements CosmeticService {
         }
     }
 
-    /** 执行 checkOwnershipBlock 对应的业务处理。 */
+    /** 判断装备类装扮是否已拥有并阻止重复购买。 */
     @Override
     public CosmeticPurchaseCheckVO checkOwnershipBlock(Long userId, String cosmeticCode) {
         CosmeticPurchaseCheckVO vo = new CosmeticPurchaseCheckVO();
         vo.setCanBuy(true);
-        CosmeticDef def = findDef(cosmeticCode);
+        String normalizedCode = StringUtils.hasText(cosmeticCode) ? cosmeticCode.trim() : null;
+        CosmeticDef def = findDef(normalizedCode);
         if (def == null) {
             vo.setCanBuy(false);
             vo.setReason("装扮不存在");
@@ -280,7 +289,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         if (!CosmeticConstants.EffectMode.EQUIP.equals(def.getEffectMode())) {
             return vo;
         }
-        UserCosmetic owned = userCosmeticMapper.selectByUserAndCode(userId, cosmeticCode);
+        UserCosmetic owned = userCosmeticMapper.selectByUserAndCode(userId, normalizedCode);
         if (owned != null && owned.getQuantity() != null && owned.getQuantity() > 0
                 && (owned.getExpireAt() == null || owned.getExpireAt().isAfter(LocalDateTime.now()))) {
             vo.setCanBuy(false);
@@ -289,7 +298,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return vo;
     }
 
-    /** 执行 getItemState 对应的业务处理。 */
+    /** 查询用户对指定装扮的拥有、过期和装备状态。 */
     @Override
     public CosmeticItemStateVO getItemState(Long userId, String cosmeticCode) {
         CosmeticItemStateVO vo = new CosmeticItemStateVO();
@@ -298,19 +307,20 @@ public class CosmeticServiceImpl implements CosmeticService {
         if (userId == null || !StringUtils.hasText(cosmeticCode)) {
             return vo;
         }
-        UserCosmetic owned = userCosmeticMapper.selectByUserAndCode(userId, cosmeticCode);
+        String normalizedCode = cosmeticCode.trim();
+        UserCosmetic owned = userCosmeticMapper.selectByUserAndCode(userId, normalizedCode);
         boolean hasOwned = owned != null && owned.getQuantity() != null && owned.getQuantity() > 0;
         vo.setOwned(hasOwned);
         if (!hasOwned) {
             return vo;
         }
-        CosmeticDef def = findDef(cosmeticCode);
+        CosmeticDef def = findDef(normalizedCode);
         UserCosmeticLoadout loadout = loadoutMapper.selectById(userId);
         vo.setEquipped(def != null && isEquipped(loadout, def));
         return vo;
     }
 
-    /** 执行 batchDecorationsByAccountIds 对应的业务处理。 */
+    /** 批量完成 accountId 映射，并一次查询所有用户装扮数据。 */
     @Override
     public Map<Long, UserDecorationVO> batchDecorationsByAccountIds(List<Long> accountIds) {
         List<Long> normalizedAccountIds = accountIds == null
@@ -347,7 +357,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return result;
     }
 
-    /** 执行 batchDecorationsInternal 对应的业务处理。 */
+    /** 批量加载槽位、定义和主动效果，组装按 userId 索引的结果。 */
     private Map<Long, UserDecorationVO> batchDecorationsInternal(
             List<Long> userIds, Map<Long, Long> accountIdsByUserId) {
         List<Long> distinct = userIds == null
@@ -373,7 +383,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return result;
     }
 
-    /** 执行 equip 对应的业务处理。 */
+    /** 校验装扮归属和槽位后，使用乐观锁更新装备槽位。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void equip(Long userId, EquipCosmeticDTO dto) {
@@ -381,7 +391,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         if (!CosmeticConstants.EffectMode.EQUIP.equals(def.getEffectMode())) {
             throw new BusinessException("该装扮不支持装备");
         }
-        String slot = dto.getSlot().trim().toUpperCase();
+        String slot = dto.getSlot().trim().toUpperCase(Locale.ROOT);
         if (!Objects.equals(slot, def.getSlot())) {
             throw new BusinessException("装扮槽位不匹配");
         }
@@ -408,11 +418,11 @@ public class CosmeticServiceImpl implements CosmeticService {
         }
     }
 
-    /** 执行 unequip 对应的业务处理。 */
+    /** 使用槽位版本 CAS 卸下当前装备，避免并发覆盖。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void unequip(Long userId, UnequipCosmeticDTO dto) {
-        String slot = dto.getSlot().trim().toUpperCase();
+        String slot = dto.getSlot().trim().toUpperCase(Locale.ROOT);
         UserCosmeticLoadout loadout = loadoutMapper.selectById(userId);
         if (loadout == null || !isSlotEquipped(loadout, slot)) {
             return;
@@ -422,7 +432,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         }
     }
 
-    /** 执行 useConsumable 对应的业务处理。 */
+    /** 原子扣减消耗品库存，并记录使用日志和生效效果。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void useConsumable(Long userId, UseConsumableCosmeticDTO dto) {
@@ -455,7 +465,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         }
     }
 
-    /** 执行 requireOwned 对应的业务处理。 */
+    /** 查询并校验用户拥有且未过期的装扮库存。 */
     private UserCosmetic requireOwned(Long userId, String code) {
         UserCosmetic owned = userCosmeticMapper.selectByUserAndCode(userId, code);
         if (owned == null || owned.getQuantity() == null || owned.getQuantity() <= 0) {
@@ -467,7 +477,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return owned;
     }
 
-    /** 执行 requireEnabledDef 对应的业务处理。 */
+    /** 查询并校验装扮定义存在且处于上架状态。 */
     private CosmeticDef requireEnabledDef(String code) {
         CosmeticDef def = findDef(code);
         if (def == null) {
@@ -479,7 +489,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return def;
     }
 
-    /** 执行 loadDefs 对应的业务处理。 */
+    /** 优先批量读取 Redis 定义缓存，缺失项一次回源数据库。 */
     private Map<String, CosmeticDef> loadDefs(List<String> codes) {
         List<String> distinctCodes = codes == null ? List.of() : codes.stream()
                 .filter(StringUtils::hasText)
@@ -527,7 +537,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return result;
     }
 
-    /** 执行 findDef 对应的业务处理。 */
+    /** 查询单个规范化装扮定义。 */
     private CosmeticDef findDef(String code) {
         if (!StringUtils.hasText(code)) {
             return null;
@@ -535,7 +545,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return loadDefs(List.of(code.trim())).get(code.trim());
     }
 
-    /** 执行 cacheDef 对应的业务处理。 */
+    /** 写入单个装扮定义的共享 Redis 缓存，失败不阻断主流程。 */
     private void cacheDef(CosmeticDef def) {
         if (def == null || !StringUtils.hasText(def.getCode())) {
             return;
@@ -548,7 +558,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         }
     }
 
-    /** 执行 evictDefCache 对应的业务处理。 */
+    /** 删除装扮定义的共享缓存，避免更新后读取旧值。 */
     private void evictDefCache(String code) {
         if (!StringUtils.hasText(code)) {
             return;
@@ -560,7 +570,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         }
     }
 
-    /** 执行 toBackpackVO 对应的业务处理。 */
+    /** 将库存实体、定义和槽位状态转换为背包 VO。 */
     private UserCosmeticVO toBackpackVO(UserCosmetic owned, CosmeticDef def, UserCosmeticLoadout loadout) {
         if (def == null) {
             return null;
@@ -586,7 +596,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return vo;
     }
 
-    /** 执行 isEquipped 对应的业务处理。 */
+    /** 根据定义槽位判断装扮是否位于当前 loadout。 */
     private boolean isEquipped(UserCosmeticLoadout loadout, CosmeticDef def) {
         if (loadout == null || !StringUtils.hasText(def.getSlot())) {
             return false;
@@ -602,7 +612,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         };
     }
 
-    /** 执行 buildEquipped 对应的业务处理。 */
+    /** 根据装备编码构造单个装备展示 VO。 */
     private CosmeticEquippedVO buildEquipped(String code, Map<String, CosmeticDef> defs) {
         if (!StringUtils.hasText(code)) {
             return null;
@@ -619,7 +629,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return vo;
     }
 
-    /** 执行 loadActiveEffects 对应的业务处理。 */
+    /** 批量查询未过期主动效果并按用户、开始时间稳定排序。 */
     private List<UserActiveEffect> loadActiveEffects(List<Long> userIds, LocalDateTime now) {
         if (userIds == null || userIds.isEmpty()) {
             return List.of();
@@ -630,7 +640,7 @@ public class CosmeticServiceImpl implements CosmeticService {
                 .toList();
     }
 
-    /** 执行 buildDecoration 对应的业务处理。 */
+    /** 组装用户槽位装备和主动效果展示 VO。 */
     private UserDecorationVO buildDecoration(Long accountId,
                                              UserCosmeticLoadout loadout,
                                              Map<String, CosmeticDef> defs,
@@ -652,7 +662,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         return vo;
     }
 
-    /** 执行 loadoutCodes 对应的业务处理。 */
+    /** 提取 loadout 中所有非空装备编码。 */
     private List<String> loadoutCodes(UserCosmeticLoadout loadout) {
         if (loadout == null) {
             return List.of();
@@ -663,7 +673,7 @@ public class CosmeticServiceImpl implements CosmeticService {
                 .toList();
     }
 
-    /** 执行 applySlot 对应的业务处理。 */
+    /** 将装扮编码写入指定槽位。 */
     private void applySlot(UserCosmeticLoadout loadout, String slot, String code) {
         switch (slot) {
             case CosmeticConstants.Slot.AVATAR_FRAME -> loadout.setAvatarFrameCode(code);
@@ -675,7 +685,7 @@ public class CosmeticServiceImpl implements CosmeticService {
         }
     }
 
-    /** 执行 isSlotEquipped 对应的业务处理。 */
+    /** 判断指定槽位当前是否已装备内容。 */
     private boolean isSlotEquipped(UserCosmeticLoadout loadout, String slot) {
         return switch (slot) {
             case CosmeticConstants.Slot.AVATAR_FRAME -> StringUtils.hasText(loadout.getAvatarFrameCode());
@@ -687,14 +697,14 @@ public class CosmeticServiceImpl implements CosmeticService {
         };
     }
 
-    /** 执行 toDefVO 对应的业务处理。 */
+    /** 将装扮定义实体转换为公开定义 VO。 */
     private CosmeticDefVO toDefVO(CosmeticDef def) {
         CosmeticDefVO vo = new CosmeticDefVO();
         BeanUtils.copyProperties(def, vo);
         return vo;
     }
 
-    /** 执行 buildGrantResult 对应的业务处理。 */
+    /** 构造幂等发放接口的结果 VO。 */
     private CosmeticGrantResultVO buildGrantResult(String code, int quantity, boolean granted) {
         CosmeticGrantResultVO vo = new CosmeticGrantResultVO();
         vo.setCosmeticCode(code);

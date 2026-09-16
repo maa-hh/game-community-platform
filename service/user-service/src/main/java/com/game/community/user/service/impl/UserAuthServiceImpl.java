@@ -82,7 +82,7 @@ public class UserAuthServiceImpl implements UserAuthService {
     private final UserOperationLogMapper userOperationLogMapper;
     private final UserAuditHelper auditHelper;
 
-    /** 执行 sendCode 对应的业务处理。 */
+    /** 校验业务类型和邮箱状态后，提交验证码发送任务。 */
     @Override
     public Result<SendCodeVO> sendCode(SendCodeDTO dto) {
         // 入口只规范化一次邮箱；后续验证码、查重和邮件任务都使用同一个值。
@@ -110,7 +110,7 @@ public class UserAuthServiceImpl implements UserAuthService {
         return Result.success("验证码发送任务已提交，请留意邮箱", vo);
     }
 
-    /** 执行 register 对应的业务处理。 */
+    /** 原子完成邮箱注册：验证码校验、账号号池占用、用户及认证数据落库。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<RegisterVO> register(RegisterDTO dto) {
@@ -136,7 +136,7 @@ public class UserAuthServiceImpl implements UserAuthService {
 
         User user = new User();
         int at = email.indexOf('@');
-        String generatedUsername = at > 0 ? email.substring(0, at) : UserConstants.DEFAULT_NICKNAME;
+        String generatedUsername = at > 0 ? email.substring(0, at) : UserStrings.DEFAULT_NICKNAME;
         // 邮箱本地部分可能超过 t_user.username 的 20 字符上限；截断初始昵称，用户仍可后续提交审核修改。
         if (generatedUsername.length() > UserConstants.USERNAME_MAX_LENGTH) {
             generatedUsername = generatedUsername.substring(0, UserConstants.USERNAME_MAX_LENGTH);
@@ -170,7 +170,7 @@ public class UserAuthServiceImpl implements UserAuthService {
         return Result.success("注册成功", vo);
     }
 
-    /** 执行 resetPassword 对应的业务处理。 */
+    /** 校验找回密码验证码并用乐观锁更新 BCrypt 密码，同时作废全部会话。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<Void> resetPassword(ResetPasswordDTO dto) {
@@ -222,7 +222,7 @@ public class UserAuthServiceImpl implements UserAuthService {
         return Result.success("密码重置成功");
     }
 
-    /** 执行 login 对应的业务处理。 */
+    /** 校验账号状态和密码，成功后创建新的 Redis 会话及双 Token。 */
     @Override
     public Result<LoginVO> login(AccountLoginDTO dto, ClientInfo clientInfo) {
         String email = assertDeliverableEmail(dto.getEmail());
@@ -264,7 +264,7 @@ public class UserAuthServiceImpl implements UserAuthService {
         return Result.success("登录成功", loginVO);
     }
 
-    /** 执行 refreshToken 对应的业务处理。 */
+    /** 校验 refresh Cookie 的轮换状态，在会话锁内生成新双 Token。 */
     @Override
     public Result<TokenRefreshVO> refreshToken(String refreshToken) {
         if (!StringUtils.hasText(refreshToken)) {
@@ -344,7 +344,7 @@ public class UserAuthServiceImpl implements UserAuthService {
         }
     }
 
-    /** 执行 logout 对应的业务处理。 */
+    /** 根据 access 上下文或 refresh Cookie 定位会话并原子作废。 */
     @Override
     public Result<Void> logout(Long userId, String sessionId, String refreshToken) {
         // access 过期时 ThreadLocal 无 userId，从 refresh JWT 取 sessionId 再查 Redis 会话
@@ -386,7 +386,7 @@ public class UserAuthServiceImpl implements UserAuthService {
         return Result.success("退出登录成功");
     }
 
-    /** 登录成功收尾：清旧会话 → 记登录日志 → 生成双 token（LoginVO.refreshToken 供 Controller 写 Cookie） */
+    /** 串行化同一用户登录，清理旧会话、记录日志并生成双 Token。 */
     private LoginVO completeLogin(User user, UserAccount account, UserAuth userAuth, String loginIp) {
         String loginLockKey = RedisConstants.LOGIN_LOCK_PREFIX + user.getId();
         String loginLockToken = UUID.randomUUID().toString();
@@ -427,7 +427,7 @@ public class UserAuthServiceImpl implements UserAuthService {
         }
     }
 
-    /** 执行 assertLoginNotLocked 对应的业务处理。 */
+    /** 检查密码失败锁定时间，锁定过期时原子清理锁定状态。 */
     private void assertLoginNotLocked(UserAuth userAuth) {
         if (userAuth.getLockUntil() == null) {
             return;
@@ -435,7 +435,7 @@ public class UserAuthServiceImpl implements UserAuthService {
         if (userAuth.getLockUntil().isAfter(LocalDateTime.now())) {
             throw new BusinessException(ApiErrorCodes.FORBIDDEN, "密码错误次数过多，账号已锁定至 "
                     + userAuth.getLockUntil().format(java.time.format.DateTimeFormatter.ofPattern(
-                    UserConstants.LOCK_TIME_FORMAT_PATTERN)) + "，请稍后再试");
+                    UserStrings.LOCK_TIME_FORMAT_PATTERN)) + "，请稍后再试");
         }
         userAuthMapper.update(null, new LambdaUpdateWrapper<UserAuth>()
                 .eq(UserAuth::getId, userAuth.getId())
@@ -446,7 +446,7 @@ public class UserAuthServiceImpl implements UserAuthService {
         userAuth.setLockUntil(null);
     }
 
-    /** 执行 assertDeliverableEmail 对应的业务处理。 */
+    /** 规范化邮箱并按配置执行格式和 MX 可投递性校验。 */
     private String assertDeliverableEmail(String email) {
         String normalized = EmailValidator.normalize(email);
         try {
@@ -457,7 +457,7 @@ public class UserAuthServiceImpl implements UserAuthService {
         return normalized;
     }
 
-    /** 执行 reserveAccountId 对应的业务处理。 */
+    /** 从共享号池 CAS 预占一个 accountId，并在竞争失败时有限重试。 */
     private Long reserveAccountId() {
         int maxRetries = UserConstants.ACCOUNT_ID_RESERVE_MAX_RETRIES;
         for (int retry = 0; retry < maxRetries; retry++) {
@@ -520,7 +520,7 @@ public class UserAuthServiceImpl implements UserAuthService {
         log.info("号池扩容完成: digits={}, range=[{}, {}], inserted={}", digitCount, startId, endId, inserted);
     }
 
-    /** 执行 pow10 对应的业务处理。 */
+    /** 计算号池档位上界所需的十次幂。 */
     private static long pow10(int digits) {
         long v = 1L;
         for (int i = 0; i < digits; i++) {
@@ -529,7 +529,7 @@ public class UserAuthServiceImpl implements UserAuthService {
         return v;
     }
 
-    /** 执行 createUserAccount 对应的业务处理。 */
+    /** 创建用户账户状态记录并设置初始生命周期状态。 */
     private void createUserAccount(Long userId, RegisterSource registerSource) {
         UserAccount account = new UserAccount();
         account.setUserId(userId);
@@ -545,7 +545,7 @@ public class UserAuthServiceImpl implements UserAuthService {
         userAccountMapper.insert(account);
     }
 
-    /** 执行 createUserAuth 对应的业务处理。 */
+    /** 创建用户认证记录并保存 BCrypt 密码摘要。 */
     private void createUserAuth(Long userId, String password) {
         LocalDateTime now = LocalDateTime.now();
         UserAuth userAuth = new UserAuth();
@@ -560,7 +560,7 @@ public class UserAuthServiceImpl implements UserAuthService {
         userAuthMapper.insert(userAuth);
     }
 
-    /** 执行 handleLoginFailure 对应的业务处理。 */
+    /** 原子累计登录失败次数，达到阈值后写入锁定截止时间。 */
     private void handleLoginFailure(Long userId, UserAuth userAuth) {
         userAuthMapper.update(null, new LambdaUpdateWrapper<UserAuth>()
                 .eq(UserAuth::getId, userAuth.getId())

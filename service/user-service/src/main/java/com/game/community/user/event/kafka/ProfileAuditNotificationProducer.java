@@ -30,28 +30,28 @@ public class ProfileAuditNotificationProducer {
     private final UserNotificationOutboxMapper failureMapper;
     private final ObjectMapper objectMapper;
 
-    /** 执行 publishPassed 对应的业务处理。 */
+    /** 发布资料审核通过通知。 */
     public void publishPassed(Long userId, AuditFieldType field, Integer score, String reason) {
         publish(userId, NotificationConstants.EventType.PROFILE_AUDIT_PASSED, field,
                 field.label() + "审核通过",
                 formatResult(score, reason));
     }
 
-    /** 执行 publishRejected 对应的业务处理。 */
+    /** 发布资料审核拒绝通知。 */
     public void publishRejected(Long userId, AuditFieldType field, Integer score, String reason) {
         publish(userId, NotificationConstants.EventType.PROFILE_AUDIT_REJECTED, field,
                 field.label() + "审核未通过",
                 formatResult(score, reason));
     }
 
-    /** 执行 publishHumanReview 对应的业务处理。 */
+    /** 发布资料进入人工复核通知。 */
     public void publishHumanReview(Long userId, AuditFieldType field, Integer score, String reason) {
         publish(userId, NotificationConstants.EventType.PROFILE_AUDIT_HUMAN_REVIEW, field,
                 field.label() + "进入人工审核",
                 formatResult(score, reason));
     }
 
-    /** 执行 publish 对应的业务处理。 */
+    /** 构造统一通知事件并提交 Kafka。 */
     private void publish(Long userId, int eventType, AuditFieldType field, String previewText, String resultText) {
         NotificationEventMessage event = new NotificationEventMessage();
         event.setEventId(UUID.randomUUID().toString());
@@ -67,7 +67,7 @@ public class ProfileAuditNotificationProducer {
         send(event);
     }
 
-    /** 执行 send 对应的业务处理。 */
+    /** 异步发送通知；Kafka 回调失败时写入失败表。 */
     private void send(NotificationEventMessage event) {
         if (event.getRecipientUserId() == null || event.getEventType() == null) {
             return;
@@ -86,7 +86,7 @@ public class ProfileAuditNotificationProducer {
         }
     }
 
-    /** 执行 recordFailure 对应的业务处理。 */
+    /** 幂等记录 Kafka 通知失败，供运维排查和后续补偿。 */
     private void recordFailure(NotificationEventMessage event, Throwable error) {
         try {
             // eventId 唯一约束保证回调和同步异常重复记录时仍保持幂等。
@@ -110,7 +110,7 @@ public class ProfileAuditNotificationProducer {
         }
     }
 
-    /** 执行 formatResult 对应的业务处理。 */
+    /** 将审核分数和原因格式化为用户通知文案。 */
     private String formatResult(Integer score, String reason) {
         StringBuilder builder = new StringBuilder();
         if (score != null) {

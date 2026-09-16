@@ -3,6 +3,7 @@ package com.game.community.user.config;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.concurrent.Executor;
@@ -13,9 +14,10 @@ import java.util.concurrent.ThreadPoolExecutor;
  */
 @Configuration
 @EnableConfigurationProperties(AuditAsyncProperties.class)
+@EnableScheduling
 public class AuditAsyncConfig {
 
-    /** 执行 auditExecutor 对应的业务处理。 */
+    /** 创建审核任务执行器，并用有界队列保护实例容量。 */
     @Bean("auditExecutor")
     public Executor auditExecutor(AuditAsyncProperties properties) {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();

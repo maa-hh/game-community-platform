@@ -9,13 +9,11 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-/**
- * Enables MyBatis-Plus pagination count queries for list-style APIs.
- */
+/** 注册 user-service 使用的 MyBatis-Plus 插件和编程式事务模板。 */
 @Configuration
 public class MybatisPlusConfig {
 
-    /** 执行 mybatisPlusInterceptor 对应的业务处理。 */
+    /** 注册乐观锁和 MySQL 分页拦截器。 */
     @Bean
     public MybatisPlusInterceptor mybatisPlusInterceptor() {
         MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
@@ -24,7 +22,7 @@ public class MybatisPlusConfig {
         return interceptor;
     }
 
-    /** 执行 transactionTemplate 对应的业务处理。 */
+    /** 暴露编程式事务模板，供文件上传等跨资源补偿流程使用。 */
     @Bean
     public TransactionTemplate transactionTemplate(PlatformTransactionManager transactionManager) {
         return new TransactionTemplate(transactionManager);

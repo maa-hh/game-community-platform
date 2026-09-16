@@ -26,6 +26,7 @@ public interface UserCosmeticMapper extends BaseMapper<UserCosmetic> {
 
     /** 查询用户指定装扮的库存记录。 */
     @Select("SELECT * FROM t_user_cosmetic WHERE user_id = #{userId} AND cosmetic_code = #{code} LIMIT 1")
+    /** 查询用户指定装扮的库存记录。 */
     UserCosmetic selectByUserAndCode(@Param("userId") Long userId, @Param("code") String code);
 
     /** 幂等增加用户装扮库存。 */
@@ -43,5 +44,6 @@ public interface UserCosmeticMapper extends BaseMapper<UserCosmetic> {
     /** 原子增减装扮数量，数量不足时更新失败。 */
     @Update("UPDATE t_user_cosmetic SET quantity = quantity + #{delta}, update_time = NOW() "
             + "WHERE user_id = #{userId} AND cosmetic_code = #{code} AND quantity + #{delta} >= 0")
+    /** 原子增减装扮库存，禁止结果小于零。 */
     int increaseQuantity(@Param("userId") Long userId, @Param("code") String code, @Param("delta") int delta);
 }

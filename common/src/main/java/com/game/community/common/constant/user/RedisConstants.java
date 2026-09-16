@@ -32,6 +32,7 @@ public class RedisConstants {
 
     public static final String REFRESH_LOCK_PREFIX = "user:refresh:lock:";
 
+    /** 按业务类型和邮箱生成验证码 Redis 键，避免不同流程相互覆盖。 */
     public static String codeKey(String bizType, String email) {
         return CODE_PREFIX + bizType + ":" + email;
     }

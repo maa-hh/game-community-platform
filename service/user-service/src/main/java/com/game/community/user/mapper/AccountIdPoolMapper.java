@@ -20,12 +20,14 @@ public interface AccountIdPoolMapper extends BaseMapper<AccountIdPool> {
     @Update("UPDATE t_account_id_pool SET status = " + UserConstants.ACCOUNT_POOL_RESERVED
             + ", update_time = NOW() " +
             "WHERE account_id = #{accountId} AND status = " + UserConstants.ACCOUNT_POOL_AVAILABLE)
+    /** 原子预占指定 accountId，返回实际更新行数。 */
     int casReserve(@Param("accountId") Long accountId);
 
     /** 将预占的 accountId 绑定到新用户。 */
     @Update("UPDATE t_account_id_pool SET user_id = #{userId}, update_time = NOW() " +
             "WHERE account_id = #{accountId} AND status = " + UserConstants.ACCOUNT_POOL_RESERVED
             + " AND user_id IS NULL")
+    /** 将已预占的 accountId 绑定到内部 userId，返回实际更新行数。 */
     int bindUserId(@Param("accountId") Long accountId, @Param("userId") Long userId);
 
     /**
@@ -38,5 +40,6 @@ public interface AccountIdPoolMapper extends BaseMapper<AccountIdPool> {
             "(#{aid}, #{digitCount}, " + UserConstants.ACCOUNT_POOL_AVAILABLE + ", NOW(), NOW())" +
             "</foreach>" +
             "</script>")
+    /** 批量扩充指定位数的可用 accountId 号池。 */
     int insertBatch(@Param("accountIds") List<Long> accountIds, @Param("digitCount") int digitCount);
 }

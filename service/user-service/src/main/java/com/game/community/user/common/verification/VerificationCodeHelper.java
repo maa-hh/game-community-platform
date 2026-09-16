@@ -86,17 +86,17 @@ public class VerificationCodeHelper {
         return (int) expireSeconds;
     }
 
-    /** 执行 verify 对应的业务处理。 */
+    /** 校验验证码并原子消费，适用于注册、找回密码等一次性流程。 */
     public void verify(String email, CodeBizType bizType, String inputCode) {
         assertCodeMatches(email, bizType, inputCode, true);
     }
 
-    /** 校验验证码但不删除（改邮箱中间步骤需要复用原邮箱验证码） */
+    /** 校验验证码但不消费，供改邮箱中间步骤复用原邮箱验证码。 */
     public void assertCodeMatches(String email, CodeBizType bizType, String inputCode) {
         assertCodeMatches(email, bizType, inputCode, false);
     }
 
-    /** 执行 assertCodeMatches 对应的业务处理。 */
+    /** 按 consume 参数决定是否消费验证码，并累计错误次数。 */
     private void assertCodeMatches(String email, CodeBizType bizType, String inputCode, boolean consume) {
         String normalized = email;
         CodeBizType type = bizType == null ? CodeBizType.REGISTER : bizType;
@@ -117,7 +117,7 @@ public class VerificationCodeHelper {
         redisUtils.del(RedisConstants.CODE_VERIFY_FAIL_PREFIX + normalized);
     }
 
-    /** 执行 assertNotVerifyLocked 对应的业务处理。 */
+    /** 检查邮箱是否因验证码连续输错而处于锁定期。 */
     private void assertNotVerifyLocked(String email) {
         if (redisUtils.get(RedisConstants.CODE_VERIFY_LOCK_PREFIX + email) != null) {
             throw new BusinessException(ApiErrorCodes.FORBIDDEN, "验证码验证失败次数过多，请"
@@ -125,7 +125,7 @@ public class VerificationCodeHelper {
         }
     }
 
-    /** 执行 handleVerifyFailure 对应的业务处理。 */
+    /** 原子累计验证码错误次数，达到阈值后写入 Redis 锁定标记。 */
     private void handleVerifyFailure(String email) {
         String failKey = RedisConstants.CODE_VERIFY_FAIL_PREFIX + email;
         long failCount = redisUtils.recordVerificationFailure(

@@ -35,12 +35,13 @@ public class UserSessionRedisReader {
                 RedisConstants.SESSION_ACTIVE_PREFIX + sessionId);
         String sessionText = values.get(0);
         String activeFlag = values.get(1);
-        if (!StringUtils.hasText(sessionText) || !StringUtils.hasText(activeFlag)) {
+        if (!StringUtils.hasText(sessionText) || !"1".equals(activeFlag)) {
             return null;
         }
         return parseSession(sessionText, sessionId);
     }
 
+    /** 读取会话内容但不检查活跃标记，供需要区分会话数据的调用方使用。 */
     public UserSessionVO loadSession(String sessionId) {
         if (!StringUtils.hasText(sessionId)) {
             return null;
@@ -52,6 +53,7 @@ public class UserSessionRedisReader {
         return parseSession(sessionText, sessionId);
     }
 
+    /** 将 Redis 中的 JSON 会话反序列化；数据损坏时抛出明确异常，避免静默放行。 */
     private UserSessionVO parseSession(String sessionText, String sessionId) {
         try {
             return objectMapper.readValue(sessionText, UserSessionVO.class);

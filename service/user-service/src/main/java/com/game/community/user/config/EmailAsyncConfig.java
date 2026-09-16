@@ -15,7 +15,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 @EnableConfigurationProperties(EmailAsyncProperties.class)
 public class EmailAsyncConfig {
 
-    /** 执行 emailExecutor 对应的业务处理。 */
+    /** 创建邮件发送执行器，并在队列满时快速拒绝提交。 */
     @Bean("emailExecutor")
     public Executor emailExecutor(EmailAsyncProperties properties) {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();

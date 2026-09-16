@@ -18,7 +18,7 @@ public class EmailTaskExecutor {
     private final Executor emailExecutor;
     private final SmtpMailClient smtpMailClient;
 
-    /** 执行 EmailTaskExecutor 对应的业务处理。 */
+    /** 构造邮件任务执行器。 */
     public EmailTaskExecutor(@Qualifier("emailExecutor") Executor emailExecutor,
                              SmtpMailClient smtpMailClient) {
         this.emailExecutor = emailExecutor;
@@ -47,7 +47,7 @@ public class EmailTaskExecutor {
         });
     }
 
-    /** 执行 formatExpireHint 对应的业务处理。 */
+    /** 将验证码 TTL 格式化为邮件中的分钟或秒提示。 */
     private String formatExpireHint(long expireSeconds) {
         long seconds = Math.max(UserConstants.MIN_POSITIVE_SECONDS, expireSeconds);
         if (seconds % UserConstants.SECONDS_PER_MINUTE == 0) {

@@ -66,7 +66,7 @@ service/user-service/src/main/java/com/game/community/user
 ├── audit/            字段审核状态、任务、CAS 回写
 ├── event/            Kafka 事件和异步任务入口
 ├── config/           线程池、MyBatis-Plus、RestTemplate
-└── runner/           服务启动时恢复未完成审核任务
+└── runner/           周期恢复未完成审核任务，支持多实例接管
 ```
 
 ## 2. 通用响应、状态和认证
@@ -501,7 +501,7 @@ CANCELLING --冷静期登录--> NORMAL
 5. **loadout**：增加 `version` 和迁移；装备/卸载走 MyBatis-Plus 乐观锁，首次创建使用 `INSERT IGNORE`，并发写入失败返回冲突。
 6. **背包发放**：使用 `INSERT ... ON DUPLICATE KEY UPDATE`；消费品数量原子累加，装备类重复发放不增加数量。
 7. **通知失败记录**：Kafka Producer 重试耗尽后才写入 `t_user_notification_outbox`，该表不再由 user-service 扫描或重试；notification-service 通过 `(user_id,event_id)` 唯一键和 `INSERT IGNORE` 消费幂等。
-8. **审核恢复**：按自增主键分批读取，每批最多 `AUDIT_RECOVERY_BATCH_SIZE=100` 条，不再启动时全量装入内存和线程池。
+8. **审核恢复**：各实例按自增主键分批读取，每批最多 `AUDIT_RECOVERY_BATCH_SIZE=100` 条；先用数据库 CAS 抢占为 `PROCESSING` 再入本地有界线程池，避免多实例重复执行，并可接管故障实例遗留任务。
 9. **审核首行初始化**：`ensureProfileAuditRow` 捕获并发插入的 `DuplicateKeyException`，随后继续执行数据库 CAS。
 10. **对外接口的业务校验不是数据库外键**：当前 SQL 主要使用逻辑关联，没有把所有 `user_id` 都做物理 FK。删除、数据修复、脚本导入时必须自己检查孤儿数据。
 

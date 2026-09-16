@@ -1356,36 +1356,18 @@ public Result<Void> logout(HttpServletRequest request, HttpServletResponse respo
 
 ### 3.11 审核任务恢复
 
-服务启动时，自动重新提交所有 PENDING 状态的审核任务，防止因服务重启导致任务丢失：
+审核任务持久化到 `t_user_audit_task` 后由线程池异步执行。为支持多实例和实例故障恢复，每个实例周期扫描 PENDING 与超时 PROCESSING 任务；提交执行前通过数据库状态 CAS（Compare-And-Set，按期望状态更新）抢占任务，因此同一任务即使被多个实例扫描，也只有一个实例能进入处理流程：
 
 ```java
-@Slf4j
-@Component
-@RequiredArgsConstructor
-public class UserAuditTaskRecoveryRunner implements ApplicationRunner {
-
-    private final UserAuditTaskMapper userAuditTaskMapper;
-    private final AvatarAuditTaskService avatarAuditTaskService;
-    private final UserProfileAuditTaskService userProfileAuditTaskService;
-
-    @Override
-    public void run(ApplicationArguments args) {
-        List<UserAuditTask> tasks = userAuditTaskMapper.selectList(new LambdaQueryWrapper<UserAuditTask>()
-                .eq(UserAuditTask::getStatus, AuditTaskStatus.PENDING)
-                .orderByAsc(UserAuditTask::getId));
-        for (UserAuditTask task : tasks) {
-            if (AuditTaskType.AVATAR.equals(task.getTaskType())) {
-                avatarAuditTaskService.auditAvatarAsync(task.getId());
-            } else if (AuditTaskType.PROFILE.equals(task.getTaskType())) {
-                userProfileAuditTaskService.auditProfileAsync(task.getId());
-            }
-        }
-        if (!tasks.isEmpty()) {
-            log.info("已重新提交待处理用户审核任务: count={}", tasks.size());
-        }
-    }
+@Scheduled(initialDelayString = "${audit.recovery.initial-delay-ms:10000}",
+        fixedDelayString = "${audit.recovery.fixed-delay-ms:30000}")
+public void recover() {
+    resetStaleTasks();       // 超时 PROCESSING -> PENDING
+    enqueuePendingTasks();   // 分批提交；执行器内部用 PENDING -> PROCESSING CAS 抢占
 }
 ```
+
+恢复器按主键游标分批读取，避免启动或定时任务一次性加载整张任务表；`PROCESSING` 超过配置阈值后会回到 `PENDING`，由任一健康实例重新接管。线程池队列满时任务会进入失败处理并记录原因，避免无界堆积拖垮实例。
 
 ---
 

@@ -29,6 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
 
+/** 用户装扮背包、装备和后台定义管理的 HTTP 入口。 */
 @RestController
 @RequestMapping("/user/cosmetic")
 @RequiredArgsConstructor
@@ -36,8 +37,8 @@ public class CosmeticController {
 
     private final CosmeticService cosmeticService;
 
+    /** 按条件分页查询当前登录用户的装扮背包。 */
     @LoginCheck
-    /** 执行 backpackPage 对应的业务处理。 */
     @GetMapping("/backpack/page")
     public PageResult<UserCosmeticVO> backpackPage(
             @RequestParam(value = "page", defaultValue = CosmeticConstants.FIRST_PAGE_TEXT) Long page,
@@ -51,44 +52,45 @@ public class CosmeticController {
                 effectMode, category, equipped, state, keyword);
     }
 
+    /** 按对外 accountId 查询用户当前装扮和生效效果。 */
     @LoginCheck
-    /** 执行 decoration 对应的业务处理。 */
     @GetMapping("/decoration/{accountId}")
     public Result<UserDecorationVO> decoration(@PathVariable("accountId") Long accountId) {
         return Result.success(cosmeticService.getDecorationByAccountId(accountId));
     }
 
-    /** 执行 batchDecorations 对应的业务处理。 */
+    /** 批量查询多个 accountId 的装扮展示数据。 */
     @PostMapping("/decorations/batch")
     public Result<Map<Long, UserDecorationVO>> batchDecorations(
             @Valid @RequestBody BatchUserIdsDTO dto) {
         return Result.success(cosmeticService.batchDecorationsByAccountIds(dto.getAccountIds()));
     }
 
+    /** 装备指定槽位的用户装扮。 */
     @LoginCheck
-    /** 执行 equip 对应的业务处理。 */
     @PutMapping("/equip")
     public Result<Void> equip(@Valid @RequestBody EquipCosmeticDTO dto) {
         cosmeticService.equip(UserThreadLocal.getUserId(), dto);
         return Result.success(null);
     }
 
+    /** 卸下指定槽位的当前装扮。 */
     @LoginCheck
-    /** 执行 unequip 对应的业务处理。 */
     @PutMapping("/unequip")
     public Result<Void> unequip(@Valid @RequestBody UnequipCosmeticDTO dto) {
         cosmeticService.unequip(UserThreadLocal.getUserId(), dto);
         return Result.success(null);
     }
 
+    /** 使用一个消耗类装扮并记录使用结果。 */
     @LoginCheck
-    /** 执行 use 对应的业务处理。 */
     @PostMapping("/use")
     public Result<Void> use(@Valid @RequestBody UseConsumableCosmeticDTO dto) {
         cosmeticService.useConsumable(UserThreadLocal.getUserId(), dto);
         return Result.success(null);
     }
 
+    /** 分页查询后台装扮定义。 */
     @AdminCheck
     @GetMapping("/admin/def/page")
     public PageResult<CosmeticDefVO> pageDefs(@RequestParam(value = "page", defaultValue = CosmeticConstants.FIRST_PAGE_TEXT) Long page,
@@ -98,8 +100,8 @@ public class CosmeticController {
         return cosmeticService.pageDefs(page, size, category, status);
     }
 
+    /** 新增或更新后台装扮定义并刷新共享缓存。 */
     @AdminCheck
-    /** 执行 saveDef 对应的业务处理。 */
     @PostMapping("/admin/def")
     public Result<CosmeticDefVO> saveDef(@Valid @RequestBody SaveCosmeticDefDTO dto) {
         return Result.success(cosmeticService.saveDef(dto));

@@ -76,6 +76,10 @@ audit:
     queue-capacity: ${AUDIT_ASYNC_QUEUE_CAPACITY:200}
     keep-alive-seconds: ${AUDIT_ASYNC_KEEP_ALIVE_SECONDS:60}
     thread-name-prefix: ${AUDIT_ASYNC_THREAD_NAME_PREFIX:audit-}
+  # 多实例共享数据库任务表；每个实例周期拉取，任务执行前用状态 CAS 防重复消费。
+  recovery:
+    initial-delay-ms: ${AUDIT_RECOVERY_INITIAL_DELAY_MS:10000}
+    fixed-delay-ms: ${AUDIT_RECOVERY_FIXED_DELAY_MS:30000}
 # MyBatis-Plus 配置
 mybatis-plus:
   mapper-locations: classpath*:mapper/*.xml

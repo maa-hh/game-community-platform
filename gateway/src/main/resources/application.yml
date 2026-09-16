@@ -116,7 +116,7 @@ management:
 gateway:
   internal-secret: ${GATEWAY_INTERNAL_SECRET}
   auth:
-    # 与 GatewayConstants.AUTH_PUBLIC_PATHS 一致，仅作文档；实际白名单在 JwtGlobalFilter
+    # 认证公开路径文档；实际前缀匹配在 JwtGlobalFilter 和 GatewayConstants.AUTH_PUBLIC_PATH_PREFIXES
     public-paths:
       - /user/auth/send-code
       - /user/auth/register

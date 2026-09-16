@@ -37,19 +37,19 @@ public class AuthController {
     private final UserAuthService userAuthService;
     private final CookieHelper cookieHelper;
 
-    /** 入参：email + bizType(REGISTER|RESET_PASSWORD)；出参：expireIn(秒) */
+    /** 发送注册或找回密码验证码，并返回验证码有效期。 */
     @PostMapping("/send-code")
     public Result<SendCodeVO> sendCode(@Valid @RequestBody SendCodeDTO dto) {
         return userAuthService.sendCode(dto);
     }
 
-    /** 入参：email + password + code；出参：email；不发 token */
+    /** 校验邮箱验证码并创建用户基础资料、账户和认证记录。 */
     @PostMapping("/register")
     public Result<RegisterVO> register(@Valid @RequestBody RegisterDTO dto) {
         return userAuthService.register(dto);
     }
 
-    /** 入参：email + password + code；成功后清 refresh Cookie */
+    /** 校验找回密码验证码并重置密码，成功后清理 refresh Cookie。 */
     @PostMapping("/reset-password")
     public Result<Void> resetPassword(@Valid @RequestBody ResetPasswordDTO dto,
                                       HttpServletRequest request,

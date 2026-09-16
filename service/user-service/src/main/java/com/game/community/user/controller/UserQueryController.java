@@ -27,15 +27,15 @@ public class UserQueryController {
 
     private final UserQueryService userQueryService;
 
+    /** 按对外 accountId 查询用户公开资料。 */
     @LoginCheck
-    /** 执行 getUserById 对应的业务处理。 */
     @GetMapping("/{accountId}")
     public Result<UserPublicVO> getUserById(@PathVariable("accountId") Long accountId) {
         return userQueryService.getUserPublicByAccountId(accountId);
     }
 
+    /** 按对外 accountId 查询用户卡片资料。 */
     @LoginCheck
-    /** 执行 getUserSimpleById 对应的业务处理。 */
     @GetMapping("/simple/{accountId}")
     public Result<UserCardVO> getUserSimpleById(@PathVariable("accountId") Long accountId) {
         return userQueryService.getUserCardByAccountId(accountId);
@@ -47,8 +47,8 @@ public class UserQueryController {
         return userQueryService.getUsersByAccountIds(ids);
     }
 
+    /** 按 accountId 精确匹配或按昵称前缀分页搜索用户。 */
     @LoginCheck
-    /** 执行 searchUsers 对应的业务处理。 */
     @GetMapping("/simple/search")
     public PageResult<UserCardVO> searchUsers(@Valid UserSearchPageDTO dto) {
         return userQueryService.searchUsers(dto);

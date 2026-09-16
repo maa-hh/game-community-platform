@@ -30,17 +30,15 @@ public class UserAccountController {
     private final UserAccountService userAccountService;
     private final CookieHelper cookieHelper;
 
-    /** 注销前：向当前绑定邮箱发送验证码 */
+    /** 向当前绑定邮箱发送注销确认验证码。 */
     @LoginCheck
-    /** 执行 sendCancelAccountCode 对应的业务处理。 */
     @PostMapping("/cancel/send-code")
     public Result<SendCodeVO> sendCancelAccountCode() {
         return userAccountService.sendCancelAccountCode();
     }
 
-    /** 申请注销账号（本人操作，邮箱验证码通过后进入7天冷静期） */
+    /** 校验注销验证码并进入账号注销冷静期。 */
     @LoginCheck
-    /** 执行 cancelAccount 对应的业务处理。 */
     @PostMapping("/cancel")
     public Result<Void> cancelAccount(@Valid @RequestBody CancelAccountDTO dto,
                                       HttpServletRequest request,
@@ -51,26 +49,23 @@ public class UserAccountController {
         return result;
     }
 
-    /** 撤销注销（冷静期内登录后调用） */
+    /** 在注销冷静期内撤销注销申请。 */
     @LoginCheck
-    /** 执行 revokeCancel 对应的业务处理。 */
     @PostMapping("/cancel/revoke")
     public Result<Void> revokeCancel() {
         return userAccountService.revokeCancel();
     }
 
-    /** 封禁用户（仅管理员） */
+    /** 按对外 accountId 封禁用户并记录管理员操作。 */
     @AdminCheck
-    /** 执行 banUser 对应的业务处理。 */
     @PostMapping("/account/{accountId}/ban")
     public Result<Void> banUser(@PathVariable("accountId") Long accountId,
                                 @Valid @RequestBody BanUserDTO dto) {
         return userAccountService.banUserByAccountId(accountId, dto.getReason(), dto.getDurationHours(), null);
     }
 
-    /** 解封用户（仅管理员） */
+    /** 按对外 accountId 解封用户并记录管理员操作。 */
     @AdminCheck
-    /** 执行 unbanUser 对应的业务处理。 */
     @PostMapping("/account/{accountId}/unban")
     public Result<Void> unbanUser(@PathVariable("accountId") Long accountId) {
         return userAccountService.unbanUserByAccountId(accountId, null);
