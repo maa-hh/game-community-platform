@@ -18,6 +18,7 @@ public interface UserCosmeticLoadoutMapper extends BaseMapper<UserCosmeticLoadou
             + "(user_id, avatar_frame_code, comment_card_code, comment_font_code, post_card_code, profile_bg_code, version, update_time) "
             + "VALUES (#{userId}, #{avatarFrameCode}, #{commentCardCode}, #{commentFontCode}, "
             + "#{postCardCode}, #{profileBgCode}, #{version}, #{updateTime})")
+    /** 首次创建用户装扮槽位记录，已存在时忽略插入。 */
     int insertIgnore(UserCosmeticLoadout loadout);
 
     /** 批量查询多个用户的装扮槽位。 */
@@ -29,6 +30,7 @@ public interface UserCosmeticLoadoutMapper extends BaseMapper<UserCosmeticLoadou
             "</foreach>",
             "</script>"
     })
+    /** 批量读取多个用户的装扮槽位，供批量展示接口使用。 */
     List<UserCosmeticLoadout> selectByUserIds(@Param("userIds") List<Long> userIds);
 
     /** 按槽位清空当前装备；显式置 NULL，不能使用默认的 updateById。 */

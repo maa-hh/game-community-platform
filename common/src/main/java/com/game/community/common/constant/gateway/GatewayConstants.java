@@ -24,19 +24,7 @@ public class GatewayConstants {
      */
     public static final List<String> AUTH_PUBLIC_PATH_PREFIXES = List.of(
             "/user/auth/",
-            "/steam/callback",
-            "/auth/"  // 兼容旧路径，待全量切换后可删
-    );
-
-    /** @deprecated 使用 {@link #AUTH_PUBLIC_PATH_PREFIXES} 前缀匹配 */
-    @Deprecated
-    public static final List<String> AUTH_PUBLIC_PATHS = List.of(
-            "/user/auth/send-code",
-            "/user/auth/register",
-            "/user/auth/login",
-            "/user/auth/refresh",
-            "/user/auth/reset-password",
-            "/user/auth/logout"
+            "/steam/callback"
     );
 
     /**

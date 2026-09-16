@@ -45,7 +45,7 @@ public class UserAccountServiceImpl implements UserAccountService {
     private final VerificationCodeHelper verificationCodeHelper;
     private final UserOperationLogMapper userOperationLogMapper;
 
-    /** 执行 cancelAccount 对应的业务处理。 */
+    /** 校验注销验证码并将账户置为注销冷静期状态。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<Void> cancelAccount(CancelAccountDTO dto) {
@@ -98,7 +98,7 @@ public class UserAccountServiceImpl implements UserAccountService {
         return Result.success("注销申请已提交");
     }
 
-    /** 执行 sendCancelAccountCode 对应的业务处理。 */
+    /** 校验当前账户可编辑后，向绑定邮箱发送注销验证码。 */
     @Override
     public Result<SendCodeVO> sendCancelAccountCode() {
         Long userId = UserThreadLocal.getUserId();
@@ -122,7 +122,7 @@ public class UserAccountServiceImpl implements UserAccountService {
         return Result.success("验证码发送任务已提交，请留意邮箱", vo);
     }
 
-    /** 执行 revokeCancel 对应的业务处理。 */
+    /** 当前登录用户撤销注销申请。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<Void> revokeCancel() {
@@ -134,14 +134,14 @@ public class UserAccountServiceImpl implements UserAccountService {
         return Result.success("已撤销注销");
     }
 
-    /** 执行 revokeCancel 对应的业务处理。 */
+    /** 认证流程按内部 userId 撤销注销申请。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void revokeCancel(Long userId) {
         doRevokeCancel(userId);
     }
 
-    /** 执行 doRevokeCancel 对应的业务处理。 */
+    /** 在账户版本 CAS 成功后恢复正常状态并记录撤销日志。 */
     private void doRevokeCancel(Long userId) {
         UserAccount account = refreshStatus(userId);
         if (account.getStatus() == UserAccountStatus.CANCELLED) {
@@ -176,7 +176,7 @@ public class UserAccountServiceImpl implements UserAccountService {
         }
     }
 
-    /** 执行 banUser 对应的业务处理。 */
+    /** 按内部 userId 封禁账户，写入封禁期限并作废用户会话。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<Void> banUser(Long userId, String reason, Integer durationHours, Long operatorId) {
@@ -235,13 +235,14 @@ public class UserAccountServiceImpl implements UserAccountService {
         return Result.success("封禁成功");
     }
 
-    /** 执行 banUserByAccountId 对应的业务处理。 */
+    /** 按对外 accountId 解析内部用户后执行封禁事务。 */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Result<Void> banUserByAccountId(Long accountId, String reason, Integer durationHours, Long operatorId) {
         return banUser(requireUserIdByAccountId(accountId), reason, durationHours, operatorId);
     }
 
-    /** 执行 unbanUser 对应的业务处理。 */
+    /** 按内部 userId 解封账户并使用版本 CAS 防并发覆盖。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<Void> unbanUser(Long userId, Long operatorId) {
@@ -275,27 +276,28 @@ public class UserAccountServiceImpl implements UserAccountService {
         return Result.success("解封成功");
     }
 
-    /** 执行 unbanUserByAccountId 对应的业务处理。 */
+    /** 按对外 accountId 解析内部用户后执行解封事务。 */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Result<Void> unbanUserByAccountId(Long accountId, Long operatorId) {
         return unbanUser(requireUserIdByAccountId(accountId), operatorId);
     }
 
-    /** 执行 refreshStatus 对应的业务处理。 */
+    /** 读取账户并被动清理已到期封禁或注销状态。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public UserAccount refreshStatus(Long userId) {
         return refreshStatus(getAccount(userId), true);
     }
 
-    /** 执行 refreshStatusForToken 对应的业务处理。 */
+    /** refresh 流程专用的账户状态刷新，不重复作废会话。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public UserAccount refreshStatusForToken(Long userId) {
         return refreshStatus(getAccount(userId), false);
     }
 
-    /** 执行 refreshStatus 对应的业务处理。 */
+    /** 按当前状态和截止时间推进账户生命周期。 */
     private UserAccount refreshStatus(UserAccount account, boolean invalidateSession) {
         if (account == null) {
             throw new BusinessException("用户账号数据异常");
@@ -321,7 +323,7 @@ public class UserAccountServiceImpl implements UserAccountService {
         return account;
     }
 
-    /** 执行 assertLoginAllowed 对应的业务处理。 */
+    /** 断言账户允许登录或刷新令牌。 */
     @Override
     public void assertLoginAllowed(UserAccount account) {
         if (account.getStatus() == UserAccountStatus.CANCELLED) {
@@ -335,7 +337,7 @@ public class UserAccountServiceImpl implements UserAccountService {
         }
     }
 
-    /** 执行 assertEditable 对应的业务处理。 */
+    /** 断言账户允许修改资料等交互数据。 */
     @Override
     public void assertEditable(UserAccount account) {
         assertLoginAllowed(account);
@@ -344,7 +346,7 @@ public class UserAccountServiceImpl implements UserAccountService {
         }
     }
 
-    /** 执行 clearBan 对应的业务处理。 */
+    /** 使用账户版本 CAS 清除已到期或管理员解除的封禁。 */
     private boolean clearBan(UserAccount account) {
         int updated = userAccountMapper.update(null, new LambdaUpdateWrapper<UserAccount>()
                 .eq(UserAccount::getId, account.getId())
@@ -364,7 +366,7 @@ public class UserAccountServiceImpl implements UserAccountService {
         return true;
     }
 
-    /** 执行 completeCancellation 对应的业务处理。 */
+    /** 原子完成注销：更新账户状态、脱敏用户邮箱并按需作废会话。 */
     private boolean completeCancellation(UserAccount account, boolean invalidateSession) {
         int updated = userAccountMapper.update(null, new LambdaUpdateWrapper<UserAccount>()
                 .eq(UserAccount::getId, account.getId())
@@ -384,8 +386,8 @@ public class UserAccountServiceImpl implements UserAccountService {
         int userUpdated = userMapper.update(null, new LambdaUpdateWrapper<User>()
                 .eq(User::getId, user.getId())
                 .eq(User::getVersion, user.getVersion())
-                .set(User::getEmail, UserConstants.CANCELLED_EMAIL_PREFIX + user.getId()
-                        + UserConstants.INVALID_EMAIL_DOMAIN)
+                .set(User::getEmail, UserStrings.CANCELLED_EMAIL_PREFIX + user.getId()
+                        + UserStrings.INVALID_EMAIL_DOMAIN)
                 .set(User::getVersion, user.getVersion() + 1)
                 .set(User::getDeleted, UserConstants.DELETED)
                 .set(User::getUpdateTime, LocalDateTime.now()));
@@ -412,7 +414,7 @@ public class UserAccountServiceImpl implements UserAccountService {
         return true;
     }
 
-    /** 执行 getAccount 对应的业务处理。 */
+    /** 按内部 userId 读取唯一账户记录。 */
     private UserAccount getAccount(Long userId) {
         UserAccount account = userAccountMapper.selectOne(new LambdaQueryWrapper<UserAccount>()
                 .eq(UserAccount::getUserId, userId));
@@ -422,7 +424,7 @@ public class UserAccountServiceImpl implements UserAccountService {
         return account;
     }
 
-    /** 执行 requireUserIdByAccountId 对应的业务处理。 */
+    /** 将对外 accountId 解析为内部 userId。 */
     private Long requireUserIdByAccountId(Long accountId) {
         if (accountId == null) {
             throw new BusinessException("账号ID不能为空");
@@ -435,7 +437,7 @@ public class UserAccountServiceImpl implements UserAccountService {
         return user.getId();
     }
 
-    /** 执行 updateSteamAccount 对应的业务处理。 */
+    /** 使用资料版本 CAS 更新用户绑定的 Steam 账号。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateSteamAccount(Long userId, String steamAccount) {

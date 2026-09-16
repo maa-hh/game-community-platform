@@ -42,19 +42,19 @@ public class UserFeignController {
     private final UserFieldAuditTaskService userFieldAuditTaskService;
     private final CosmeticService cosmeticService;
 
-    /** 执行 getUsersByUserIds 对应的业务处理。 */
+    /** 按内部 userId 批量查询供服务间使用的用户卡片。 */
     @GetMapping("/ids")
     public Result<List<UserCardInternalVO>> getUsersByUserIds(@RequestParam("ids") List<Long> ids) {
         return userQueryService.getUsersByUserIds(ids);
     }
 
-    /** 执行 getUsersByAccountIds 对应的业务处理。 */
+    /** 按对外 accountId 批量查询服务间用户卡片。 */
     @GetMapping("/account-ids")
     public Result<List<UserCardVO>> getUsersByAccountIds(@RequestParam("ids") List<Long> accountIds) {
         return userQueryService.getUsersByAccountIds(accountIds);
     }
 
-    /** 执行 getUserByAccountId 对应的业务处理。 */
+    /** 按 accountId 查询含内部 userId 的服务间用户卡片。 */
     @GetMapping("/by-account/{accountId}")
     public Result<UserCardInternalVO> getUserByAccountId(@PathVariable("accountId") Long accountId) {
         return userQueryService.getUserInternalByAccountId(accountId);
@@ -81,52 +81,52 @@ public class UserFeignController {
         return userQueryService.getUserAccountVO(userId);
     }
 
-    /** 执行 approveProfileManualAudit 对应的业务处理。 */
+    /** 接收人工审核通过命令并回写用户资料。 */
     @PostMapping("/audit-tasks/{taskId}/approve")
     public Result<Void> approveProfileManualAudit(@PathVariable("taskId") Long taskId) {
         return userFieldAuditTaskService.approveHumanReview(taskId);
     }
 
-    /** 执行 rejectProfileManualAudit 对应的业务处理。 */
+    /** 接收人工审核拒绝命令并释放待审字段。 */
     @PostMapping("/audit-tasks/{taskId}/reject")
     public Result<Void> rejectProfileManualAudit(@PathVariable("taskId") Long taskId,
                                                @RequestParam(value = "reason", required = false) String reason) {
         return userFieldAuditTaskService.rejectHumanReview(taskId, reason);
     }
 
-    /** 执行 getAuditTaskBrief 对应的业务处理。 */
+    /** 查询人工审核任务摘要。 */
     @GetMapping("/audit-tasks/{taskId}")
     public Result<UserAuditTaskBriefVO> getAuditTaskBrief(@PathVariable("taskId") Long taskId) {
         return Result.success(userFieldAuditTaskService.getAuditTaskBrief(taskId));
     }
 
-    /** 执行 grantCosmetic 对应的业务处理。 */
+    /** 按订单号幂等发放用户装扮。 */
     @PostMapping("/cosmetic/grant")
     public Result<CosmeticGrantResultVO> grantCosmetic(@Valid @RequestBody GrantCosmeticDTO dto) {
         return Result.success(cosmeticService.grantCosmetic(dto));
     }
 
-    /** 执行 checkCosmeticOwnership 对应的业务处理。 */
+    /** 查询购买前的装扮拥有状态。 */
     @GetMapping("/cosmetic/purchase-check")
     public Result<CosmeticPurchaseCheckVO> checkCosmeticOwnership(@RequestParam("userId") Long userId,
                                                                   @RequestParam("cosmeticCode") String cosmeticCode) {
         return Result.success(cosmeticService.checkOwnershipBlock(userId, cosmeticCode));
     }
 
-    /** 执行 getCosmeticItemState 对应的业务处理。 */
+    /** 查询用户对指定装扮的拥有和装备状态。 */
     @GetMapping("/cosmetic/state")
     public Result<CosmeticItemStateVO> getCosmeticItemState(@RequestParam("userId") Long userId,
                                                             @RequestParam("cosmeticCode") String cosmeticCode) {
         return Result.success(cosmeticService.getItemState(userId, cosmeticCode));
     }
 
-    /** 执行 batchDecorations 对应的业务处理。 */
+    /** 批量查询多个 accountId 的装扮展示数据。 */
     @PostMapping("/cosmetic/decorations/batch")
     public Result<Map<Long, UserDecorationVO>> batchDecorations(@Valid @RequestBody BatchUserIdsDTO dto) {
         return Result.success(cosmeticService.batchDecorationsByAccountIds(dto.getAccountIds()));
     }
 
-    /** 执行 updateSteamAccount 对应的业务处理。 */
+    /** 供 Steam 服务更新用户绑定的 Steam 账号。 */
     @PostMapping("/{userId}/steam-account")
     public Result<Void> updateSteamAccount(@PathVariable("userId") Long userId,
                                            @RequestParam("steamAccount") String steamAccount) {

@@ -45,7 +45,7 @@ public class UserAuditHelper {
     private final ObjectMapper objectMapper;
     private final AuditModeProperties auditModeProperties;
 
-    /** 执行 getOrCreate 对应的业务处理。 */
+    /** 查询用户资料审核状态；首次访问时通过主键唯一约束幂等初始化。 */
     public UserProfileAudit getOrCreate(Long userId) {
         // 首次并发访问依靠 user_id 主键竞争，冲突后重新读取已存在的审核行。
         UserProfileAudit audit = profileAuditMapper.selectById(userId);
@@ -60,7 +60,7 @@ public class UserAuditHelper {
         return profileAuditMapper.selectById(userId);
     }
 
-    /** 执行 initProfileAudit 对应的业务处理。 */
+    /** 创建用户三类资料字段的初始审核状态记录。 */
     public void initProfileAudit(Long userId) {
         UserProfileAudit audit = new UserProfileAudit();
         audit.setUserId(userId);
@@ -73,7 +73,7 @@ public class UserAuditHelper {
         profileAuditMapper.insert(audit);
     }
 
-    /** 执行 acquireUsernameAudit 对应的业务处理。 */
+    /** 通过数据库 CAS 占用昵称审核槽位并保存待审昵称。 */
     public boolean acquireUsernameAudit(Long userId, String pendingUsername) {
         // 只有 NONE 状态才能 CAS 为 AUDITING，避免重复提交覆盖 pending 值。
         ensureProfileAuditRow(userId);
@@ -85,7 +85,7 @@ public class UserAuditHelper {
                 .set(UserProfileAudit::getUpdateTime, LocalDateTime.now())) > 0;
     }
 
-    /** 执行 acquireSignatureAudit 对应的业务处理。 */
+    /** 通过数据库 CAS 占用签名审核槽位并保存待审签名。 */
     public boolean acquireSignatureAudit(Long userId, String pendingSignature) {
         // 签名字段独立 CAS，占用失败表示已有审核任务正在处理。
         ensureProfileAuditRow(userId);
@@ -97,7 +97,7 @@ public class UserAuditHelper {
                 .set(UserProfileAudit::getUpdateTime, LocalDateTime.now())) > 0;
     }
 
-    /** 执行 acquireAvatarAudit 对应的业务处理。 */
+    /** 通过数据库 CAS 占用头像审核槽位并保存待审对象名。 */
     public boolean acquireAvatarAudit(Long userId, String pendingObjectName) {
         // 头像对象名先写入 pending，审核通过前不写入正式头像字段。
         ensureProfileAuditRow(userId);
@@ -109,7 +109,7 @@ public class UserAuditHelper {
                 .set(UserProfileAudit::getUpdateTime, LocalDateTime.now())) > 0;
     }
 
-    /** 执行 clearUsernameAudit 对应的业务处理。 */
+    /** 仅按待审值清理昵称审核占用，避免清掉后续任务。 */
     public void clearUsernameAudit(Long userId, String pendingUsername) {
         profileAuditMapper.update(null, new LambdaUpdateWrapper<UserProfileAudit>()
                 .eq(UserProfileAudit::getUserId, userId)
@@ -119,7 +119,7 @@ public class UserAuditHelper {
                 .set(UserProfileAudit::getUpdateTime, LocalDateTime.now()));
     }
 
-    /** 执行 clearSignatureAudit 对应的业务处理。 */
+    /** 仅按待审值清理签名审核占用，避免清掉后续任务。 */
     public void clearSignatureAudit(Long userId, String pendingSignature) {
         profileAuditMapper.update(null, new LambdaUpdateWrapper<UserProfileAudit>()
                 .eq(UserProfileAudit::getUserId, userId)
@@ -129,7 +129,7 @@ public class UserAuditHelper {
                 .set(UserProfileAudit::getUpdateTime, LocalDateTime.now()));
     }
 
-    /** 执行 clearAvatarAudit 对应的业务处理。 */
+    /** 仅按待审对象名清理头像审核占用。 */
     public void clearAvatarAudit(Long userId, String pendingAvatar) {
         profileAuditMapper.update(null, new LambdaUpdateWrapper<UserProfileAudit>()
                 .eq(UserProfileAudit::getUserId, userId)
@@ -139,7 +139,7 @@ public class UserAuditHelper {
                 .set(UserProfileAudit::getUpdateTime, LocalDateTime.now()));
     }
 
-    /** 执行 markUsernameHumanReview 对应的业务处理。 */
+    /** 将昵称字段从自动审核中转入人工复核状态。 */
     public void markUsernameHumanReview(Long userId) {
         profileAuditMapper.update(null, new LambdaUpdateWrapper<UserProfileAudit>()
                 .eq(UserProfileAudit::getUserId, userId)
@@ -148,7 +148,7 @@ public class UserAuditHelper {
                 .set(UserProfileAudit::getUpdateTime, LocalDateTime.now()));
     }
 
-    /** 执行 markSignatureHumanReview 对应的业务处理。 */
+    /** 将签名字段从自动审核中转入人工复核状态。 */
     public void markSignatureHumanReview(Long userId) {
         profileAuditMapper.update(null, new LambdaUpdateWrapper<UserProfileAudit>()
                 .eq(UserProfileAudit::getUserId, userId)
@@ -157,7 +157,7 @@ public class UserAuditHelper {
                 .set(UserProfileAudit::getUpdateTime, LocalDateTime.now()));
     }
 
-    /** 执行 markAvatarHumanReview 对应的业务处理。 */
+    /** 将头像字段从自动审核中转入人工复核状态。 */
     public void markAvatarHumanReview(Long userId) {
         profileAuditMapper.update(null, new LambdaUpdateWrapper<UserProfileAudit>()
                 .eq(UserProfileAudit::getUserId, userId)
@@ -166,7 +166,7 @@ public class UserAuditHelper {
                 .set(UserProfileAudit::getUpdateTime, LocalDateTime.now()));
     }
 
-    /** 执行 applyUsernamePassed 对应的业务处理。 */
+    /** 按用户资料版本 CAS 回写通过的昵称并释放审核占用。 */
     @Transactional(rollbackFor = Exception.class)
     public boolean applyUsernamePassed(Long userId, Integer expectedUserVersion, String username) {
         if (expectedUserVersion == null) {
@@ -196,7 +196,7 @@ public class UserAuditHelper {
         return true;
     }
 
-    /** 执行 applySignaturePassed 对应的业务处理。 */
+    /** 按用户资料版本 CAS 回写通过的签名并释放审核占用。 */
     @Transactional(rollbackFor = Exception.class)
     public boolean applySignaturePassed(Long userId, Integer expectedUserVersion, String signature) {
         if (expectedUserVersion == null) {
@@ -225,7 +225,7 @@ public class UserAuditHelper {
         return true;
     }
 
-    /** 执行 applyAvatarPassed 对应的业务处理。 */
+    /** 按用户资料版本 CAS 发布头像、回写地址并释放审核占用。 */
     @Transactional(rollbackFor = Exception.class)
     public boolean applyAvatarPassed(Long userId, Integer expectedUserVersion,
                                      String pendingAvatar, String publicAvatarUrl) {
@@ -255,7 +255,7 @@ public class UserAuditHelper {
         return true;
     }
 
-    /** 执行 createFieldAuditTask 对应的业务处理。 */
+    /** 持久化字段审核任务及其异步执行所需的完整负载。 */
     public Long createFieldAuditTask(Long userId, AuditFieldType taskType, String pendingContent,
                                      FieldAuditPayload payload) {
         // payload 保存完整审核上下文，异步线程只按 taskId 读取数据库即可执行。
@@ -277,7 +277,7 @@ public class UserAuditHelper {
         return task.getId();
     }
 
-    /** 执行 resolvePendingAvatarUrl 对应的业务处理。 */
+    /** 将待审头像对象名转换为短期私有预览地址。 */
     public String resolvePendingAvatarUrl(UserProfileAudit audit) {
         if (audit == null || !StringUtils.hasText(audit.getPendingAvatar())) {
             return null;
@@ -290,7 +290,7 @@ public class UserAuditHelper {
         }
     }
 
-    /** 执行 resolveLatestFieldAuditError 对应的业务处理。 */
+    /** 查询指定字段最近一次失败审核的用户可见原因。 */
     public String resolveLatestFieldAuditError(Long userId, AuditFieldType taskType) {
         UserAuditTask latest = userAuditTaskMapper.selectOne(new LambdaQueryWrapper<UserAuditTask>()
                 .eq(UserAuditTask::getUserId, userId)
@@ -310,7 +310,7 @@ public class UserAuditHelper {
         return latest.getErrorMessage();
     }
 
-    /** 执行 hasInFlightTask 对应的业务处理。 */
+    /** 判断指定用户字段是否存在未完成审核任务。 */
     public boolean hasInFlightTask(Long userId, AuditFieldType taskType) {
         Long count = userAuditTaskMapper.selectCount(new LambdaQueryWrapper<UserAuditTask>()
                 .eq(UserAuditTask::getUserId, userId)
@@ -319,7 +319,7 @@ public class UserAuditHelper {
         return count != null && count > 0;
     }
 
-    /** 执行 readPayload 对应的业务处理。 */
+    /** 将持久化审核负载解析为类型安全的任务对象。 */
     public FieldAuditPayload readPayload(UserAuditTask task) {
         // 解析失败返回 null，由执行器统一回滚字段占用并结束任务。
         if (task == null || !StringUtils.hasText(task.getPayload())) {
@@ -333,7 +333,7 @@ public class UserAuditHelper {
         }
     }
 
-    /** 执行 ensureProfileAuditRow 对应的业务处理。 */
+    /** 确保资料审核状态行存在，允许多实例首次并发初始化。 */
     private void ensureProfileAuditRow(Long userId) {
         if (profileAuditMapper.selectById(userId) == null) {
             try {

@@ -56,7 +56,7 @@ com.game.community.user
 ### 1.4 本服务已统一的异步和 ID 约定
 
 - 邮件接口快速返回，`EmailTaskExecutor` 在邮件线程池执行 SMTP；不在请求线程调用 Future `get()`，不增加邮件 `sleep` 重试或定时扫描。
-- 审核任务先落 `t_user_audit_task`，再提交 `AuditTaskExecutor`；线程池执行器内部完成领取、审核、状态更新和失败回滚，业务 Service 只提交任务。
+- 审核任务先落 `t_user_audit_task`，再提交 `AuditTaskExecutor`；线程池执行器内部完成领取、审核、状态更新和失败回滚。各实例由定时恢复器扫描 PENDING 和超时 PROCESSING，执行前通过数据库状态 CAS（Compare-And-Set，按期望状态更新）保证同一任务只有一个实例真正执行。
 - Kafka 通知使用 Kafka 自带重试；发送回调失败写 `t_user_notification_outbox` 失败记录并告警，不再增加独立通知扫描线程。
 - `t_user.id` 是内部关联键，`accountId` 是对外键；按账号批量查询时一次完成映射和装扮查询，避免循环查询用户和装扮。
 - 用户背包查询使用分页和条件筛选，至少支持装扮效果类型、分类、已装备状态、有效状态和关键词；库存查询只返回 `quantity > 0` 的记录。
@@ -166,7 +166,7 @@ mvn -pl service/user-service -am clean test
 - [ ] 函数均有开头说明，关键执行点有必要注释
 - [ ] 少于 3 行的转调函数、无调用方函数和无意义抽象已删除
 - [ ] 常量已按枚举 / common 常量 / 类内常量 / 配置项正确归类
-- [ ] 未引入无明确需求的额外线程池、调度器、Outbox、Future 或重试层
+- [ ] 未引入无明确需求的额外线程池、Outbox、Future 或重试层；审核多实例接管使用已有任务表和明确配置的恢复调度器
 - [ ] API 在 `/user/...` 或 `/feign/user/...`
 - [ ] 枚举 + `UserStrings.EMPTY`
 - [ ] 网关白名单 / 前端 service 已同步

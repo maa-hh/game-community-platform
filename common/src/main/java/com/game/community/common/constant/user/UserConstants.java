@@ -30,8 +30,6 @@ public class UserConstants {
     public static final int USERNAME_MAX_LENGTH = 20;
     public static final int SIGNATURE_MAX_LENGTH = 50;
     public static final long AVATAR_MAX_BYTES = 5L * 1024 * 1024;
-    public static final String LOCK_TIME_FORMAT_PATTERN = "yyyy-MM-dd HH:mm";
-
     public static final long MIN_POSITIVE_SECONDS = 1;
     public static final int SECONDS_PER_MINUTE = 60;
     public static final int CODE_LENGTH = 6;
@@ -40,10 +38,6 @@ public class UserConstants {
     public static final int REGISTER_LOCK_SECONDS = 10;
     public static final int SESSION_LOCK_SECONDS = 5;
     public static final int ACCOUNT_ID_RESERVE_MAX_RETRIES = 3;
-    public static final String DEFAULT_NICKNAME = "新玩家";
-    public static final String CANCELLED_EMAIL_PREFIX = "cancelled_";
-    public static final String INVALID_EMAIL_DOMAIN = "@invalid.local";
-
     /** 验证码有效期默认值（秒）；实际以 email.code.expire-seconds 配置为准 */
     public static final long CODE_EXPIRE = 300;
 

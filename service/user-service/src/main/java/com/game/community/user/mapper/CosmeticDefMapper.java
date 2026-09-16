@@ -20,5 +20,6 @@ public interface CosmeticDefMapper extends BaseMapper<CosmeticDef> {
             "</foreach>",
             "</script>"
     })
+    /** 按装扮编码批量读取定义，避免背包查询逐条访问数据库。 */
     List<CosmeticDef> selectByCodes(@Param("codes") List<String> codes);
 }

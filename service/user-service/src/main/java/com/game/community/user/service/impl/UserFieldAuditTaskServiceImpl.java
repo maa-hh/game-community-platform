@@ -31,7 +31,7 @@ public class UserFieldAuditTaskServiceImpl implements UserFieldAuditTaskService 
     private final ProfileAuditNotificationProducer notificationProducer;
     private final AuditTaskExecutor auditTaskExecutor;
 
-    /** 执行 approveHumanReview 对应的业务处理。 */
+    /** 抢占人工审核任务，回写通过资料并推进任务终态。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<Void> approveHumanReview(Long taskId) {
@@ -61,7 +61,7 @@ public class UserFieldAuditTaskServiceImpl implements UserFieldAuditTaskService 
         return Result.success(null);
     }
 
-    /** 执行 rejectHumanReview 对应的业务处理。 */
+    /** 抢占人工审核任务，清理待审字段并推进拒绝终态。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<Void> rejectHumanReview(Long taskId, String reason) {
@@ -87,7 +87,7 @@ public class UserFieldAuditTaskServiceImpl implements UserFieldAuditTaskService 
         return Result.success(null);
     }
 
-    /** 执行 getAuditTaskBrief 对应的业务处理。 */
+    /** 查询人工审核所需的任务摘要，不暴露完整内部负载。 */
     @Override
     public UserAuditTaskBriefVO getAuditTaskBrief(Long taskId) {
         UserAuditTask task = userAuditTaskMapper.selectById(taskId);
@@ -104,7 +104,7 @@ public class UserFieldAuditTaskServiceImpl implements UserFieldAuditTaskService 
         return vo;
     }
 
-    /** 执行 requireTask 对应的业务处理。 */
+    /** 查询并校验审核任务存在。 */
     private UserAuditTask requireTask(Long taskId) {
         UserAuditTask task = userAuditTaskMapper.selectById(taskId);
         if (task == null) {

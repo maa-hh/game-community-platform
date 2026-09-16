@@ -51,7 +51,7 @@ public class AuditTaskExecutor {
     private final ModerationTaskProducer moderationTaskProducer;
     private final ObjectMapper objectMapper;
 
-    /** 执行 AuditTaskExecutor 对应的业务处理。 */
+    /** 构造审核执行器并注入共享任务、审核和通知组件。 */
     public AuditTaskExecutor(@Qualifier("auditExecutor") Executor auditExecutor,
                              UserAuditTaskMapper taskMapper,
                              UserAuditRejectLogMapper rejectLogMapper,
@@ -74,10 +74,14 @@ public class AuditTaskExecutor {
         this.objectMapper = objectMapper;
     }
 
-    /** 任务已在事务中落库；这里只负责提交到审核线程池。 */
-    public void submit(Long taskId) {
-        // 任务已经在业务事务中落库；这里只提交 Runnable，不在调用线程执行审核。
-        auditExecutor.execute(() -> run(taskId));
+    /** 原子领取待审任务后提交到本实例审核线程池。 */
+    public boolean submit(Long taskId) {
+        if (!claimPending(taskId)) {
+            return false;
+        }
+        // 先把任务置为 PROCESSING 再入队，避免定时恢复器重复提交仍为 PENDING 的任务。
+        auditExecutor.execute(() -> processClaimed(taskId));
+        return true;
     }
 
     /** 队列满时释放字段占用、结束任务，并保留拒绝请求供排查。 */
@@ -87,8 +91,12 @@ public class AuditTaskExecutor {
         FieldAuditPayload payload = task == null ? null : auditHelper.readPayload(task);
         if (task != null) {
             rollbackField(task.getTaskType(), task.getUserId(), payload);
-            updateTaskIfStatus(task.getId(), AuditTaskStatus.PENDING,
+            boolean failed = updateTaskIfStatus(task.getId(), AuditTaskStatus.PROCESSING,
                     AuditTaskStatus.FAILED, null, "审核服务繁忙，队列已满");
+            if (!failed) {
+                updateTaskIfStatus(task.getId(), AuditTaskStatus.PENDING,
+                        AuditTaskStatus.FAILED, null, "审核服务繁忙，队列已满");
+            }
         } else if (taskType != null && userId != null) {
             rollbackField(taskType, userId, null);
         }
@@ -113,16 +121,26 @@ public class AuditTaskExecutor {
         }
     }
 
-    /** 抢占 PENDING 任务后完成审核，分数决定通过、人工复核或拒绝。 */
+    /** 供直接调用方原子领取任务后同步完成审核。 */
     public void run(Long taskId) {
+        if (claimPending(taskId)) {
+            processClaimed(taskId);
+        }
+    }
+
+    /** 仅处理已经由当前提交方 CAS 领取的任务。 */
+    private void processClaimed(Long taskId) {
         UserAuditTask task = taskMapper.selectById(taskId);
-        if (task == null || task.getStatus() != AuditTaskStatus.PENDING
-                || taskMapper.update(null, new LambdaUpdateWrapper<UserAuditTask>()
-                .eq(UserAuditTask::getId, taskId)
-                .eq(UserAuditTask::getStatus, AuditTaskStatus.PENDING)
-                .set(UserAuditTask::getStatus, AuditTaskStatus.PROCESSING)
-                .set(UserAuditTask::getUpdateTime, LocalDateTime.now())) == 0) {
-            // CAS 抢占失败表示任务已被其他线程处理，直接结束本次重复执行。
+        if (task == null) {
+            return;
+        }
+        if (task.getTaskType() == null || !UserConstants.SUPPORTED_AUDIT_FIELDS.contains(task.getTaskType())) {
+            updateTaskIfStatus(taskId, AuditTaskStatus.PROCESSING, AuditTaskStatus.FAILED,
+                    null, "审核任务类型无效");
+            log.warn("结束无效审核任务: taskId={}, taskType={}", taskId, task.getTaskType());
+            return;
+        }
+        if (task.getStatus() != AuditTaskStatus.PROCESSING) {
             return;
         }
 
@@ -169,9 +187,10 @@ public class AuditTaskExecutor {
             }
             if (result.reject()) {
                 rollbackField(task.getTaskType(), task.getUserId(), payload);
-                updateTaskIfStatus(taskId, AuditTaskStatus.PROCESSING,
-                        AuditTaskStatus.REJECTED, null, reason);
-                notificationProducer.publishRejected(task.getUserId(), task.getTaskType(), score, reason);
+                if (updateTaskIfStatus(taskId, AuditTaskStatus.PROCESSING,
+                        AuditTaskStatus.REJECTED, null, reason)) {
+                    notificationProducer.publishRejected(task.getUserId(), task.getTaskType(), score, reason);
+                }
                 return;
             }
             if (result.humanReview()) {
@@ -183,6 +202,8 @@ public class AuditTaskExecutor {
                 }
                 if (!updateTaskIfStatus(taskId, AuditTaskStatus.PROCESSING,
                         AuditTaskStatus.HUMAN_REVIEW, null, reason)) {
+                    // 任务状态已被其他实例改变时释放字段占用，避免资料永远卡在人工审核中。
+                    rollbackField(task.getTaskType(), task.getUserId(), payload);
                     return;
                 }
                 notificationProducer.publishHumanReview(task.getUserId(), task.getTaskType(), score, reason);
@@ -200,9 +221,12 @@ public class AuditTaskExecutor {
                 return;
             }
             // 资料回写成功后才标记 PASSED，避免任务状态领先于业务数据。
-            updateTaskIfStatus(taskId, AuditTaskStatus.PROCESSING,
-                    AuditTaskStatus.PASSED, null, UserStrings.EMPTY);
-            notificationProducer.publishPassed(task.getUserId(), task.getTaskType(), score, reason);
+            if (updateTaskIfStatus(taskId, AuditTaskStatus.PROCESSING,
+                    AuditTaskStatus.PASSED, null, UserStrings.EMPTY)) {
+                notificationProducer.publishPassed(task.getUserId(), task.getTaskType(), score, reason);
+            } else {
+                log.warn("审核通过结果落库状态失败，跳过重复通知: taskId={}", taskId);
+            }
         } catch (Exception e) {
             String message = abbreviate("字段审核异常: " + e.getMessage());
             rollbackField(task.getTaskType(), task.getUserId(), payload);
@@ -214,8 +238,23 @@ public class AuditTaskExecutor {
         }
     }
 
+    /** 通过数据库状态 CAS 领取 PENDING 任务，保证多实例只会有一个执行者。 */
+    private boolean claimPending(Long taskId) {
+        if (taskId == null) {
+            return false;
+        }
+        return taskMapper.update(null, new LambdaUpdateWrapper<UserAuditTask>()
+                .eq(UserAuditTask::getId, taskId)
+                .eq(UserAuditTask::getStatus, AuditTaskStatus.PENDING)
+                .set(UserAuditTask::getStatus, AuditTaskStatus.PROCESSING)
+                .set(UserAuditTask::getUpdateTime, LocalDateTime.now())) == 1;
+    }
+
     /** 人工审核通过时回写资料；头像还要先从私有对象发布为公开对象。 */
     public boolean applyPassed(AuditFieldType taskType, Long userId, FieldAuditPayload payload) {
+        if (taskType == null || userId == null || payload == null) {
+            return false;
+        }
         return switch (taskType) {
             case USERNAME -> auditHelper.applyUsernamePassed(userId, payload.getUserVersion(), payload.getContent());
             case SIGNATURE -> auditHelper.applySignaturePassed(userId, payload.getUserVersion(), payload.getContent());
@@ -244,6 +283,10 @@ public class AuditTaskExecutor {
 
     /** 审核失败或队列拒绝时释放字段占用，并清理待审头像。 */
     public void rollbackField(AuditFieldType taskType, Long userId, FieldAuditPayload payload) {
+        if (taskType == null || userId == null) {
+            log.warn("审核回滚参数无效: taskType={}, userId={}", taskType, userId);
+            return;
+        }
         switch (taskType) {
             case USERNAME -> auditHelper.clearUsernameAudit(userId,
                     payload == null ? null : payload.getContent());
@@ -263,7 +306,7 @@ public class AuditTaskExecutor {
         }
     }
 
-    /** 执行 result 对应的业务处理。 */
+    /** 将 AI 返回结果归一化为分数、原因和最终分支。 */
     private AuditFieldResult result(String fieldLabel, ModerationResultVO auditResult) {
         if (auditResult == null) {
             return new AuditFieldResult(UserConstants.AuditScore.REJECT_DEFAULT,
@@ -331,7 +374,7 @@ public class AuditTaskExecutor {
         return taskMapper.update(null, update) == 1;
     }
 
-    /** 执行 abbreviate 对应的业务处理。 */
+    /** 将任务错误原因限制在数据库字段长度内。 */
     private String abbreviate(String message) {
         if (!StringUtils.hasText(message)) {
             return UserStrings.EMPTY;
@@ -341,11 +384,13 @@ public class AuditTaskExecutor {
     }
 
     private record AuditFieldResult(Integer score, String reason) {
+        /** 判断审核分数是否落在人工复核区间。 */
         boolean humanReview() {
             return score != null && score > UserConstants.AuditScore.REJECT_MAX
                     && score <= UserConstants.AuditScore.HUMAN_REVIEW_MAX;
         }
 
+        /** 判断审核分数是否应直接拒绝。 */
         boolean reject() {
             return score == null || score <= UserConstants.AuditScore.REJECT_MAX;
         }
