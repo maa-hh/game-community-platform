@@ -37,6 +37,9 @@ public interface GameCatalogService {
     /** 将 Steam 榜单或搜索返回的轻量数据写入公共游戏目录，并刷新搜索索引。 */
     void upsertBasicCatalog(GameListItemVO game);
 
+    /** 批量写入 Steam 榜单或搜索返回的轻量游戏数据，并刷新搜索索引。 */
+    void upsertBasicCatalogBatch(List<GameListItemVO> games);
+
     /** 按排序方式分页查询本地游戏目录。 */
     PageResult<GameListItemVO> pageGames(GamePageQuery query);
 

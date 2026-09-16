@@ -25,6 +25,9 @@ public final class SteamRedisConstants {
     public static final long LIBRARY_SYNC_DATA_TTL_SECONDS = 1800L;
     public static final String DETAIL_REFRESH_LOCK_PREFIX = "steam:detail:refresh:";
     public static final long DETAIL_REFRESH_LOCK_SECONDS = 90L;
+    /** 详情刷新锁未被本实例持有时，等待其他实例产出结果的最长时间。 */
+    public static final long DETAIL_REFRESH_WAIT_MILLIS = 5000L;
+    public static final long DETAIL_REFRESH_POLL_MILLIS = 100L;
     public static final String CATALOG_METRICS_PRICE_LOCK_PREFIX =
             "steam:catalog:metrics-price:lock:";
     public static final long CATALOG_METRICS_PRICE_LOCK_SECONDS = 120L;
@@ -36,6 +39,8 @@ public final class SteamRedisConstants {
     public static final long CHART_SYNC_LOCK_SECONDS = 900L;
     public static final String CATALOG_DAILY_SYNC_LOCK_KEY = "steam:catalog:daily-sync";
     public static final long CATALOG_DAILY_SYNC_LOCK_SECONDS = 3600L;
+    /** Steam 集群共享的出站请求时间槽。 */
+    public static final String API_RATE_LIMIT_SLOT_KEY = "steam:api:rate-limit:slot";
 
     private SteamRedisConstants() {
     }

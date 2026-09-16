@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.game.community.steam.mapper.GameCatalogMapper">
+
+    <insert id="upsertBasicCatalogBatch">
+        INSERT INTO t_game_catalog (
+            app_id, steam_name, name_zh, name_en, display_name, header_image,
+            developers, publishers, genres, release_date, steam_url,
+            community_short, community_about, cover_override, desc_source,
+            discuss_count, review_count, avg_score, steam_review_score,
+            steam_review_count, steam_is_free, price_currency, price_initial,
+            price_final, price_discount, price_discount_end_at, price_formatted,
+            steam_synced_at, static_synced_at, metrics_synced_at, price_synced_at,
+            rich_synced_at, last_refresh_attempt_at, next_refresh_at, refresh_status,
+            detail_ready, status, create_time, update_time
+        ) VALUES
+        <foreach collection="rows" item="item" separator=",">
+            (
+                #{item.appId}, #{item.steamName}, #{item.nameZh}, #{item.nameEn},
+                #{item.displayName}, #{item.headerImage},
+                #{item.developers, typeHandler=com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler},
+                #{item.publishers, typeHandler=com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler},
+                #{item.genres, typeHandler=com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler},
+                #{item.releaseDate}, #{item.steamUrl}, #{item.communityShort},
+                #{item.communityAbout}, #{item.coverOverride}, #{item.descSource},
+                #{item.discussCount}, #{item.reviewCount}, #{item.avgScore},
+                #{item.steamReviewScore}, #{item.steamReviewCount}, #{item.steamIsFree},
+                #{item.priceCurrency}, #{item.priceInitial}, #{item.priceFinal},
+                #{item.priceDiscount}, #{item.priceDiscountEndAt}, #{item.priceFormatted},
+                #{item.steamSyncedAt}, #{item.staticSyncedAt}, #{item.metricsSyncedAt},
+                #{item.priceSyncedAt}, #{item.richSyncedAt}, #{item.lastRefreshAttemptAt},
+                #{item.nextRefreshAt}, #{item.refreshStatus}, #{item.detailReady},
+                #{item.status}, #{item.createTime}, #{item.updateTime}
+            )
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+            steam_name = VALUES(steam_name),
+            name_zh = VALUES(name_zh),
+            name_en = VALUES(name_en),
+            display_name = VALUES(display_name),
+            header_image = VALUES(header_image),
+            developers = VALUES(developers),
+            publishers = VALUES(publishers),
+            genres = VALUES(genres),
+            release_date = VALUES(release_date),
+            steam_url = VALUES(steam_url),
+            community_short = VALUES(community_short),
+            community_about = VALUES(community_about),
+            cover_override = VALUES(cover_override),
+            desc_source = VALUES(desc_source),
+            discuss_count = VALUES(discuss_count),
+            review_count = VALUES(review_count),
+            avg_score = VALUES(avg_score),
+            steam_review_score = VALUES(steam_review_score),
+            steam_review_count = VALUES(steam_review_count),
+            steam_is_free = VALUES(steam_is_free),
+            price_currency = VALUES(price_currency),
+            price_initial = VALUES(price_initial),
+            price_final = VALUES(price_final),
+            price_discount = VALUES(price_discount),
+            price_discount_end_at = VALUES(price_discount_end_at),
+            price_formatted = VALUES(price_formatted),
+            steam_synced_at = VALUES(steam_synced_at),
+            static_synced_at = VALUES(static_synced_at),
+            metrics_synced_at = VALUES(metrics_synced_at),
+            price_synced_at = VALUES(price_synced_at),
+            rich_synced_at = VALUES(rich_synced_at),
+            last_refresh_attempt_at = VALUES(last_refresh_attempt_at),
+            next_refresh_at = VALUES(next_refresh_at),
+            refresh_status = VALUES(refresh_status),
+            detail_ready = VALUES(detail_ready),
+            status = VALUES(status),
+            update_time = VALUES(update_time)
+    </insert>
+</mapper>

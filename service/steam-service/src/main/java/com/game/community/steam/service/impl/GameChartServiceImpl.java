@@ -106,9 +106,7 @@ public class GameChartServiceImpl implements GameChartService {
         }
 
         // 只保存榜单返回的轻量数据，不在榜单同步中请求完整 appdetails。
-        for (GameListItemVO game : games) {
-            gameCatalogService.upsertBasicCatalog(game);
-        }
+        gameCatalogService.upsertBasicCatalogBatch(games);
         List<Long> appIds = games.stream().map(GameListItemVO::getAppId).toList();
         String periodKey = currentDailyPeriodKey();
         LocalDateTime now = LocalDateTime.now(SHANGHAI);
@@ -168,7 +166,7 @@ public class GameChartServiceImpl implements GameChartService {
                     return ChartCapacityStatus.EXHAUSTED;
                 }
                 appendChartBatch(resolvedBoard, current, newGames);
-                newGames.forEach(gameCatalogService::upsertBasicCatalog);
+                gameCatalogService.upsertBasicCatalogBatch(newGames);
                 gameCatalogService.warmupBasicInfoAsync(
                         newGames.stream().map(GameListItemVO::getAppId).toList());
                 current = loadCurrentSnapshots(resolvedBoard);
@@ -237,19 +235,19 @@ public class GameChartServiceImpl implements GameChartService {
                 ? UUID.randomUUID().toString().replace("-", "")
                 : current.get(0).getSnapshotId();
         int[] nextRank = {current.size() + 1};
-        transactionTemplate.executeWithoutResult(status -> {
-            for (GameListItemVO game : games) {
-                GameChartSnapshot row = new GameChartSnapshot();
-                row.setBoardType(board);
-                row.setPeriodKey(periodKey);
-                row.setAppId(game.getAppId());
-                row.setRankNo(nextRank[0]++);
-                row.setSnapshotTime(now);
-                row.setSnapshotId(snapshotId);
-                row.setIsCurrent(1);
-                gameChartSnapshotMapper.insert(row);
-            }
-        });
+        List<GameChartSnapshot> rows = new ArrayList<>(games.size());
+        for (GameListItemVO game : games) {
+            GameChartSnapshot row = new GameChartSnapshot();
+            row.setBoardType(board);
+            row.setPeriodKey(periodKey);
+            row.setAppId(game.getAppId());
+            row.setRankNo(nextRank[0]++);
+            row.setSnapshotTime(now);
+            row.setSnapshotId(snapshotId);
+            row.setIsCurrent(1);
+            rows.add(row);
+        }
+        transactionTemplate.executeWithoutResult(status -> gameChartSnapshotMapper.insertBatch(rows));
         redisUtils.del(SteamRedisConstants.GAME_CHART_KEY_PREFIX + board);
     }
 
@@ -305,21 +303,20 @@ public class GameChartServiceImpl implements GameChartService {
                 .eq(GameChartSnapshot::getBoardType, board)
                 .eq(GameChartSnapshot::getPeriodKey, periodKey));
 
+        List<GameChartSnapshot> rows = new ArrayList<>(appIds.size());
         int rank = 1;
-        for (int start = 0; start < appIds.size(); start += SteamApiConstants.CHART_BATCH_SIZE) {
-            int end = Math.min(start + SteamApiConstants.CHART_BATCH_SIZE, appIds.size());
-            for (Long appId : appIds.subList(start, end)) {
-                GameChartSnapshot row = new GameChartSnapshot();
-                row.setBoardType(board);
-                row.setPeriodKey(periodKey);
-                row.setAppId(appId);
-                row.setRankNo(rank++);
-                row.setSnapshotTime(snapshotTime);
-                row.setSnapshotId(snapshotId);
-                row.setIsCurrent(1);
-                gameChartSnapshotMapper.insert(row);
-            }
+        for (Long appId : appIds) {
+            GameChartSnapshot row = new GameChartSnapshot();
+            row.setBoardType(board);
+            row.setPeriodKey(periodKey);
+            row.setAppId(appId);
+            row.setRankNo(rank++);
+            row.setSnapshotTime(snapshotTime);
+            row.setSnapshotId(snapshotId);
+            row.setIsCurrent(1);
+            rows.add(row);
         }
+        gameChartSnapshotMapper.insertBatch(rows);
     }
 
     /** 校验并规范化榜单类型，避免使用未配置的榜单查询或写入数据。 */
