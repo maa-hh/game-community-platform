@@ -16,9 +16,6 @@ public interface GameCatalogService {
     /** 查询游戏详情，必要时从 Steam Store 补齐过期目录数据。 */
     GameDetailVO getDetail(Long appId);
 
-    /** 后台预热目录，不阻塞榜单或搜索请求。 */
-    void warmup(Long appId);
-
     /** 查询尚未写入公共游戏目录基础信息的 AppID。 */
     List<Long> findMissingBasicInfoIds(List<Long> appIds);
 
@@ -33,9 +30,6 @@ public interface GameCatalogService {
 
     /** 按 AppID 批量读取本地目录，供搜索服务覆盖 ES 延迟字段。 */
     List<GameListItemVO> listCatalogItemsByAppIds(List<Long> appIds);
-
-    /** 将 Steam 榜单或搜索返回的轻量数据写入公共游戏目录，并刷新搜索索引。 */
-    void upsertBasicCatalog(GameListItemVO game);
 
     /** 批量写入 Steam 榜单或搜索返回的轻量游戏数据，并刷新搜索索引。 */
     void upsertBasicCatalogBatch(List<GameListItemVO> games);

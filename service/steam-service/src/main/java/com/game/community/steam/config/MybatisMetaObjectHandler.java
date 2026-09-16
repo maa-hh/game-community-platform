@@ -9,6 +9,7 @@ import java.time.LocalDateTime;
 @Component
 public class MybatisMetaObjectHandler implements MetaObjectHandler {
 
+    /** 为新增实体自动填充创建时间和更新时间。 */
     @Override
     public void insertFill(MetaObject metaObject) {
         LocalDateTime now = LocalDateTime.now();
@@ -16,6 +17,7 @@ public class MybatisMetaObjectHandler implements MetaObjectHandler {
         strictInsertFill(metaObject, "updateTime", LocalDateTime.class, now);
     }
 
+    /** 为更新实体自动填充最新更新时间。 */
     @Override
     public void updateFill(MetaObject metaObject) {
         strictUpdateFill(metaObject, "updateTime", LocalDateTime.class, LocalDateTime.now());

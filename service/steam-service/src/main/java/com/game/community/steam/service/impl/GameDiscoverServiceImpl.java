@@ -152,11 +152,13 @@ public class GameDiscoverServiceImpl implements GameDiscoverService {
         return normalized;
     }
 
+    /** 创建仅查询启用目录的基础条件。 */
     private LambdaQueryWrapper<GameCatalog> baseWrapper() {
         return new LambdaQueryWrapper<GameCatalog>()
                 .eq(GameCatalog::getStatus, GameCatalogStatus.ENABLED.getCode());
     }
 
+    /** 将价格和榜单筛选条件追加到目录查询。 */
     private void applyFilters(LambdaQueryWrapper<GameCatalog> wrapper, GameDiscoverQuery query) {
         if (query.getMinSteamScore() != null) {
             wrapper.ge(GameCatalog::getSteamReviewScore, query.getMinSteamScore());
@@ -254,6 +256,7 @@ public class GameDiscoverServiceImpl implements GameDiscoverService {
         return Comparator.comparing(getter, valueOrder);
     }
 
+    /** 将目录实体转换为发现页榜单卡片。 */
     private GameChartItemVO toChartItem(GameCatalog catalog) {
         GameChartItemVO vo = new GameChartItemVO();
         var base = gameCatalogService.toListItem(catalog);

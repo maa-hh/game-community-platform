@@ -63,6 +63,7 @@ public class SteamCatalogMetricsRefreshService {
         ids.forEach(this::submitRefresh);
     }
 
+    /** 将单个游戏刷新任务提交到指标线程池，并合并同 JVM 内的重复任务。 */
     private void submitRefresh(Long appId) {
         try {
             inFlight.computeIfAbsent(appId, this::startRefresh);
@@ -71,16 +72,12 @@ public class SteamCatalogMetricsRefreshService {
         }
     }
 
+    /** 创建单个游戏的异步指标刷新任务，并在结束后清理 SingleFlight 状态。 */
     private CompletableFuture<Void> startRefresh(Long appId) {
         CompletableFuture<Void> future = CompletableFuture.runAsync(
                 () -> refreshOne(appId), metricsRefreshExecutor);
         future.whenComplete((result, error) -> inFlight.remove(appId, future));
         return future;
-    }
-
-    /** 启动或定时任务使用的过期数据批量刷新入口。 */
-    public void refreshStaleBatchAsync() {
-        metricsRefreshExecutor.execute(this::refreshStaleBatch);
     }
 
     /** 在 XXL-JOB 持有全局任务锁时同步处理一批过期目录。 */

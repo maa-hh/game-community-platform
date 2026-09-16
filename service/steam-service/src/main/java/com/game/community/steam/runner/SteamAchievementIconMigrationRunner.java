@@ -26,6 +26,7 @@ public class SteamAchievementIconMigrationRunner implements ApplicationRunner {
 
     private final MongoTemplate mongoTemplate;
 
+    /** 启动幂等迁移，将 Mongo 中的历史成就图标地址转换为当前格式。 */
     @Override
     public void run(ApplicationArguments args) {
         Query query = Query.query(Criteria.where("achievementHighlights.iconUrl")

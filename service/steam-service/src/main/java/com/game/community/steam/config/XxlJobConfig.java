@@ -21,6 +21,7 @@ public class XxlJobConfig {
     private String logPath = "logs/xxl-job/steam-service";
     private int logRetentionDays = 30;
 
+    /** 创建并配置 XXL-JOB 执行器，使 Steam 定时任务接受统一调度。 */
     @Bean
     public XxlJobSpringExecutor xxlJobExecutor() {
         XxlJobSpringExecutor executor = new XxlJobSpringExecutor();

@@ -56,6 +56,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
@@ -133,20 +134,6 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         return detail;
     }
 
-    /** 后台预热游戏目录，避免榜单请求同步等待 Steam 详情。 */
-    @Async("steamDetailRefreshExecutor")
-    @Override
-    public void warmup(Long appId) {
-        if (appId == null) {
-            return;
-        }
-        try {
-            getDetail(appId);
-        } catch (Exception e) {
-            log.warn("后台预热 Steam 游戏目录失败: appId={}", appId, e);
-        }
-    }
-
     /** 查询数据库中缺少 Steam 基础字段的游戏，调用方据此过滤外部请求。 */
     @Override
     public List<Long> findMissingBasicInfoIds(List<Long> appIds) {
@@ -171,8 +158,9 @@ public class GameCatalogServiceImpl implements GameCatalogService {
             return;
         }
         String lockKey = SteamRedisConstants.GAME_BASIC_INFO_LOCK_PREFIX + appId;
+        String lockToken = UUID.randomUUID().toString();
         if (Boolean.FALSE.equals(redisUtils.setIfAbsent(
-                lockKey, "1", SteamRedisConstants.GAME_BASIC_INFO_LOCK_SECONDS))) {
+                lockKey, lockToken, SteamRedisConstants.GAME_BASIC_INFO_LOCK_SECONDS))) {
             return;
         }
         try {
@@ -205,7 +193,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         } catch (Exception e) {
             log.warn("补充游戏基础信息失败: appId={}", appId, e);
         } finally {
-            redisUtils.del(lockKey);
+            redisUtils.unlock(lockKey, lockToken);
         }
     }
 
@@ -227,6 +215,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         steamCatalogMetricsRefreshService.refreshIfStaleAsync(appIds);
     }
 
+    /** 批量读取有效本地目录，供搜索服务补齐 ES 中的易变字段。 */
     @Override
     public List<GameListItemVO> listCatalogItemsByAppIds(List<Long> appIds) {
         if (appIds == null || appIds.isEmpty()) {
@@ -241,15 +230,6 @@ public class GameCatalogServiceImpl implements GameCatalogService {
                 .filter(catalog -> Integer.valueOf(GameCatalogStatus.ENABLED.getCode()).equals(catalog.getStatus()))
                 .map(this::toListItemVO)
                 .toList();
-    }
-
-    /** 保存 Steam 榜单或搜索返回的轻量游戏数据，不请求完整游戏详情。 */
-    @Override
-    public void upsertBasicCatalog(GameListItemVO game) {
-        if (game == null || game.getAppId() == null) {
-            return;
-        }
-        upsertBasicCatalogBatch(List.of(game));
     }
 
     /** 先批量读取已有目录，再用单条批量 upsert 写回，保留基础数据的保护规则。 */
@@ -278,13 +258,14 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         catalogs.forEach(gameSearchIndexProducer::upsertCatalog);
     }
 
+    /** 构造榜单或搜索返回的轻量目录实体，并保留已有详情字段。 */
     private GameCatalog prepareBasicCatalog(GameCatalog catalog, GameListItemVO game, LocalDateTime now) {
         boolean newCatalog = catalog == null;
         if (newCatalog) {
             catalog = new GameCatalog();
             catalog.setAppId(game.getAppId());
             catalog.setCreateTime(now);
-            catalog.setDescSource("COMMUNITY_FIRST");
+            catalog.setDescSource(GameCatalogConstants.DESC_SOURCE_COMMUNITY_FIRST);
             catalog.setDiscussCount(0);
             catalog.setReviewCount(0);
             catalog.setAvgScore(BigDecimal.ZERO);
@@ -331,6 +312,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         return catalog;
     }
 
+    /** 将轻量价格合并到目录，仅接受可用金额或免费标记。 */
     private void applyBasicPrice(GameCatalog catalog, GamePriceVO price) {
         if (!hasUsableBasicPrice(price)) {
             return;
@@ -370,6 +352,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         return isLowResolutionCover(existing) || !isLowResolutionCover(incoming);
     }
 
+    /** 判断封面地址是否属于 Steam 返回的低分辨率资源。 */
     private boolean isLowResolutionCover(String url) {
         String lower = url.toLowerCase();
         return lower.contains("capsule_sm_120")
@@ -380,6 +363,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
                 || lower.contains("/icon");
     }
 
+    /** 判断目录是否已经具备后续搜索和展示所需的基础字段。 */
     private boolean hasBasicInfo(GameCatalog catalog) {
         return catalog != null
                 && StringUtils.hasText(catalog.getSteamName())
@@ -389,6 +373,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
                 && StringUtils.hasText(catalog.getNameEn());
     }
 
+    /** 从 Redis 读取并反序列化游戏基础信息缓存。 */
     private SteamGameBasicPayload readBasicInfoCache(Long appId) {
         String cached = redisUtils.get(SteamRedisConstants.GAME_BASIC_INFO_KEY_PREFIX + appId);
         if (!StringUtils.hasText(cached)) {
@@ -437,7 +422,8 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         if (!StringUtils.hasText(existing.getDisplayName())) {
             existing.setDisplayName(basic.getDisplayName());
         }
-        existing.setStatus(existing.getStatus() == null ? 1 : existing.getStatus());
+        existing.setStatus(existing.getStatus() == null
+                ? GameCatalogStatus.ENABLED.getCode() : existing.getStatus());
         existing.setSteamSyncedAt(now);
         existing.setStaticSyncedAt(now);
         existing.setLastRefreshAttemptAt(now);
@@ -478,6 +464,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         target.setSteamIsFree(source.getSteamIsFree());
     }
 
+    /** 将已合并的游戏详情快照写入 Redis，减少后续数据库和 Mongo 查询。 */
     private void cacheGameDetail(Long appId, GameDetailVO detail) {
         if (appId == null || detail == null) {
             return;
@@ -493,6 +480,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         }
     }
 
+    /** 从 MySQL 目录和 Mongo 富详情组装详情，必要时触发异步刷新。 */
     private GameDetailVO loadDetailFromStore(Long appId) {
         GameCatalog catalog = gameCatalogMapper.selectById(appId);
         if (catalog != null && Boolean.TRUE.equals(catalog.getDetailReady()) && !isStale(catalog)) {
@@ -602,6 +590,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         return pageGames(resolved);
     }
 
+    /** 将接口排序参数转换为目录查询的稳定排序条件。 */
     private void applySort(LambdaQueryWrapper<GameCatalog> wrapper, String sort) {
         if ("score".equalsIgnoreCase(sort)) {
             wrapper.orderByDesc(GameCatalog::getAvgScore)
@@ -625,6 +614,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         return toListItemVO(catalog);
     }
 
+    /** 将 MySQL 游戏目录实体转换为列表卡片对象。 */
     private GameListItemVO toListItemVO(GameCatalog catalog) {
         GameListItemVO vo = new GameListItemVO();
         vo.setAppId(catalog.getAppId());
@@ -676,6 +666,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         return vo;
     }
 
+    /** 读取开发商或发行商列表中的首个展示名称。 */
     private String firstOf(List<String> values) {
         if (values == null || values.isEmpty()) {
             return null;
@@ -742,6 +733,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         return tags;
     }
 
+    /** 调用内容服务批量查询已发布讨论数，失败时返回空结果降级。 */
     private Map<Long, Integer> fetchDiscussCountMap(List<Long> appIds) {
         try {
             Result<Map<Long, Integer>> result = contentFeignClient.countPublishedDiscussByAppIds(appIds);
@@ -754,6 +746,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         return Map.of();
     }
 
+    /** 读取目录讨论数并将空值归零。 */
     private int resolveDiscussCount(GameCatalog catalog) {
         if (catalog == null || catalog.getDiscussCount() == null) {
             return 0;
@@ -761,11 +754,13 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         return catalog.getDiscussCount();
     }
 
+    /** 按展示名、Steam 名称的优先级解析游戏名称。 */
     private String resolveName(GameCatalog catalog) {
         return StringUtils.hasText(catalog.getDisplayName())
                 ? catalog.getDisplayName() : catalog.getSteamName();
     }
 
+    /** 判断目录快照是否超过富详情保鲜时间。 */
     private boolean isStale(GameCatalog catalog) {
         if (catalog.getSteamSyncedAt() == null) {
             return true;
@@ -947,6 +942,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         return vo;
     }
 
+    /** 将目录价格字段转换为详情或列表使用的价格对象。 */
     private GamePriceVO buildPriceVO(GameCatalog catalog) {
         if (!Boolean.TRUE.equals(catalog.getSteamIsFree())
                 && catalog.getPriceFinal() == null
@@ -964,6 +960,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         return vo;
     }
 
+    /** 组装社区评分统计，兼容历史目录统计字段为空的记录。 */
     private GameRatingStatsVO buildRatingStats(GameCatalog catalog) {
         GameRatingStatsVO vo = new GameRatingStatsVO();
         if (catalog.getReviewCount() != null) {

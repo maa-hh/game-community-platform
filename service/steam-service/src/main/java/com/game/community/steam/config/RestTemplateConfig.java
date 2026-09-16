@@ -9,6 +9,7 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
+import java.time.Duration;
 
 @Configuration
 public class RestTemplateConfig {
@@ -16,16 +17,18 @@ public class RestTemplateConfig {
     private final SteamProperties steamProperties;
     private final SteamRateLimiter steamRateLimiter;
 
+    /** 注入 Steam 请求配置和集群级 Redis 限流器。 */
     public RestTemplateConfig(SteamProperties steamProperties, SteamRateLimiter steamRateLimiter) {
         this.steamProperties = steamProperties;
         this.steamRateLimiter = steamRateLimiter;
     }
 
+    /** 创建带连接超时、读取超时和统一 Steam 限流拦截器的 RestTemplate。 */
     @Bean
     public RestTemplate restTemplate() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(2000);
-        factory.setReadTimeout(5000);
+        factory.setConnectTimeout(Duration.ofMillis(steamProperties.getConnectTimeoutMs()));
+        factory.setReadTimeout(Duration.ofMillis(steamProperties.getReadTimeoutMs()));
         RestTemplate restTemplate = new RestTemplate(factory);
         restTemplate.getInterceptors().add(new SteamRateLimitInterceptor(
                 steamRateLimiter,
@@ -47,6 +50,7 @@ public class RestTemplateConfig {
         private final int maxAttempts;
         private final long retryDelayMs;
 
+        /** 创建 HTTP 拦截器并固定 GET/HEAD 请求的退避重试策略。 */
         private SteamRateLimitInterceptor(
                 SteamRateLimiter steamRateLimiter, int maxAttempts, long retryDelayMs) {
             this.steamRateLimiter = steamRateLimiter;
@@ -54,6 +58,7 @@ public class RestTemplateConfig {
             this.retryDelayMs = Math.max(0L, retryDelayMs);
         }
 
+        /** 在 Redis 限流时间槽允许后发送请求，并对 429 响应执行有限次退避重试。 */
         @Override
         public ClientHttpResponse intercept(
                 org.springframework.http.HttpRequest request,
@@ -64,7 +69,7 @@ public class RestTemplateConfig {
                     || request.getMethod() == HttpMethod.HEAD;
             int attempts = retryable ? maxAttempts : 1;
             for (int attempt = 1; attempt <= attempts; attempt++) {
-                awaitNextRequest();
+                steamRateLimiter.awaitNextRequest();
                 ClientHttpResponse response = execution.execute(request, body);
                 if (response.getStatusCode().value() != 429 || attempt >= attempts) {
                     return response;
@@ -75,10 +80,7 @@ public class RestTemplateConfig {
             throw new IOException("Steam 请求重试失败");
         }
 
-        private void awaitNextRequest() throws IOException {
-            steamRateLimiter.awaitNextRequest();
-        }
-
+        /** 按递增等待时间暂停重试，处理中断并恢复线程中断标记。 */
         private void sleep(long delayMs) throws IOException {
             if (delayMs <= 0L) {
                 return;

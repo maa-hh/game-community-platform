@@ -12,6 +12,7 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
 @SpringBootApplication(scanBasePackages = "com.game.community")
 public class SteamServiceApplication {
 
+    /** 启动 Steam 微服务并加载 Spring Boot 应用上下文。 */
     public static void main(String[] args) {
         SpringApplication.run(SteamServiceApplication.class, args);
     }
