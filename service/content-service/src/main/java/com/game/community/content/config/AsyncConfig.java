@@ -59,4 +59,20 @@ public class AsyncConfig {
         executor.initialize();
         return executor;
     }
+
+    /** 大文件分片写 MinIO 的独立线程池，避免上传流量占满审核任务和图片上传线程。 */
+    @Bean(name = "contentChunkUploadExecutor")
+    public ThreadPoolTaskExecutor contentChunkUploadExecutor(
+            @Value("${content.file-upload.chunk-concurrency:8}") int concurrency,
+            @Value("${content.file-upload.chunk-queue-capacity:64}") int queueCapacity) {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        int poolSize = Math.max(1, concurrency);
+        executor.setCorePoolSize(poolSize);
+        executor.setMaxPoolSize(poolSize);
+        executor.setQueueCapacity(Math.max(0, queueCapacity));
+        executor.setThreadNamePrefix("content-chunk-upload-");
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.AbortPolicy());
+        executor.initialize();
+        return executor;
+    }
 }

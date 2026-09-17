@@ -20,7 +20,7 @@ spring:
   # 文件上传配置
   servlet:
     multipart:
-      # 图片 ≤5MB；媒体分片默认 3MiB/片
+      # 图片 ≤5MB；媒体分片默认 5MiB/片，单个请求仍受 6MB 限制
       max-file-size: 6MB
       max-request-size: 32MB
   # MongoDB 配置
@@ -139,6 +139,9 @@ management:
 content:
   file-upload:
     concurrency: ${CONTENT_FILE_UPLOAD_CONCURRENCY:8}
+    # 分片写 MinIO 的单实例并发上限和等待队列；多实例总并发为实例数 × 此上限
+    chunk-concurrency: ${CONTENT_CHUNK_UPLOAD_CONCURRENCY:8}
+    chunk-queue-capacity: ${CONTENT_CHUNK_UPLOAD_QUEUE_CAPACITY:64}
   outbox:
     poll-interval-ms: ${CONTENT_OUTBOX_POLL_INTERVAL_MS:1000}
 

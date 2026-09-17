@@ -35,6 +35,17 @@ public class RedisUtils {
                     + "else return 0 end",
             Long.class);
 
+    private static final DefaultRedisScript<Long> ADD_SET_MEMBER_IF_VALUE_MATCHES_SCRIPT = new DefaultRedisScript<>(
+            "if redis.call('get', KEYS[1]) == ARGV[1] then "
+                    + "redis.call('sadd', KEYS[2], ARGV[2]); "
+                    + "redis.call('expire', KEYS[2], ARGV[3]); return 1 "
+                    + "else return 0 end",
+            Long.class);
+
+    private static final DefaultRedisScript<Long> DELETE_IF_VALUE_MATCHES_SCRIPT = new DefaultRedisScript<>(
+            "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+            Long.class);
+
     private static final DefaultRedisScript<Long> SAVE_SESSION_SCRIPT = new DefaultRedisScript<>(
             "redis.call('set', KEYS[1], ARGV[1], 'EX', ARGV[3]); "
                     + "redis.call('set', KEYS[2], '1', 'EX', ARGV[3]); "
@@ -210,6 +221,24 @@ public class RedisUtils {
     public boolean compareAndSet(String key, String expected, String value, long seconds) {
         Long result = stringRedisTemplate.execute(COMPARE_SET_SCRIPT,
                 Collections.singletonList(key), expected, value, String.valueOf(seconds));
+        return result != null && result == 1L;
+    }
+
+    /** 仅当会话仍是指定快照时原子记录分片，避免中止/合并与上传完成回写交叉。 */
+    public boolean addSetMemberIfValueMatches(String valueKey, String setKey, String expectedValue,
+                                               String member, long seconds) {
+        Long result = stringRedisTemplate.execute(
+                ADD_SET_MEMBER_IF_VALUE_MATCHES_SCRIPT,
+                Arrays.asList(valueKey, setKey),
+                expectedValue, member, String.valueOf(seconds));
+        return result != null && result == 1L;
+    }
+
+    /** 仅当 Redis 值仍属于当前会话时删除，避免旧会话清理误删新会话索引。 */
+    public boolean deleteIfValueMatches(String key, String expectedValue) {
+        Long result = stringRedisTemplate.execute(
+                DELETE_IF_VALUE_MATCHES_SCRIPT,
+                Collections.singletonList(key), expectedValue);
         return result != null && result == 1L;
     }
 

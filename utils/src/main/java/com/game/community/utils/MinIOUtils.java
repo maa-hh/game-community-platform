@@ -27,7 +27,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.SequenceInputStream;
@@ -156,15 +155,18 @@ public class MinIOUtils {
         }
     }
 
-    public void uploadPrivateBytes(String objectName, byte[] bytes, String contentType) {
+    /** 使用调用方提供的流写入私有分片，避免先把整个分片复制成 byte[]。 */
+    public void uploadPrivateStream(String objectName, InputStream inputStream,
+                                    long objectSize, String contentType) {
         try {
             MinioClient client = client();
             ensurePrivateBucket(client);
             client.putObject(PutObjectArgs.builder()
                     .bucket(properties.getPrivateBucketName())
                     .object(objectName)
-                    .stream(new ByteArrayInputStream(bytes), bytes.length, -1)
-                    .contentType(contentType)
+                    .stream(inputStream, objectSize, -1)
+                    .contentType(StringUtils.hasText(contentType)
+                            ? contentType : "application/octet-stream")
                     .build());
         } catch (Exception e) {
             throw new IllegalStateException("私有分片写入失败", e);
@@ -186,6 +188,41 @@ public class MinIOUtils {
             return true;
         } catch (Exception e) {
             return false;
+        }
+    }
+
+    /** 校验私有对象存在且大小符合摘要去重会话，避免损坏对象被误判为秒传命中。 */
+    public boolean privateObjectMatchesSize(String objectName, long expectedSize) {
+        if (!StringUtils.hasText(objectName) || expectedSize < 0) {
+            return false;
+        }
+        try {
+            MinioClient client = client();
+            ensurePrivateBucket(client);
+            return client.statObject(StatObjectArgs.builder()
+                    .bucket(properties.getPrivateBucketName())
+                    .object(objectName)
+                    .build()).size() == expectedSize;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** 在私有桶内复制已校验对象，用于摘要去重对象的原子化落盘阶段。 */
+    public void copyPrivateObject(String sourceObjectName, String targetObjectName) {
+        try {
+            MinioClient client = client();
+            ensurePrivateBucket(client);
+            client.copyObject(CopyObjectArgs.builder()
+                    .bucket(properties.getPrivateBucketName())
+                    .object(targetObjectName)
+                    .source(CopySource.builder()
+                            .bucket(properties.getPrivateBucketName())
+                            .object(sourceObjectName)
+                            .build())
+                    .build());
+        } catch (Exception e) {
+            throw new IllegalStateException("私有文件复制失败", e);
         }
     }
 
@@ -333,9 +370,8 @@ public class MinIOUtils {
     /**
      * 按顺序读取私有桶中的多个分片并写入目标对象。
      *
-     * <p>MinIO Compose 对除最后一段外的来源对象有 5MiB 最小限制；当前协议默认 3MiB，
-     * 历史会话还可能使用 1MiB，因此统一使用流式串接，避免把完整文件一次性加载到内存。
-     * 若未来协议分片调整到至少 5MiB，可再切换为直接 Compose。</p>
+     * <p>仅用于滚动发布前创建的旧 3MiB/1MiB 会话。新会话使用至少 5MiB 分片，
+     * 直接走 {@link #composePrivateObjects(String, List)}，避免把完整文件经过 content-service 串接。</p>
      */
     public void concatenatePrivateObjects(String targetObjectName,
                                           List<String> sourceObjectNames,
