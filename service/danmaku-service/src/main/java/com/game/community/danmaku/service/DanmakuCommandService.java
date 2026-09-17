@@ -1,6 +1,5 @@
 package com.game.community.danmaku.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.game.community.common.constant.KafkaTopicConstants;
 import com.game.community.common.exception.BusinessException;
@@ -13,7 +12,6 @@ import com.game.community.model.vo.danmaku.DanmakuVO;
 import com.game.community.utils.DfaAuditUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
@@ -39,18 +37,15 @@ public class DanmakuCommandService {
     private final StringRedisTemplate redis;
     private final ObjectMapper objectMapper;
     private final KafkaTemplate<String, DanmakuEvent> kafkaTemplate;
-    private final DanmakuRealtimeService realtimeService;
+    private final DanmakuViewMapper viewMapper;
 
     @Value("${danmaku.max-content-length:200}")
     private int maxContentLength;
 
-    @Value("${danmaku.recent-ttl-seconds:604800}")
-    private long recentTtlSeconds;
-
     @Value("${danmaku.dedupe-processing-ttl-seconds:60}")
     private long dedupeProcessingTtlSeconds;
 
-    /** 接收并校验发送命令，确认 Kafka 可靠投递后返回可用于实时广播的弹幕视图。 */
+    /** 接收并校验发送命令，确认 Kafka 可靠投递后返回已接受的弹幕视图。 */
     public DanmakuVO accept(String videoPublicId, Long userId, SendDanmakuDTO dto) {
         if (userId == null) {
             throw new BusinessException("请先登录后发送弹幕");
@@ -98,23 +93,23 @@ public class DanmakuCommandService {
             event.setContent(content);
             event.setStatus(1);
             event.setEventTime(LocalDateTime.now());
-            DanmakuVO vo = toVO(event);
+            DanmakuVO vo = viewMapper.fromEvent(event);
             CompletableFuture<SendResult<String, DanmakuEvent>> delivery =
                     kafkaTemplate.send(KafkaTopicConstants.DANMAKU_TOPIC, videoPublicId, event);
             try {
                 delivery.get(3, TimeUnit.SECONDS);
             } catch (TimeoutException e) {
                 deliveryPending = true;
-                finalizeDeliveryAfterTimeout(delivery, dedupeKey, videoPublicId, vo);
+                finalizeDeliveryAfterTimeout(delivery, dedupeKey, vo);
                 throw new BusinessException("弹幕状态确认超时，请稍后使用原消息重试");
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 deliveryPending = true;
-                finalizeDeliveryAfterTimeout(delivery, dedupeKey, videoPublicId, vo);
+                finalizeDeliveryAfterTimeout(delivery, dedupeKey, vo);
                 throw new BusinessException("弹幕发送被中断，请重试");
             }
 
-            finalizeAccepted(dedupeKey, videoPublicId, vo);
+            finalizeAccepted(dedupeKey, vo);
             dedupeFinalized = true;
             return vo;
         } catch (BusinessException e) {
@@ -177,19 +172,6 @@ public class DanmakuCommandService {
         return UUID.nameUUIDFromBytes(identity.getBytes(StandardCharsets.UTF_8)).toString();
     }
 
-    private void cacheRecent(DanmakuVO vo) {
-        try {
-            String json = objectMapper.writeValueAsString(vo);
-            String recentKey = DanmakuCacheConstants.RECENT_KEY_PREFIX + vo.getVideoPublicId();
-            redis.opsForZSet().add(recentKey, json, vo.getDisplayTimeMs());
-            redis.opsForValue().set(DanmakuCacheConstants.MESSAGE_KEY_PREFIX + vo.getId(),
-                    json, recentTtlSeconds, TimeUnit.SECONDS);
-            redis.expire(recentKey, java.time.Duration.ofSeconds(recentTtlSeconds));
-        } catch (JsonProcessingException | DataAccessException e) {
-            // Kafka 已确认，Redis 只作为热历史和实时辅助缓存，不阻断消息接收。
-        }
-    }
-
     private DanmakuVO readDedupe(String key) {
         try {
             String json = redis.opsForValue().get(key);
@@ -209,39 +191,19 @@ public class DanmakuCommandService {
         }
     }
 
-    /** 将内部可靠事件转换为不含 userId 的公开弹幕视图。 */
-    public DanmakuVO toVO(DanmakuEvent event) {
-        DanmakuVO vo = new DanmakuVO();
-        vo.setId(event.getId());
-        vo.setEventId(event.getEventId());
-        vo.setClientMessageId(event.getClientMessageId());
-        vo.setVideoPublicId(event.getVideoPublicId());
-        vo.setVideoTimeMs(event.getVideoTimeMs());
-        vo.setDisplayTimeMs(event.getDisplayTimeMs());
-        vo.setSeq(event.getSeq());
-        vo.setAccountId(event.getAccountId());
-        vo.setUsername(event.getUsernameSnapshot());
-        vo.setAvatar(event.getAvatarSnapshot());
-        vo.setContent(event.getContent());
-        vo.setStatus(event.getStatus());
-        return vo;
-    }
-
-    /** Kafka 发送成功后完成热缓存、幂等结果和实时广播。 */
-    private void finalizeAccepted(String dedupeKey, String videoPublicId, DanmakuVO vo) {
-        cacheRecent(vo);
+    /** Kafka 发送成功后只完成幂等结果；热缓存和实时广播由落库消费者完成。 */
+    private void finalizeAccepted(String dedupeKey, DanmakuVO vo) {
         writeDedupe(dedupeKey, vo);
-        realtimeService.publish(videoPublicId, DanmakuRealtimeMessage.created(vo));
     }
 
     /** Kafka 发送超时后继续等待最终结果，避免客户端重试产生第二条可靠事件。 */
     private void finalizeDeliveryAfterTimeout(
             CompletableFuture<SendResult<String, DanmakuEvent>> delivery,
-            String dedupeKey, String videoPublicId, DanmakuVO vo) {
+            String dedupeKey, DanmakuVO vo) {
         delivery.orTimeout(Math.max(1, dedupeProcessingTtlSeconds), TimeUnit.SECONDS)
                 .whenComplete((ignored, error) -> {
                     if (error == null) {
-                        finalizeAccepted(dedupeKey, videoPublicId, vo);
+                        finalizeAccepted(dedupeKey, vo);
                     } else {
                         releaseDedupe(dedupeKey);
                     }
