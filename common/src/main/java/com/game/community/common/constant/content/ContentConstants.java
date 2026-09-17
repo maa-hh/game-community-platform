@@ -237,8 +237,10 @@ public class ContentConstants {
         public static final long IMAGE_MAX_BYTES = 5L * 1024 * 1024;
         public static final int IMAGE_MAX_COUNT = 20;
         public static final long VIDEO_MAX_BYTES = 500L * 1024 * 1024;
-        /** 默认 3MiB 分片，在并发吞吐与单请求内存占用之间取平衡。 */
-        public static final long CHUNK_SIZE_BYTES = 3L * 1024 * 1024;
+        /** 分片合并的 MinIO Compose 最小来源大小（最后一个分片除外）。 */
+        public static final long MIN_COMPOSE_SOURCE_SIZE_BYTES = 5L * 1024 * 1024;
+        /** 默认 5MiB 分片，满足 MinIO Compose 的来源对象大小要求。 */
+        public static final long CHUNK_SIZE_BYTES = MIN_COMPOSE_SOURCE_SIZE_BYTES;
         public static final int PRESIGNED_EXPIRE_SECONDS = 900;
     }
 
@@ -253,6 +255,16 @@ public class ContentConstants {
         public static final String GLOBAL_OBJECT_PREFIX = "content/dedupe/";
         /** 文章关联的 uploadId 集合 */
         public static final String ARTICLE_UPLOADS_PREFIX = "content:article:uploads:";
+        /** 每个上传会话已落盘分片集合，避免并发读改写 JSON 会话。 */
+        public static final String UPLOADED_CHUNKS_SUFFIX = ":chunks";
+        /** 上传会话状态变更锁，跨实例串行化绑定、合并和中止。 */
+        public static final String SESSION_LOCK_PREFIX = "content:upload:lock:";
+        /** 同一用户同一摘要初始化锁，避免并发初始化创建重复会话。 */
+        public static final String INIT_LOCK_PREFIX = "content:upload:init:";
+        /** 相同摘要文件合并到全局去重对象时的跨实例锁。 */
+        public static final String DEDUPE_LOCK_PREFIX = "content:upload:dedupe:";
+        public static final long INIT_LOCK_SECONDS = 30L;
+        public static final long SESSION_LOCK_SECONDS = 600L;
         public static final long SESSION_TTL_SECONDS = 24 * 3600L;
     }
 }
