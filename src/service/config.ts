@@ -23,6 +23,9 @@ export const UPLOAD_CHUNK_CONCURRENCY =
     ? Math.min(configuredUploadConcurrency, 8)
     : 4;
 
+// 后端每个请求会把分片写入 MinIO；5MiB 分片在慢网环境下给足传输和排队时间。
+export const UPLOAD_CHUNK_REQUEST_TIMEOUT_MS = 180_000;
+
 // 单个分片的最大重试次数；0 表示失败后直接保留会话，下一次保存时续传。
 export const UPLOAD_CHUNK_MAX_RETRIES = 3;
 export const UPLOAD_CHUNK_RETRY_BASE_DELAY_MS = 500;

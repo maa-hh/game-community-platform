@@ -3,6 +3,7 @@ import {
   UPLOAD_CHUNK_CONCURRENCY,
   UPLOAD_CHUNK_MAX_RETRIES,
   UPLOAD_CHUNK_RETRY_BASE_DELAY_MS,
+  UPLOAD_CHUNK_REQUEST_TIMEOUT_MS,
 } from './config';
 import type { IDataType, IPageResult } from './types';
 import type { PostSubTabKey } from '@/types/profile';
@@ -299,7 +300,7 @@ export function uploadChunkApi(
   return hyRequest.post<IDataType<IChunkUploadStatus>>({
     url: '/file/upload/chunk',
     data: formData,
-    timeout: 120_000,
+    timeout: UPLOAD_CHUNK_REQUEST_TIMEOUT_MS,
     signal,
     onUploadProgress: onProgress
       ? (event) => onProgress(event.loaded, event.total)
@@ -548,7 +549,7 @@ export function articleStatusLabel(status: number): string {
 }
 
 /**
- * 文件分片上传：单个请求只携带一个分片，避免大文件或多文件聚合请求触发网关 502。
+ * 文件分片上传：浏览器并发发送多个单分片请求，由 content-service 的独立线程池受控写入 MinIO。
  * 支持按文件 MD5 复用服务端会话，因此网络失败后重新保存可以继续上传已完成分片。
  */
 export async function uploadFileWithProgress(
