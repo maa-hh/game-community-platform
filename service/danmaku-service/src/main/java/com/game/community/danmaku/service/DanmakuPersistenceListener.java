@@ -20,6 +20,7 @@ public class DanmakuPersistenceListener {
 
     private final DanmakuMessageMapper mapper;
     private final UserFeignClient userFeignClient;
+    private final DanmakuRealtimeService realtimeService;
 
     /** 消费可靠弹幕事件并按数据库唯一键完成至少一次投递下的幂等落库。 */
     @KafkaListener(topics = KafkaTopicConstants.DANMAKU_TOPIC, groupId = "${spring.kafka.consumer.group-id:danmaku-persistence}")
@@ -51,7 +52,10 @@ public class DanmakuPersistenceListener {
         entity.setCreateTime(now);
         entity.setUpdateTime(now);
         try {
-            mapper.insert(entity);
+            int inserted = mapper.insert(entity);
+            if (inserted > 0) {
+                realtimeService.publishPersisted(event);
+            }
         } catch (DuplicateKeyException ignored) {
             // Kafka 至少一次消费，eventId/clientMessageId 唯一键保证幂等；直接插入也避免查后插竞态。
         } catch (RuntimeException e) {

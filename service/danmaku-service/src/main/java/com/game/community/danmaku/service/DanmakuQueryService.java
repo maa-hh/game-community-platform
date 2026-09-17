@@ -35,6 +35,7 @@ public class DanmakuQueryService {
     private final ObjectMapper objectMapper;
     private final DanmakuRealtimeService realtimeService;
     private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final DanmakuViewMapper viewMapper;
 
     @Value("${danmaku.history-window-ms:30000}")
     private long maxWindowMs;
@@ -69,7 +70,7 @@ public class DanmakuQueryService {
 
         if (merged.size() < max) {
             mapper.selectHistory(videoPublicId, from, to, max).stream()
-                    .map(this::toVO)
+                    .map(viewMapper::fromEntity)
                     .forEach(vo -> merged.putIfAbsent(vo.getId(), vo));
         }
 
@@ -94,7 +95,7 @@ public class DanmakuQueryService {
             // fallback to MySQL
         }
         DanmakuMessage entity = mapper.selectById(messageId);
-        return entity == null ? null : toVO(entity);
+        return entity == null ? null : viewMapper.fromEntity(entity);
     }
 
     /** 按视频公开 ID 校验归属，只返回仍处于可见状态的弹幕。 */
@@ -124,7 +125,7 @@ public class DanmakuQueryService {
         if (updated > 0) {
             publishHeatRemoval(entity);
         }
-        DanmakuVO removed = cached == null ? toVO(entity) : cached;
+        DanmakuVO removed = cached == null ? viewMapper.fromEntity(entity) : cached;
         evictCache(removed);
         realtimeService.publish(removed.getVideoPublicId(), DanmakuRealtimeMessage.removed(messageId));
     }
@@ -174,21 +175,4 @@ public class DanmakuQueryService {
         }
     }
 
-    private DanmakuVO toVO(DanmakuMessage entity) {
-        DanmakuVO vo = new DanmakuVO();
-        vo.setId(entity.getId());
-        vo.setEventId(entity.getEventId());
-        vo.setClientMessageId(entity.getClientMessageId());
-        vo.setVideoPublicId(entity.getVideoPublicId());
-        vo.setVideoTimeMs(entity.getVideoTimeMs());
-        vo.setDisplayTimeMs(entity.getDisplayTimeMs());
-        vo.setSeq(entity.getSeq());
-        // 弹幕响应只暴露 accountId；内部事件/表仍使用 userId 关联。
-        vo.setAccountId(entity.getAccountId());
-        vo.setUsername(entity.getUsernameSnapshot());
-        vo.setAvatar(entity.getAvatarSnapshot());
-        vo.setContent(entity.getContent());
-        vo.setStatus(entity.getStatus());
-        return vo;
-    }
 }
