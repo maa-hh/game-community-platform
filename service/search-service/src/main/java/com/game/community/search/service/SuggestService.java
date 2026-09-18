@@ -2,8 +2,8 @@ package com.game.community.search.service;
 
 import com.game.community.model.dto.search.SearchCorrectVO;
 import com.game.community.model.dto.search.SearchResult;
+import com.game.community.model.dto.search.SuggestBatchItemDTO;
 import com.game.community.model.dto.search.SuggestionPageDTO;
-import com.game.community.model.elasticsearch.SuggestDocument;
 import com.game.community.model.vo.search.SuggestItemVO;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -18,7 +18,7 @@ public interface SuggestService {
 
     SearchResult getSuggestions(SuggestionPageDTO pageDTO);
 
-    void batchAddSuggestions(List<SuggestDocument> documents);
+    void batchAddSuggestions(List<SuggestBatchItemDTO> items);
 
     void deleteSuggestion(Long id);
 

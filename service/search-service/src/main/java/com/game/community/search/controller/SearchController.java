@@ -5,10 +5,10 @@ import com.game.community.common.annotation.LoginCheck;
 import com.game.community.model.base.PageResult;
 import com.game.community.model.base.Result;
 import com.game.community.model.dto.search.SearchCorrectVO;
+import com.game.community.model.dto.search.SuggestBatchItemDTO;
 import com.game.community.model.dto.search.SearchPageDTO;
 import com.game.community.model.dto.search.SuggestionPageDTO;
 import com.game.community.model.dto.search.SuggestTriggerDTO;
-import com.game.community.model.elasticsearch.SuggestDocument;
 import com.game.community.model.vo.search.SuggestItemVO;
 import com.game.community.model.vo.article.ArticleSearchItemVO;
 import com.game.community.search.service.ArticleSearchService;
@@ -61,7 +61,7 @@ public class SearchController {
         if (searchDTO.getKeyword() != null && !searchDTO.getKeyword().isBlank()) {
             Long userId = UserThreadLocal.getUserId();
             if (userId != null) {
-                searchRecordService.addRecord(userId, searchDTO.getKeyword());
+                searchRecordService.addRecordAsync(userId, searchDTO.getKeyword());
             }
             suggestTermService.triggerByKeywordAsync(searchDTO.getKeyword().trim());
         }
@@ -98,16 +98,25 @@ public class SearchController {
     @Operation(summary = "分页获取建议词列表")
     @GetMapping("/suggest/list")
     @AdminCheck
-    public PageResult<SuggestDocument> getSuggestions(@ModelAttribute SuggestionPageDTO pageDTO) {
+    public PageResult<SuggestItemVO> getSuggestions(@ModelAttribute SuggestionPageDTO pageDTO) {
         var result = suggestService.getSuggestions(pageDTO);
-        return PageResult.of(castItems(result.getList(), SuggestDocument.class), result.getPage(), result.getSize(), result.getTotal());
+        if (!result.isSuccess()) {
+            PageResult<SuggestItemVO> error = new PageResult<>();
+            error.setCode(500);
+            error.setMessage(result.getErrorMsg());
+            error.setPage(result.getPage());
+            error.setSize(result.getSize());
+            error.setTotal(0L);
+            return error;
+        }
+        return PageResult.of(castItems(result.getList(), SuggestItemVO.class), result.getPage(), result.getSize(), result.getTotal());
     }
 
     @Operation(summary = "批量添加建议词")
     @PostMapping("/suggest/batch")
     @AdminCheck
-    public Result<Void> batchAdd(@RequestBody List<SuggestDocument> documents) {
-        suggestService.batchAddSuggestions(documents);
+    public Result<Void> batchAdd(@RequestBody List<SuggestBatchItemDTO> items) {
+        suggestService.batchAddSuggestions(items);
         return Result.success(null);
     }
 
@@ -138,7 +147,9 @@ public class SearchController {
     @PostMapping("/article/rebuild")
     @AdminCheck
     public Result<Void> rebuildArticleIndex() {
-        searchStartupSyncService.rebuildNow();
-        return Result.success(null);
+        if (!searchStartupSyncService.rebuildAsync()) {
+            return Result.error(409, "搜索索引重建任务正在执行，请稍后再试");
+        }
+        return Result.success("搜索索引重建任务已提交");
     }
 }

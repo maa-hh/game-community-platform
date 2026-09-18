@@ -54,6 +54,10 @@ public class ArticleSearchServiceImpl implements ArticleSearchService {
             return searchBm25Only(page, size, keyword, categoryId, true);
         }
         String mode = resolveMode(searchDTO.getMode());
+        if (isAiMode(mode) && page > maxAiPage(size)) {
+            log.info("语义/混合检索超出候选池分页上限，回退词法检索: page={}, size={}", page, size);
+            return searchBm25Only(page, size, keyword, categoryId, false);
+        }
         if (SearchConstants.SEARCH_MODE_SEMANTIC.equals(mode) && shouldUseSemantic(keyword)) {
             SearchResult semanticResult = searchSemantic(page, size, keyword, categoryId);
             if (semanticResult.isSuccess() && hasHits(semanticResult)) {
@@ -68,6 +72,15 @@ public class ArticleSearchServiceImpl implements ArticleSearchService {
             log.warn("混合检索失败，回退词法检索: {}", hybridResult.getErrorMsg());
         }
         return searchBm25Only(page, size, keyword, categoryId, false);
+    }
+
+    private boolean isAiMode(String mode) {
+        return SearchConstants.SEARCH_MODE_SEMANTIC.equals(mode)
+                || SearchConstants.SEARCH_MODE_HYBRID.equals(mode);
+    }
+
+    private int maxAiPage(int size) {
+        return Math.max(1, (SearchConstants.HYBRID_MAX_FETCH + size - 1) / size);
     }
 
     private boolean hasHits(SearchResult result) {

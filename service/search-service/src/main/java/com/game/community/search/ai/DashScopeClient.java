@@ -3,7 +3,6 @@ package com.game.community.search.ai;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.game.community.search.config.SearchAiProperties;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -25,8 +24,6 @@ import java.util.Map;
 public class DashScopeClient {
 
     private final SearchAiProperties properties;
-    @Value("${spring.ai.dashscope.api-key:}")
-    private String apiKey;
 
     private final RestClient restClient;
 
@@ -39,7 +36,7 @@ public class DashScopeClient {
     }
 
     public boolean isConfigured() {
-        return StringUtils.hasText(apiKey) && properties.isEnabled();
+        return StringUtils.hasText(properties.getApiKey()) && properties.isEnabled();
     }
 
     public List<Float> embedding(String text) {
@@ -53,7 +50,7 @@ public class DashScopeClient {
         try {
             response = restClient.post()
                     .uri(properties.getEmbeddingEndpoint())
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + properties.getApiKey())
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(payload)
                     .retrieve()
@@ -96,7 +93,7 @@ public class DashScopeClient {
         try {
             response = restClient.post()
                     .uri(properties.getChatEndpoint())
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + properties.getApiKey())
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(payload)
                     .retrieve()

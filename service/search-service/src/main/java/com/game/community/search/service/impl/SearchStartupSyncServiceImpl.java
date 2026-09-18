@@ -5,57 +5,87 @@ import com.game.community.search.config.SearchSyncProperties;
 import com.game.community.search.service.ArticleSyncService;
 import com.game.community.search.service.GameSearchService;
 import com.game.community.search.service.SearchStartupSyncService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Async;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import javax.sql.DataSource;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class SearchStartupSyncServiceImpl implements SearchStartupSyncService {
 
     private final SearchSyncProperties searchSyncProperties;
     private final ArticleSyncService articleSyncService;
     private final GameSearchService gameSearchService;
     private final DataSource dataSource;
+    private final Executor searchSyncExecutor;
+
+    public SearchStartupSyncServiceImpl(SearchSyncProperties searchSyncProperties,
+                                        ArticleSyncService articleSyncService,
+                                        GameSearchService gameSearchService,
+                                        DataSource dataSource,
+                                        @Qualifier("searchSyncExecutor") Executor searchSyncExecutor) {
+        this.searchSyncProperties = searchSyncProperties;
+        this.articleSyncService = articleSyncService;
+        this.gameSearchService = gameSearchService;
+        this.dataSource = dataSource;
+        this.searchSyncExecutor = searchSyncExecutor;
+    }
 
     @Override
-    @Async("searchSyncExecutor")
-    public void syncOnStartupIfEnabled() {
+    public boolean syncOnStartupIfEnabled() {
         if (!searchSyncProperties.isOnStartup()) {
             log.info("启动数据同步已关闭(search.sync.on-startup=false)");
-            return;
+            return true;
         }
-        rebuildNow();
+        return rebuildInternal();
+    }
+
+    @Override
+    public boolean rebuildAsync() {
+        try {
+            searchSyncExecutor.execute(this::rebuildNow);
+            return true;
+        } catch (RejectedExecutionException e) {
+            log.info("搜索索引重建任务已在执行，拒绝重复提交");
+            return false;
+        }
     }
 
     @Override
     public void rebuildNow() {
+        rebuildInternal();
+    }
+
+    private boolean rebuildInternal() {
         long startedAt = System.currentTimeMillis();
         try (Connection connection = dataSource.getConnection()) {
             if (!tryAcquireLock(connection)) {
                 log.info("已有其他实例执行搜索索引启动重建，本实例跳过");
-                return;
+                return true;
             }
             log.info("开始启动数据同步（文章索引 + 建议词）");
             try {
                 articleSyncService.rebuildAll();
                 gameSearchService.rebuildFromSteam();
                 log.info("启动数据同步完成, costMs={}", System.currentTimeMillis() - startedAt);
+                return true;
             } catch (Exception e) {
                 log.error("启动数据同步失败, costMs={}, reason={}",
                         System.currentTimeMillis() - startedAt, e.getMessage(), e);
+                return false;
             } finally {
                 releaseLock(connection);
             }
         } catch (Exception e) {
             log.error("获取搜索索引启动锁失败, reason={}", e.getMessage(), e);
+            return false;
         }
     }
 

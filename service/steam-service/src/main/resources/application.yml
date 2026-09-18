@@ -87,6 +87,8 @@ steam:
   rate-limit-retry-delay-ms: ${STEAM_RATE_LIMIT_RETRY_DELAY_MS:3000}
   connect-timeout-ms: ${STEAM_CONNECT_TIMEOUT_MS:2000}
   read-timeout-ms: ${STEAM_READ_TIMEOUT_MS:5000}
+  search-outbox:
+    poll-interval-ms: ${STEAM_SEARCH_OUTBOX_POLL_INTERVAL_MS:1000}
 
 xxl:
   job:

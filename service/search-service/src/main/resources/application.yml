@@ -4,14 +4,6 @@ server:
 spring:
   application:
     name: search-service
-  # AI 配置
-  ai:
-    dashscope:
-      enabled: ${SEARCH_DASHSCOPE_ENABLED:false}
-      api-key: ${DASHSCOPE_API_KEY:}
-      chat:
-        options:
-          model: ${DASHSCOPE_CHAT_MODEL:qwen-plus}
   # 数据源配置
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -26,6 +18,7 @@ spring:
     nacos:
       discovery:
         server-addr: ${NACOS_ADDR:localhost:8848}
+        register-enabled: false
       config:
         server-addr: ${NACOS_ADDR:localhost:8848}
         file-extension: yml
@@ -79,6 +72,9 @@ springdoc:
 
 # 搜索同步 / AI
 search:
+  maintenance:
+    suggest-cleanup-cron: ${SEARCH_SUGGEST_CLEANUP_CRON:0 0 3 * * ?}
+    lock-timeout-seconds: ${SEARCH_MAINTENANCE_LOCK_TIMEOUT_SECONDS:0}
   history:
     max-records: ${SEARCH_HISTORY_MAX_RECORDS:10}
   sync:
@@ -86,6 +82,7 @@ search:
   ai:
     # 默认关闭外部 embedding，生产开启前需配置 DASHSCOPE_API_KEY 并完成索引回填。
     enabled: ${SEARCH_AI_ENABLED:false}
+    api-key: ${DASHSCOPE_API_KEY:}
     semantic-enabled: ${SEARCH_SEMANTIC_ENABLED:false}
     hybrid-enabled: ${SEARCH_HYBRID_ENABLED:false}
     ai-suggest-enabled: ${SEARCH_AI_SUGGEST_ENABLED:false}

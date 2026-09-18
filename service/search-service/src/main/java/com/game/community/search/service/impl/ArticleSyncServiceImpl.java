@@ -26,9 +26,11 @@ import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -79,14 +81,22 @@ public class ArticleSyncServiceImpl implements ArticleSyncService {
     @Override
     public void rebuildPublishedArticles() {
         int page = 1;
+        Set<Long> publishedArticleIds = new HashSet<>();
         while (true) {
             PageResult<ArticleListVO> pageResult = Optional.ofNullable(contentFeignClient.listPublishedArticlesPage(page, SearchConstants.ARTICLE_REBUILD_PAGE_SIZE))
                     .map(Result::getData)
                     .orElse(null);
-            if (pageResult == null || pageResult.getData() == null || pageResult.getData().isEmpty()) {
+            if (pageResult == null) {
+                log.warn("文章索引重建中止：内容服务未返回有效分页，跳过陈旧文档清理");
+                return;
+            }
+            if (pageResult.getData() == null || pageResult.getData().isEmpty()) {
                 break;
             }
             for (ArticleListVO article : pageResult.getData()) {
+                if (article.getId() != null) {
+                    publishedArticleIds.add(article.getId());
+                }
                 syncArticle(article.getId());
             }
             if ((long) page * SearchConstants.ARTICLE_REBUILD_PAGE_SIZE >= pageResult.getTotal()) {
@@ -94,6 +104,8 @@ public class ArticleSyncServiceImpl implements ArticleSyncService {
             }
             page++;
         }
+        elasticsearchService.deleteArticlesNotIn(publishedArticleIds);
+        log.info("文章索引重建完成: publishedCount={}", publishedArticleIds.size());
     }
 
     @Override

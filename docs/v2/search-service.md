@@ -77,6 +77,13 @@
 
 **索引设置**：分片数和副本数由 `search.index.*` 配置。
 
+#### game_index_v2（游戏搜索索引）
+
+游戏索引使用 IK 倒排检索，`name/nameZh/nameEn/aliases/shortDescription/genreText` 使用
+`ik_max_word` 建词、`ik_smart` 搜索；`genres/developers/publishers` 用于展示和过滤。
+`price` 为显式对象 mapping，当前兼容字段类型为 `long`、`boolean` 和 `text+keyword`。
+索引采用 `dynamic: strict`，避免 Steam 返回新字段后静默产生不可控 mapping。
+
 ---
 
 ## 3. 功能模块详解
@@ -85,7 +92,7 @@
 
 **初始化类**：`InitElasticsearchIndex`
 
-在服务启动时通过 `IndexInitRunner`（`CommandLineRunner`）调用，自动创建不存在的索引。
+在 `ApplicationReadyEvent` 中调用，先创建/确认索引和 mapping；启动同步完成后才注册 Nacos，避免未就绪实例接收流量。
 
 ```java
 @Slf4j
@@ -219,6 +226,8 @@ public class ArticleSearchSyncMessage implements Serializable {
 
 1. 分页遍历所有已发布文章（每页 100 条）
 2. 对每篇文章调用 `syncArticle` 同步到 ES
+3. 重建完成后用 `search_after` 枚举索引 ID，批量删除源端已不存在的陈旧文章
+4. 游戏目录重建同样清理陈旧游戏文档；分页异常时跳过清理，避免误删
 
 **rebuildArticleSuggestions**：
 
@@ -331,7 +340,7 @@ private int levenshteinDistance(String s1, String s2) {
 | POST | `/search/suggest/batch` | @AdminCheck | 批量添加建议词 |
 | DELETE | `/search/suggest/{id}` | @AdminCheck | 删除建议词 |
 | POST | `/search/suggest/loadFromXls` | @AdminCheck | 从 XLS 文件导入建议词 |
-| POST | `/search/article/rebuild` | @AdminCheck | 重建已发布文章索引 |
+| POST | `/search/article/rebuild` | @AdminCheck | 异步提交已发布文章/游戏索引重建 |
 
 #### 搜索记录管理（SearchRecordController）
 
@@ -447,17 +456,12 @@ server:
 spring:
   application:
     name: search-service
-  ai:
-    dashscope:
-      api-key: ${DASHSCOPE_API_KEY:${DASHSCOPE_API_KEY:your-api-key-here}}
-      chat:
-        options:
-          model: ${DASHSCOPE_CHAT_MODEL:qwen-plus}
   cloud:
     nacos:
       discovery:
         enabled: ${NACOS_DISCOVERY_ENABLED:true}
         server-addr: localhost:8848
+        register-enabled: false # 索引初始化和启动同步完成后由应用显式注册
       config:
         enabled: ${NACOS_CONFIG_ENABLED:false}
         server-addr: localhost:8848
@@ -511,9 +515,13 @@ management:
         include: '*'
 
 search:
+  maintenance:
+    suggest-cleanup-cron: ${SEARCH_SUGGEST_CLEANUP_CRON:0 0 3 * * ?}
+    lock-timeout-seconds: ${SEARCH_MAINTENANCE_LOCK_TIMEOUT_SECONDS:0}
   history:
     max-records: ${SEARCH_HISTORY_MAX_RECORDS:10}
   ai:
+    api-key: ${DASHSCOPE_API_KEY:}
     enabled: ${SEARCH_AI_ENABLED:false}
     semantic-enabled: ${SEARCH_SEMANTIC_ENABLED:false}
     hybrid-enabled: ${SEARCH_HYBRID_ENABLED:false}
@@ -539,14 +547,17 @@ search:
 | `search.history.max-records` | 10 | 每个用户保留的搜索历史条数（最大 100） |
 | `search.ai.semantic-enabled` | false | 是否允许语义向量召回 |
 | `search.ai.hybrid-enabled` | false | 未指定 mode 时是否默认混合检索 |
+| `search.ai.api-key` | - | DashScope API Key，统一由 `DASHSCOPE_API_KEY` 注入 |
+| `search.maintenance.suggest-cleanup-cron` | `0 0 3 * * ?` | 建议词清理时间 |
 | `search.index.*` | 见配置 | ES 分片/副本容量参数 |
 
 开启语义/混合检索前，需要配置 `DASHSCOPE_API_KEY`，并同时设置
 `SEARCH_AI_ENABLED=true`、`SEARCH_SEMANTIC_ENABLED=true`。
 如果希望未指定 `mode` 的请求默认走混合检索，再设置
 `SEARCH_HYBRID_ENABLED=true`。服务重启后会在 `article_index_v2` 中按新的 IK mapping
-重建已发布帖子，并在 embedding 服务可用时回填向量；也可以调用管理员接口
-`POST /search/article/rebuild` 手动重建。
+重建已发布帖子，并在 embedding 服务可用时回填向量；管理员接口
+`POST /search/article/rebuild` 只提交后台任务。语义/混合检索候选池最多支持
+`HYBRID_MAX_FETCH=200` 条，超出候选页会安全回退词法检索。
 
 ### 7.3 Feign 依赖
 

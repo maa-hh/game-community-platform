@@ -10,6 +10,7 @@ import co.elastic.clients.elasticsearch.core.search.Hit;
 import com.game.community.common.constant.content.ContentConstants;
 import com.game.community.model.dto.search.SearchCorrectVO;
 import com.game.community.model.dto.search.SearchResult;
+import com.game.community.model.dto.search.SuggestBatchItemDTO;
 import com.game.community.model.dto.search.SuggestionPageDTO;
 import com.game.community.model.elasticsearch.SuggestDocument;
 import com.game.community.model.vo.search.SuggestItemVO;
@@ -135,16 +136,16 @@ public class SuggestServiceImpl implements SuggestService {
     }
 
     @Override
-    public void batchAddSuggestions(List<SuggestDocument> documents) {
-        if (documents == null || documents.isEmpty()) {
+    public void batchAddSuggestions(List<SuggestBatchItemDTO> items) {
+        if (items == null || items.isEmpty()) {
             return;
         }
-        for (SuggestDocument document : documents) {
-            if (document == null || !StringUtils.hasText(document.getSuggest())) {
+        for (SuggestBatchItemDTO item : items) {
+            if (item == null || !StringUtils.hasText(item.getTerm())) {
                 continue;
             }
             suggestTermService.upsertActive(new TermSeed(
-                    document.getSuggest().trim(),
+                    item.getTerm().trim(),
                     SearchConstants.SUGGEST_SOURCE_UPLOAD,
                     null,
                     SearchConstants.WEIGHT_UPLOAD,
@@ -159,7 +160,7 @@ public class SuggestServiceImpl implements SuggestService {
 
     @Override
     public void loadSuggestionsFromXls(MultipartFile file) {
-        List<SuggestDocument> documents = new ArrayList<>();
+        List<SuggestBatchItemDTO> items = new ArrayList<>();
         try (InputStream inputStream = file.getInputStream(); Workbook workbook = WorkbookFactory.create(inputStream)) {
             Sheet sheet = workbook.getSheetAt(0);
             for (int i = 1; i <= sheet.getLastRowNum(); i++) {
@@ -169,12 +170,12 @@ public class SuggestServiceImpl implements SuggestService {
                 }
                 String keyword = getCellValue(row.getCell(0));
                 if (StringUtils.hasText(keyword)) {
-                    SuggestDocument doc = new SuggestDocument();
-                    doc.setSuggest(keyword.trim());
-                    documents.add(doc);
+                    SuggestBatchItemDTO item = new SuggestBatchItemDTO();
+                    item.setTerm(keyword.trim());
+                    items.add(item);
                 }
             }
-            batchAddSuggestions(documents);
+            batchAddSuggestions(items);
         } catch (Exception e) {
             throw new IllegalStateException("从xls文件加载建议词失败", e);
         }

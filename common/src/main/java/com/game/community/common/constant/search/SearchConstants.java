@@ -8,7 +8,8 @@ public final class SearchConstants {
      */
     public static final String ARTICLE_INDEX = "article_index_v2";
     public static final String SUGGEST_INDEX = "suggest_index";
-    public static final String GAME_INDEX = "game_index";
+    /** 游戏索引版本化，避免已有索引的 analyzer 被错误地原地修改。 */
+    public static final String GAME_INDEX = "game_index_v2";
 
     public static final String SEARCH_MODE_LEXICAL = "lexical";
     public static final String SEARCH_MODE_SEMANTIC = "semantic";
@@ -65,10 +66,16 @@ public final class SearchConstants {
 
     /** 混合检索 RRF 的 rank 常数，降低低排名候选的影响。 */
     public static final int HYBRID_RRF_K = 60;
+    public static final float HYBRID_BM25_WEIGHT = 0.45F;
+    public static final float HYBRID_VECTOR_WEIGHT = 0.55F;
+    public static final float HYBRID_DUAL_HIT_BONUS = 0.08F;
 
     /** 启动重建使用 MySQL named lock，避免多实例重复全量重建。 */
     public static final String STARTUP_REBUILD_LOCK = "game-community:search:index-rebuild";
     public static final int STARTUP_REBUILD_LOCK_TIMEOUT_SECONDS = 0;
+    public static final String SUGGEST_CLEANUP_LOCK = "game-community:search:suggest-cleanup";
+    public static final String AI_SUGGEST_LOCK_PREFIX = "game-community:search:ai-suggest:";
+    public static final String GAME_INDEX_LOCK_PREFIX = "game-community:search:game-index:";
 
     /** AI 扩词单次最多写入条数 */
     public static final int AI_SUGGEST_MAX_TERMS = 5;

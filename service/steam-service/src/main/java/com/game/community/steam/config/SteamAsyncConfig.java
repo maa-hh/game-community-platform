@@ -3,6 +3,7 @@ package com.game.community.steam.config;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.concurrent.Executor;
@@ -10,6 +11,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 
 @Configuration
 @EnableAsync
+@EnableScheduling
 public class SteamAsyncConfig {
 
     /** 创建富详情刷新线程池，隔离外部 Steam 慢请求。 */

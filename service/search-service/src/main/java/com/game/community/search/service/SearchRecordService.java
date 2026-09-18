@@ -8,6 +8,8 @@ public interface SearchRecordService {
 
     void addRecord(Long userId, String keyword);
 
+    void addRecordAsync(Long userId, String keyword);
+
     List<SearchHistoryVO> getRecords(Long userId);
 
     boolean deleteRecord(Long userId, Long id);

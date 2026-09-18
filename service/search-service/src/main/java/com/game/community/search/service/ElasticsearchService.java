@@ -6,6 +6,8 @@ import com.game.community.model.elasticsearch.SuggestDocument;
 import com.game.community.model.vo.game.GameListItemVO;
 
 import java.util.List;
+import java.util.Set;
+import java.time.LocalDateTime;
 
 public interface ElasticsearchService {
 
@@ -13,11 +15,17 @@ public interface ElasticsearchService {
 
     void deleteArticle(Long articleId);
 
+    void deleteArticlesNotIn(Set<Long> articleIds);
+
     void indexGame(GameIndexDocument document);
 
     void indexGame(GameListItemVO game);
 
+    void indexGame(GameListItemVO game, LocalDateTime eventTime);
+
     void deleteGame(Long appId);
+
+    void deleteGamesNotIn(Set<Long> appIds);
 
     void batchAddSuggestions(List<SuggestDocument> documents);
 

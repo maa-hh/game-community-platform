@@ -38,7 +38,7 @@ moderation-task-public-id.sql
 search.sql
 search-history-hardening.sql
 search-suggest-term.sql
-search-production-hardening.sql
+search-production-hardening-v2.sql
 search-v2-migration.sql
 ai-agent.sql
 xxl_job_tables.sql
@@ -47,6 +47,7 @@ game-community.sql
 game-follow.sql
 game-chart-snapshot.sql
 steam-game-data-strategy.sql
+steam-search-outbox.sql
 steam-catalog-metrics-backfill.sql
 steam-game-data-normalize.sql
 steam-library-incremental.sql

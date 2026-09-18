@@ -7,6 +7,8 @@ import com.game.community.search.mapper.SearchHistoryMapper;
 import com.game.community.search.service.SearchRecordService;
 import com.game.community.model.vo.search.SearchHistoryVO;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -16,6 +18,7 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class SearchRecordServiceImpl implements SearchRecordService {
 
     private final SearchHistoryMapper searchHistoryMapper;
@@ -31,6 +34,17 @@ public class SearchRecordServiceImpl implements SearchRecordService {
         LocalDateTime now = LocalDateTime.now();
         searchHistoryMapper.upsert(userId, normalized, now);
         trimOldRecords(userId);
+    }
+
+    @Override
+    @Async("taskExecutor")
+    @Transactional(rollbackFor = Exception.class)
+    public void addRecordAsync(Long userId, String keyword) {
+        try {
+            addRecord(userId, keyword);
+        } catch (Exception e) {
+            log.warn("异步保存搜索历史失败: userId={}, keyword={}", userId, keyword, e);
+        }
     }
 
     @Override
