@@ -2,6 +2,7 @@ package com.game.community.audit.service;
 
 import com.game.community.model.base.PageResult;
 import com.game.community.model.dto.audit.HandleModerationTaskDTO;
+import com.game.community.model.dto.audit.ModerationPageQueryDTO;
 import com.game.community.model.message.ModerationTaskMessage;
 import com.game.community.model.message.ReportAuditMessage;
 import com.game.community.model.vo.audit.ModerationTaskDetailVO;
@@ -14,7 +15,7 @@ public interface ModerationService {
 
     void receiveReport(ReportAuditMessage message);
 
-    PageResult<ModerationTaskVO> pageTasks(Long page, Long size, Integer status, String taskType);
+    PageResult<ModerationTaskVO> pageTasks(ModerationPageQueryDTO query);
 
     ModerationTaskDetailVO getDetail(String taskKey, Long viewerId);
 

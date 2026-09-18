@@ -13,7 +13,9 @@ import java.util.List;
 @Mapper
 public interface SocialOutboxMapper extends BaseMapper<SocialOutboxEvent> {
 
-    @Select("SELECT * FROM t_social_outbox "
+    @Select("SELECT id, event_key, event_type, topic, message_key, payload, status, retry_count, "
+            + "next_retry_time, lock_token, lock_time, last_error, create_time, update_time "
+            + "FROM t_social_outbox "
             + "WHERE status IN (0,3) AND (next_retry_time IS NULL OR next_retry_time <= NOW()) "
             + "ORDER BY id LIMIT #{limit}")
     List<SocialOutboxEvent> selectPending(@Param("limit") int limit);

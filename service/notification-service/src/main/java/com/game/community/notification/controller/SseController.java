@@ -1,6 +1,7 @@
 package com.game.community.notification.controller;
 
 import com.game.community.common.annotation.LoginCheck;
+import com.game.community.common.constant.notification.NotificationConstants;
 import com.game.community.model.vo.notification.NotificationMessageVO;
 import com.game.community.model.vo.notification.NotificationSummaryVO;
 import com.game.community.notification.service.NotificationService;
@@ -41,7 +42,8 @@ public class SseController {
         Long afterId = parseEventId(lastEventId);
         List<NotificationMessageVO> replayMessages = afterId == null
                 ? List.of()
-                : notificationService.listMessagesAfterId(userId, afterId, 100);
+                : notificationService.listMessagesAfterId(
+                        userId, afterId, NotificationConstants.Pagination.MAX_REPLAY_SIZE);
         sseService.initialize(emitter, summary, replayMessages);
         return emitter;
     }

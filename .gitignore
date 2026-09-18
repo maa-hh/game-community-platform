@@ -47,6 +47,11 @@ frontend/package-lock.json
 logs/
 .pids/
 
+### Local data / backups ###
+backups/
+*.sql.bak
+*.sql.dump
+
 ### Tools / Binaries ###
 .tools/
 *.exe

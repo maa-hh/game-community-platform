@@ -55,7 +55,9 @@ spring:
       eager: true
     openfeign:
       circuitbreaker:
-        enabled: false
+        enabled: true
+        alphanumeric-ids:
+          enabled: true
       client:
         config:
           default:
@@ -89,6 +91,22 @@ spring:
 feign:
   sentinel:
     enabled: true
+
+# AI Feign 远程调用熔断：失败时由共享 fallback 转人工审核，禁止误放行。
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        register-health-indicator: false
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 2
+    instances:
+      aiAgentFeignClientmoderate:
+        base-config: default
 
 # MinIO 配置
 minio:

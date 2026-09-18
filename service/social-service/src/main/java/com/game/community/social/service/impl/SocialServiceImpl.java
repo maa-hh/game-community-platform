@@ -59,7 +59,6 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -96,7 +95,8 @@ public class SocialServiceImpl implements SocialService {
     public Long addComment(Long userId, AddCommentDTO dto) {
         ArticleListVO article = requirePublishedArticle(dto.getArticleId());
         assertArticleInteractionAllowed(userId, article);
-        if (!dfaAuditUtils.pass(dto.getContent())) {
+        String contentText = dto.getContent().trim();
+        if (!dfaAuditUtils.pass(contentText)) {
             throw new BusinessException("评论包含敏感内容");
         }
         UserCardInternalVO user = currentUser(userId);
@@ -115,7 +115,7 @@ public class SocialServiceImpl implements SocialService {
         content.setCommentId(comment.getId());
         content.setArticleId(article.getId());
         content.setUserId(userId);
-        content.setContent(dto.getContent().trim());
+        content.setContent(contentText);
         content.setCreateTime(LocalDateTime.now());
         content.setUpdateTime(LocalDateTime.now());
         commentContentRepository.save(content);
@@ -193,7 +193,8 @@ public class SocialServiceImpl implements SocialService {
         ArticleListVO article = requirePublishedArticle(comment.getArticleId());
         assertArticleInteractionAllowed(userId, article);
         assertUserInteractionAllowed(userId, comment.getUserId());
-        if (!dfaAuditUtils.pass(dto.getContent())) {
+        String contentText = dto.getContent().trim();
+        if (!dfaAuditUtils.pass(contentText)) {
             throw new BusinessException("回复包含敏感内容");
         }
         Long replyToUserId = null;
@@ -217,7 +218,7 @@ public class SocialServiceImpl implements SocialService {
         reply.setAvatar(user == null || user.getAvatar() == null ? "" : user.getAvatar());
         reply.setReplyToUserId(replyToUserId);
         reply.setReplyToUsername(replyToUser == null ? null : replyToUser.getUsername());
-        reply.setContent(dto.getContent().trim());
+        reply.setContent(contentText);
         reply.setLikeCount(0L);
         reply.setStatus(SocialConstants.ReplyStatus.NORMAL);
         reply.setVersion(0);
@@ -516,7 +517,7 @@ public class SocialServiceImpl implements SocialService {
 
     @Override
     public boolean hasLikedArticle(Long userId, String articlePublicId) {
-        return hasLikedArticle(userId, resolveArticleId(articlePublicId));
+        return hasLikedArticle(userId, requirePublishedArticle(articlePublicId).getId());
     }
 
     @Override
@@ -576,7 +577,7 @@ public class SocialServiceImpl implements SocialService {
 
     @Override
     public ArticleStatsVO getArticleStats(Long userId, String articlePublicId) {
-        ArticleStatsVO stats = getArticleStats(userId, resolveArticleId(articlePublicId));
+        ArticleStatsVO stats = getArticleStats(userId, requirePublishedArticle(articlePublicId).getId());
         stats.setPublicId(articlePublicId);
         return stats;
     }
@@ -621,6 +622,9 @@ public class SocialServiceImpl implements SocialService {
                     if (article == null) {
                         throw new BusinessException("帖子不存在");
                     }
+                    if (!Objects.equals(article.getStatus(), ContentConstants.ArticleStatus.PUBLISHED)) {
+                        throw new BusinessException("帖子不存在");
+                    }
                     return article.getId();
                 })
                 .toList();
@@ -639,11 +643,15 @@ public class SocialServiceImpl implements SocialService {
                 new LambdaQueryWrapper<SocialBrowseHistory>()
                         .eq(SocialBrowseHistory::getUserId, userId)
                         .orderByDesc(SocialBrowseHistory::getUpdateTime));
+        Map<Long, ArticleListVO> articleMap = loadArticleMap(result.getRecords().stream()
+                .map(SocialBrowseHistory::getArticleId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new)));
         List<BrowseHistoryVO> records = result.getRecords().stream().map(item -> {
             BrowseHistoryVO vo = new BrowseHistoryVO();
             vo.setArticleId(item.getArticleId());
             vo.setBrowseTime(item.getUpdateTime() == null ? item.getCreateTime() : item.getUpdateTime());
-            ArticleListVO article = remoteClient.getArticle(item.getArticleId());
+            ArticleListVO article = articleMap.get(item.getArticleId());
             if (article != null && !Objects.equals(article.getStatus(), ContentConstants.ArticleStatus.PUBLISHED)) {
                 return null;
             }
@@ -662,9 +670,13 @@ public class SocialServiceImpl implements SocialService {
                 new LambdaQueryWrapper<SocialArticleLike>()
                         .eq(SocialArticleLike::getUserId, userId)
                         .orderByDesc(SocialArticleLike::getCreateTime));
+        Map<Long, ArticleListVO> articleMap = loadArticleMap(result.getRecords().stream()
+                .map(SocialArticleLike::getArticleId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new)));
         List<ArticleListVO> records = result.getRecords().stream()
                 .map(item -> {
-                    ArticleListVO article = remoteClient.getArticle(item.getArticleId());
+                    ArticleListVO article = articleMap.get(item.getArticleId());
                     if (article != null) {
                         article.setActionTime(item.getCreateTime());
                     }
@@ -892,7 +904,7 @@ public class SocialServiceImpl implements SocialService {
 
     @Override
     public boolean hasFavoritedArticle(Long userId, String articlePublicId) {
-        return hasFavoritedArticle(userId, resolveArticleId(articlePublicId));
+        return hasFavoritedArticle(userId, requirePublishedArticle(articlePublicId).getId());
     }
 
     @Override
@@ -903,9 +915,13 @@ public class SocialServiceImpl implements SocialService {
                 new LambdaQueryWrapper<SocialFavorite>()
                         .eq(SocialFavorite::getUserId, userId)
                         .orderByDesc(SocialFavorite::getCreateTime));
+        Map<Long, ArticleListVO> articleMap = loadArticleMap(result.getRecords().stream()
+                .map(SocialFavorite::getArticleId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new)));
         List<ArticleListVO> records = result.getRecords().stream()
                 .map(item -> {
-                    ArticleListVO article = remoteClient.getArticle(item.getArticleId());
+                    ArticleListVO article = articleMap.get(item.getArticleId());
                     if (article != null) {
                         article.setActionTime(item.getCreateTime());
                     }
@@ -1084,9 +1100,13 @@ public class SocialServiceImpl implements SocialService {
         List<Long> commentIds = result.getRecords().stream().map(SocialComment::getId).toList();
         Map<Long, String> contentMap = commentContentRepository.findByCommentIdIn(commentIds).stream()
                 .collect(Collectors.toMap(SocialCommentContent::getCommentId, SocialCommentContent::getContent));
+        Map<Long, ArticleListVO> articleMap = loadArticleMap(result.getRecords().stream()
+                .map(SocialComment::getArticleId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new)));
         Set<Long> likedIds = likedCommentIds(userId, commentIds);
         List<MyCommentFeedVO> records = result.getRecords().stream().map(item -> {
-            ArticleListVO article = remoteClient.getArticle(item.getArticleId());
+            ArticleListVO article = articleMap.get(item.getArticleId());
             MyCommentFeedVO vo = new MyCommentFeedVO();
             vo.setId(item.getId());
             vo.setArticleId(item.getArticleId());
@@ -1124,10 +1144,14 @@ public class SocialServiceImpl implements SocialService {
                 ? Collections.emptyMap()
                 : commentContentRepository.findByCommentIdIn(commentIds).stream()
                 .collect(Collectors.toMap(SocialCommentContent::getCommentId, SocialCommentContent::getContent));
+        Map<Long, ArticleListVO> articleMap = loadArticleMap(result.getRecords().stream()
+                .map(SocialReply::getArticleId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new)));
         Set<Long> likedIds = likedReplyIds(userId, replyIds);
         List<MyCommentFeedVO> records = result.getRecords().stream().map(item -> {
             SocialComment parent = commentMap.get(item.getCommentId());
-            ArticleListVO article = remoteClient.getArticle(item.getArticleId());
+            ArticleListVO article = articleMap.get(item.getArticleId());
             MyCommentFeedVO vo = new MyCommentFeedVO();
             vo.setId(item.getId());
             vo.setItemType("reply");
@@ -1174,13 +1198,19 @@ public class SocialServiceImpl implements SocialService {
                 .collect(Collectors.toMap(SocialComment::getId, Function.identity()));
         Map<Long, String> contentMap = commentContentRepository.findByCommentIdIn(commentIds).stream()
                 .collect(Collectors.toMap(SocialCommentContent::getCommentId, SocialCommentContent::getContent));
+        Map<Long, ArticleListVO> articleMap = loadArticleMap(result.getRecords().stream()
+                .map(like -> commentMap.get(like.getCommentId()))
+                .filter(Objects::nonNull)
+                .map(SocialComment::getArticleId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new)));
         List<MyCommentFeedVO> records = new ArrayList<>();
         for (SocialCommentLike like : result.getRecords()) {
             SocialComment comment = commentMap.get(like.getCommentId());
             if (comment == null || !Objects.equals(comment.getStatus(), SocialConstants.CommentStatus.NORMAL)) {
                 continue;
             }
-            ArticleListVO article = remoteClient.getArticle(comment.getArticleId());
+            ArticleListVO article = articleMap.get(comment.getArticleId());
             MyCommentFeedVO vo = new MyCommentFeedVO();
             vo.setId(comment.getId());
             vo.setItemType("comment");
@@ -1222,6 +1252,10 @@ public class SocialServiceImpl implements SocialService {
                 ? Collections.emptyMap()
                 : commentContentRepository.findByCommentIdIn(commentIds).stream()
                 .collect(Collectors.toMap(SocialCommentContent::getCommentId, SocialCommentContent::getContent));
+        Map<Long, ArticleListVO> articleMap = loadArticleMap(replyMap.values().stream()
+                .map(SocialReply::getArticleId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new)));
         List<MyCommentFeedVO> records = new ArrayList<>();
         for (SocialReplyLike like : result.getRecords()) {
             SocialReply reply = replyMap.get(like.getReplyId());
@@ -1229,7 +1263,7 @@ public class SocialServiceImpl implements SocialService {
                 continue;
             }
             SocialComment parent = commentMap.get(reply.getCommentId());
-            ArticleListVO article = remoteClient.getArticle(reply.getArticleId());
+            ArticleListVO article = articleMap.get(reply.getArticleId());
             MyCommentFeedVO vo = new MyCommentFeedVO();
             vo.setId(reply.getId());
             vo.setItemType("reply");
@@ -1286,6 +1320,10 @@ public class SocialServiceImpl implements SocialService {
                 .collect(Collectors.toMap(SocialComment::getId, Function.identity()));
         Map<Long, String> contentMap = commentContentRepository.findByCommentIdIn(commentIds).stream()
                 .collect(Collectors.toMap(SocialCommentContent::getCommentId, SocialCommentContent::getContent));
+        Map<Long, ArticleListVO> articleMap = loadArticleMap(commentMap.values().stream()
+                .map(SocialComment::getArticleId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new)));
         Map<Long, UserCardInternalVO> likerMap = userMap(result.getRecords().stream()
                 .map(SocialCommentLike::getUserId)
                 .distinct()
@@ -1297,7 +1335,7 @@ public class SocialServiceImpl implements SocialService {
                 continue;
             }
             UserCardInternalVO liker = likerMap.get(like.getUserId());
-            ArticleListVO article = remoteClient.getArticle(comment.getArticleId());
+            ArticleListVO article = articleMap.get(comment.getArticleId());
             MyCommentFeedVO vo = new MyCommentFeedVO();
             vo.setId(comment.getId());
             vo.setItemType("comment");
@@ -1353,6 +1391,10 @@ public class SocialServiceImpl implements SocialService {
                 ? Collections.emptyMap()
                 : commentContentRepository.findByCommentIdIn(commentIds).stream()
                 .collect(Collectors.toMap(SocialCommentContent::getCommentId, SocialCommentContent::getContent));
+        Map<Long, ArticleListVO> articleMap = loadArticleMap(replyMap.values().stream()
+                .map(SocialReply::getArticleId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new)));
         Map<Long, UserCardInternalVO> likerMap = userMap(result.getRecords().stream()
                 .map(SocialReplyLike::getUserId)
                 .distinct()
@@ -1365,7 +1407,7 @@ public class SocialServiceImpl implements SocialService {
             }
             SocialComment parent = commentMap.get(reply.getCommentId());
             UserCardInternalVO liker = likerMap.get(like.getUserId());
-            ArticleListVO article = remoteClient.getArticle(reply.getArticleId());
+            ArticleListVO article = articleMap.get(reply.getArticleId());
             MyCommentFeedVO vo = new MyCommentFeedVO();
             vo.setId(reply.getId());
             vo.setItemType("reply");

@@ -142,24 +142,12 @@ public class NotificationEventConsumer {
    - 通过 SQL 原子递增 `unread_notification_count`（`setSql("unread_notification_count = unread_notification_count + 1")`）
    - 通过 SSE 推送 `notification_created` 事件（包含消息体和摘要）
 
-**ensureUserState 机制**：首次消费某用户的通知时，自动创建 `NotificationUserState` 记录。使用 `DuplicateKeyException` 捕获并发创建冲突，由唯一索引兜底。
+**ensureUserState 机制**：首次消费某用户的通知时，使用唯一键保护的 `INSERT ... ON DUPLICATE KEY UPDATE` 幂等创建 `NotificationUserState`，不通过先查后插，避免多实例并发下的竞态。
 
 ```java
 private void ensureUserState(Long userId) {
     if (userId == null) return;
-    if (notificationUserStateMapper.selectCount(
-            new LambdaQueryWrapper<NotificationUserState>().eq(NotificationUserState::getUserId, userId)) > 0) {
-        return;
-    }
-    NotificationUserState state = new NotificationUserState();
-    state.setUserId(userId);
-    state.setUnreadNotificationCount(0L);
-    state.setFeedUnreadFlag(0);
-    try {
-        notificationUserStateMapper.insert(state);
-    } catch (DuplicateKeyException ignored) {
-        // 并发创建时由唯一索引兜底
-    }
+    notificationUserStateMapper.insertIfAbsent(userId);
 }
 ```
 
@@ -439,7 +427,7 @@ management:
 | 参数 | 值 | 说明 |
 |------|------|------|
 | SSE 超时 | 0（永不超时） | SseEmitter 构造参数 |
-| 心跳间隔 | 25000ms | @Scheduled(fixedDelay=25000L) |
+| 心跳间隔 | 10000ms | `notification.sse.heartbeat-interval-ms`，可按部署规模调整 |
 | 默认分页大小 | 20 | listMessages 默认 size |
 | 最大分页大小 | 100 | listMessages 上限 |
 

@@ -65,7 +65,6 @@ public class ReportServiceImpl implements ReportService {
         }
         validateTargetType(dto.getTargetType());
         Long targetId = resolveInternalTargetId(dto.getTargetType(), dto.getTargetId());
-        dto.setInternalTargetId(targetId);
         Long reportedUserId = resolveReportedUserId(userId, dto.getTargetType(), targetId);
         if (reportedUserId != null && reportedUserId.equals(userId)) {
             throw new BusinessException("不能举报自己发布的内容");
@@ -251,6 +250,10 @@ public class ReportServiceImpl implements ReportService {
         }
         if (targetType == SocialConstants.ReportTargetType.ARTICLE) {
             var article = remoteClient.getArticleByPublicId(normalized);
+            if (article == null && normalized.chars().allMatch(Character::isDigit)) {
+                // 兼容旧前端曾发送内部 articleId 的协议，适配只停留在 HTTP 边界。
+                article = remoteClient.getArticle(parseTargetId(normalized));
+            }
             if (article == null || article.getId() == null) {
                 throw new BusinessException("文章不存在");
             }

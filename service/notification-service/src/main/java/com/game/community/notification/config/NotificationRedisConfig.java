@@ -1,6 +1,7 @@
 package com.game.community.notification.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.game.community.common.constant.notification.NotificationConstants;
 import com.game.community.notification.service.impl.SseServiceImpl;
 import com.game.community.notification.sse.NotificationSseBroadcast;
 import lombok.extern.slf4j.Slf4j;
@@ -13,8 +14,6 @@ import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 @Slf4j
 @Configuration
 public class NotificationRedisConfig {
-
-    public static final String SSE_CHANNEL = "notification:sse:broadcast";
 
     @Bean
     public RedisMessageListenerContainer notificationRedisMessageListenerContainer(
@@ -31,7 +30,7 @@ public class NotificationRedisConfig {
             } catch (Exception e) {
                 log.warn("解析通知 SSE 广播失败", e);
             }
-        }, new ChannelTopic(SSE_CHANNEL));
+        }, new ChannelTopic(NotificationConstants.RedisChannel.SSE_BROADCAST));
         return container;
     }
 }

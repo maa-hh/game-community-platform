@@ -13,7 +13,7 @@ export BASE=http://localhost:8080
 
 export JAR=/tmp/game-auth-cookies.txt
 export EMAIL="test-$(date +%s)@qq.com"   # 新注册测试邮箱（需真实可收信域名）
-export EXISTING_EMAIL="3100672662@qq.com"  # 已注册邮箱（按你环境修改）
+export EXISTING_EMAIL="existing-user@example.com"  # 本地已注册邮箱（按你环境修改）
 export PASS="abc123"                       # 合法密码：6-10 位字母数字
 export WRONG_PASS="wrong1"
 
@@ -341,7 +341,7 @@ curl -s -X POST "$BASE/user/auth/login" \
     "accessExpiresIn": 1800,
     "user": {
       "id": 1,
-      "email": "3100672662@qq.com",
+      "email": "existing-user@example.com",
       "nickname": "...",
       "accountId": 10001
     }

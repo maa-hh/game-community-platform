@@ -14,11 +14,11 @@ import com.game.community.model.message.DanmakuEvent;
 import com.game.community.feign.UserFeignClient;
 import com.game.community.feign.ContentFeignClient;
 import com.game.community.model.base.Result;
-import com.game.community.model.vo.notification.NotificationActorVO;
 import com.game.community.model.vo.notification.NotificationCategorySummaryVO;
 import com.game.community.model.vo.notification.NotificationMessageVO;
 import com.game.community.model.vo.notification.NotificationSummaryVO;
 import com.game.community.model.vo.article.ArticleDetailVO;
+import com.game.community.model.vo.article.ArticleListVO;
 import com.game.community.model.vo.user.UserCardInternalVO;
 import com.game.community.notification.mapper.NotificationMessageMapper;
 import com.game.community.notification.mapper.NotificationFeedEventMapper;
@@ -35,12 +35,12 @@ import org.springframework.util.StringUtils;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.util.UUID;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 
 @Service
@@ -66,9 +66,7 @@ public class NotificationServiceImpl implements NotificationService {
             return new NotificationSummaryVO(0L, false, 0L);
         }
         ensureUserState(userId);
-        NotificationUserState state = notificationUserStateMapper.selectOne(new LambdaQueryWrapper<NotificationUserState>()
-                .eq(NotificationUserState::getUserId, userId)
-                .last("LIMIT 1"));
+        NotificationUserState state = notificationUserStateMapper.selectByUserId(userId);
         if (state == null) {
             return new NotificationSummaryVO(0L, false, 0L);
         }
@@ -78,11 +76,7 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     public List<NotificationCategorySummaryVO> getCategorySummaries(Long userId) {
         List<NotificationCategorySummaryVO> list = new ArrayList<>();
-        for (String category : List.of(
-                NotificationCategory.SYSTEM,
-                NotificationCategory.LIKE_FAVORITE,
-                NotificationCategory.FOLLOW,
-                NotificationCategory.COMMENT)) {
+        for (String category : NotificationCategory.all()) {
             NotificationCategorySummaryVO item = new NotificationCategorySummaryVO();
             item.setCategory(category);
             item.setUnreadCount(countUnreadByCategory(userId, category));
@@ -95,33 +89,38 @@ public class NotificationServiceImpl implements NotificationService {
     public PageResult<NotificationMessageVO> listMessages(Long userId, Long page, Long size, Integer eventType) {
         long current = normalizePage(page);
         long pageSize = normalizeSize(size);
+        if (userId == null) {
+            return PageResult.of(List.of(), current, pageSize, 0L);
+        }
         Page<NotificationMessage> result = notificationMessageMapper.selectPage(new Page<>(current, pageSize),
                 new LambdaQueryWrapper<NotificationMessage>()
                         .eq(NotificationMessage::getUserId, userId)
                         .eq(eventType != null, NotificationMessage::getEventType, eventType)
                         .orderByDesc(NotificationMessage::getCreateTime)
                         .orderByDesc(NotificationMessage::getId));
-        List<NotificationMessageVO> records = result.getRecords().stream().map(this::toVO).toList();
+        List<NotificationMessageVO> records = result.getRecords().stream().map(this::toBaseVO).toList();
         enrichAccountIds(records, result.getRecords());
+        enrichArticlePublicIds(records, result.getRecords());
         return PageResult.of(records, current, pageSize, result.getTotal());
     }
 
     @Override
     public PageResult<NotificationMessageVO> listMessagesByCategory(Long userId, Long page, Long size, String category) {
         List<Integer> eventTypes = NotificationCategory.eventTypesOf(category);
-        if (eventTypes.isEmpty()) {
-            return PageResult.of(List.of(), normalizePage(page), normalizeSize(size), 0L);
-        }
         long current = normalizePage(page);
         long pageSize = normalizeSize(size);
+        if (userId == null || eventTypes.isEmpty()) {
+            return PageResult.of(List.of(), current, pageSize, 0L);
+        }
         Page<NotificationMessage> result = notificationMessageMapper.selectPage(new Page<>(current, pageSize),
                 new LambdaQueryWrapper<NotificationMessage>()
                         .eq(NotificationMessage::getUserId, userId)
                         .in(NotificationMessage::getEventType, eventTypes)
                         .orderByDesc(NotificationMessage::getCreateTime)
                         .orderByDesc(NotificationMessage::getId));
-        List<NotificationMessageVO> records = result.getRecords().stream().map(this::toVO).toList();
+        List<NotificationMessageVO> records = result.getRecords().stream().map(this::toBaseVO).toList();
         enrichAccountIds(records, result.getRecords());
+        enrichArticlePublicIds(records, result.getRecords());
         return PageResult.of(records, current, pageSize, result.getTotal());
     }
 
@@ -130,15 +129,16 @@ public class NotificationServiceImpl implements NotificationService {
         if (userId == null || afterId == null || afterId < 0) {
             return List.of();
         }
-        int safeLimit = Math.max(1, Math.min(limit, 100));
+        int safeLimit = Math.max(1, Math.min(limit, NotificationConstants.Pagination.MAX_REPLAY_SIZE));
         List<NotificationMessage> messages = notificationMessageMapper.selectList(
                 new LambdaQueryWrapper<NotificationMessage>()
                         .eq(NotificationMessage::getUserId, userId)
                         .gt(NotificationMessage::getId, afterId)
                         .orderByAsc(NotificationMessage::getId)
                         .last("LIMIT " + safeLimit));
-        List<NotificationMessageVO> records = messages.stream().map(this::toVO).toList();
+        List<NotificationMessageVO> records = messages.stream().map(this::toBaseVO).toList();
         enrichAccountIds(records, messages);
+        enrichArticlePublicIds(records, messages);
         return records;
     }
 
@@ -242,7 +242,7 @@ public class NotificationServiceImpl implements NotificationService {
             feedEvent.setEventId(eventId);
             feedEvent.setFeedItemId(event.getFeedItemId());
             feedEvent.setOccurredAt(eventTime);
-            if (notificationFeedEventMapper.insertIgnore(feedEvent) == 0) {
+            if (notificationFeedEventMapper.insertIfAbsent(feedEvent) == 0) {
                 log.debug("跳过重复 Feed 未读事件: recipient={}, eventId={}",
                         event.getRecipientUserId(), eventId);
                 return null;
@@ -271,26 +271,32 @@ public class NotificationServiceImpl implements NotificationService {
         message.setUserId(event.getRecipientUserId());
         message.setEventType(event.getEventType());
         message.setActorUserId(event.getActorUserId());
-        message.setActorUsername(defaultText(event.getActorUsername()));
-        message.setActorAvatar(defaultText(event.getActorAvatar()));
+        message.setActorUsername(truncate(defaultText(event.getActorUsername()),
+                NotificationConstants.FieldLimit.ACTOR_USERNAME));
+        message.setActorAvatar(truncate(defaultText(event.getActorAvatar()),
+                NotificationConstants.FieldLimit.ACTOR_AVATAR));
         message.setArticleId(event.getArticleId());
         message.setCommentId(event.getCommentId());
         message.setReplyId(event.getReplyId());
         message.setDanmakuId(event.getDanmakuId());
-        message.setVideoPublicId(event.getVideoPublicId());
+        message.setVideoPublicId(truncate(event.getVideoPublicId(),
+                NotificationConstants.FieldLimit.VIDEO_PUBLIC_ID));
         message.setGameAppId(event.getGameAppId());
-        message.setGameReviewId(event.getGameReviewId());
-        message.setGameReviewReplyId(event.getGameReviewReplyId());
+        message.setGameReviewId(truncate(event.getGameReviewId(),
+                NotificationConstants.FieldLimit.GAME_REVIEW_ID));
+        message.setGameReviewReplyId(truncate(event.getGameReviewReplyId(),
+                NotificationConstants.FieldLimit.GAME_REVIEW_ID));
         message.setReportId(event.getReportId());
         message.setTargetUserId(event.getTargetUserId());
-        message.setPreviewText(defaultText(event.getPreviewText()));
+        message.setPreviewText(truncate(defaultText(event.getPreviewText()),
+                NotificationConstants.FieldLimit.PREVIEW_TEXT));
         message.setResultText(defaultText(event.getResultText()));
         message.setRouteType(event.getRouteType() == null ? NotificationConstants.RouteType.NONE : event.getRouteType());
         message.setReadStatus(NotificationConstants.ReadStatus.UNREAD);
         message.setReadTime(LocalDateTime.of(1970, 1, 1, 0, 0));
         message.setOccurredAt(occurredAt);
         message.setCreateTime(LocalDateTime.now());
-        int inserted = notificationMessageMapper.insertIgnore(message);
+        int inserted = notificationMessageMapper.insertIfAbsent(message);
         if (inserted == 0) {
             log.debug("跳过重复通知事件: recipient={}, eventId={}", event.getRecipientUserId(), eventId);
             return null;
@@ -303,10 +309,6 @@ public class NotificationServiceImpl implements NotificationService {
                 .eq(NotificationUserState::getUserId, event.getRecipientUserId())
                 .set(NotificationUserState::getUnreadNotificationCount, nextUnread)
                 .set(NotificationUserState::getUpdateTime, LocalDateTime.now()));
-        NotificationMessage persisted = notificationMessageMapper.selectByEventId(event.getRecipientUserId(), eventId);
-        if (persisted != null) {
-            message = persisted;
-        }
         NotificationSummaryVO summary = toSummary(state);
         NotificationMessageVO vo = toBaseVO(message);
         if (event.getActorAccountId() != null) {
@@ -315,6 +317,7 @@ public class NotificationServiceImpl implements NotificationService {
         if (event.getTargetAccountId() != null) {
             vo.setTargetAccountId(event.getTargetAccountId());
         }
+        enrichArticlePublicIds(List.of(vo), List.of(message));
         sendNotificationAfterCommit(event.getRecipientUserId(), vo, summary);
         return vo;
     }
@@ -380,12 +383,12 @@ public class NotificationServiceImpl implements NotificationService {
         if (userId == null) {
             return;
         }
-        notificationUserStateMapper.insertIgnore(userId);
+        notificationUserStateMapper.insertIfAbsent(userId);
     }
 
     private String eventIdOf(NotificationEventMessage event) {
         if (StringUtils.hasText(event.getEventId())) {
-            return event.getEventId();
+            return normalizeEventId(event.getEventId());
         }
         String businessKey = String.join("|",
                 String.valueOf(event.getRecipientUserId()),
@@ -401,8 +404,8 @@ public class NotificationServiceImpl implements NotificationService {
                 String.valueOf(event.getOccurredAt()),
                 defaultText(event.getPreviewText()),
                 defaultText(event.getResultText()));
-        return "legacy:" + java.util.UUID.nameUUIDFromBytes(
-                businessKey.getBytes(StandardCharsets.UTF_8));
+        return normalizeEventId("legacy:" + UUID.nameUUIDFromBytes(
+                businessKey.getBytes(StandardCharsets.UTF_8)));
     }
 
     private NotificationUserState lockUserState(Long userId) {
@@ -411,7 +414,11 @@ public class NotificationServiceImpl implements NotificationService {
             return state;
         }
         ensureUserState(userId);
-        return notificationUserStateMapper.selectByUserIdForUpdate(userId);
+        state = notificationUserStateMapper.selectByUserIdForUpdate(userId);
+        if (state == null) {
+            throw new IllegalStateException("通知用户状态初始化失败: userId=" + userId);
+        }
+        return state;
     }
 
     private NotificationSummaryVO toSummary(NotificationUserState state) {
@@ -422,19 +429,47 @@ public class NotificationServiceImpl implements NotificationService {
         );
     }
 
-    private NotificationMessageVO toVO(NotificationMessage message) {
-        NotificationMessageVO vo = toBaseVO(message);
-        if (message.getArticleId() != null) {
-            try {
-                ArticleDetailVO article = Optional.ofNullable(contentFeignClient.getArticleDetail(message.getArticleId()))
-                        .map(Result::getData)
-                        .orElse(null);
-                vo.setArticlePublicId(article == null ? null : article.getPublicId());
-            } catch (Exception e) {
-                log.warn("解析通知文章信息失败: articleId={}", message.getArticleId(), e);
+    /** 批量补齐公开帖子 ID，避免通知列表按记录逐条调用 content-service。 */
+    private void enrichArticlePublicIds(List<NotificationMessageVO> vos, List<NotificationMessage> messages) {
+        if (vos == null || vos.isEmpty() || messages == null || messages.isEmpty()) {
+            return;
+        }
+        Set<Long> articleIds = new HashSet<>();
+        for (NotificationMessage message : messages) {
+            if (message.getArticleId() != null && message.getArticleId() > 0) {
+                articleIds.add(message.getArticleId());
             }
         }
-        return vo;
+        if (articleIds.isEmpty()) {
+            return;
+        }
+        Map<Long, String> publicIdMap = new HashMap<>();
+        try {
+            Result<List<ArticleListVO>> result = contentFeignClient.listArticlesByIds(new ArrayList<>(articleIds));
+            if (result != null && result.getData() != null) {
+                for (ArticleListVO article : result.getData()) {
+                    if (article.getId() != null && StringUtils.hasText(article.getPublicId())) {
+                        publicIdMap.put(article.getId(), article.getPublicId());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("批量解析通知文章公开 ID 失败: articleCount={}", articleIds.size(), e);
+        }
+        for (int i = 0; i < messages.size() && i < vos.size(); i++) {
+            String publicId = publicIdMap.get(messages.get(i).getArticleId());
+            if (publicId != null) {
+                vos.get(i).setArticlePublicId(publicId);
+            }
+        }
+    }
+
+    /** 将上游过长事件 ID 压缩到数据库协议的 96 字符上限，保持同一事件稳定幂等。 */
+    private String normalizeEventId(String eventId) {
+        if (eventId.length() <= NotificationConstants.FieldLimit.EVENT_ID) {
+            return eventId;
+        }
+        return "hashed:" + UUID.nameUUIDFromBytes(eventId.getBytes(StandardCharsets.UTF_8));
     }
 
     private NotificationMessageVO toBaseVO(NotificationMessage message) {
@@ -556,11 +591,21 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     private long normalizeSize(Long size) {
-        return size == null || size < 1 ? 20 : Math.min(size, 100);
+        return size == null || size < 1
+                ? NotificationConstants.Pagination.DEFAULT_SIZE
+                : Math.min(size, NotificationConstants.Pagination.MAX_SIZE);
     }
 
     private String defaultText(String value) {
         return StringUtils.hasText(value) ? value : "";
+    }
+
+    /** 将上游文本限制在通知表字段长度内，避免坏消息触发无意义的 Kafka 重试。 */
+    private String truncate(String value, int maxLength) {
+        if (value == null || value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, maxLength);
     }
 
     private LocalDateTime defaultTime(LocalDateTime value) {

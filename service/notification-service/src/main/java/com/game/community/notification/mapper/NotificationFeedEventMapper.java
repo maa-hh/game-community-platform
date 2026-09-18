@@ -8,10 +8,11 @@ import org.apache.ibatis.annotations.Param;
 public interface NotificationFeedEventMapper extends BaseMapper<NotificationFeedEvent> {
 
     @Insert("""
-            INSERT IGNORE INTO t_notification_feed_event
+            INSERT INTO t_notification_feed_event
             (user_id, event_id, feed_item_id, occurred_at, create_time)
             VALUES (#{event.userId}, #{event.eventId}, #{event.feedItemId},
                     #{event.occurredAt}, NOW())
+            ON DUPLICATE KEY UPDATE id = id
             """)
-    int insertIgnore(@Param("event") NotificationFeedEvent event);
+    int insertIfAbsent(@Param("event") NotificationFeedEvent event);
 }

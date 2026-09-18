@@ -19,6 +19,7 @@ import com.game.community.feign.UserFeignClient;
 import com.game.community.model.base.PageResult;
 import com.game.community.model.base.Result;
 import com.game.community.model.dto.audit.HandleModerationTaskDTO;
+import com.game.community.model.dto.audit.ModerationPageQueryDTO;
 import com.game.community.model.entity.audit.ModerationTask;
 import com.game.community.model.message.ModerationTaskMessage;
 import com.game.community.model.message.ReportAuditMessage;
@@ -137,7 +138,14 @@ public class ModerationServiceImpl implements ModerationService {
     }
 
     @Override
-    public PageResult<ModerationTaskVO> pageTasks(Long page, Long size, Integer status, String taskType) {
+    public PageResult<ModerationTaskVO> pageTasks(ModerationPageQueryDTO query) {
+        if (query == null) {
+            query = new ModerationPageQueryDTO();
+        }
+        Long page = query.getPage();
+        Long size = query.getSize();
+        Integer status = query.getStatus();
+        String taskType = query.getTaskType();
         if (StringUtils.hasText(taskType) && !TASK_TYPES.contains(taskType)) {
             throw new BusinessException("审核工单类型不合法");
         }
@@ -289,22 +297,27 @@ public class ModerationServiceImpl implements ModerationService {
                     releaseClaim(processing, claim.getClaimToken(), "目标已变化，等待人工确认");
                     continue;
                 }
-                applyAction(processing, action, dto.getHandleRemark(), 0L);
-                taskMapper.update(null, new LambdaUpdateWrapper<ModerationTask>()
-                        .eq(ModerationTask::getId, task.getId())
-                        .eq(ModerationTask::getStatus, ModerationConstants.TaskStatus.PROCESSING)
-                        .eq(ModerationTask::getClaimToken, claim.getClaimToken())
-                        .eq(ModerationTask::getActionRequestId, "")
-                        .set(ModerationTask::getStatus, ModerationConstants.TaskStatus.COMPLETED)
-                        .set(ModerationTask::getHandleAction, action)
-                        .set(ModerationTask::getHandleRemark, dto.getHandleRemark())
-                        .set(ModerationTask::getHandleTime, LocalDateTime.now())
-                        .set(ModerationTask::getLeaseExpireTime, LocalDateTime.of(1970, 1, 1, 0, 0))
-                        .set(ModerationTask::getLastError, "")
-                        .setSql("version = version + 1")
-                        .set(ModerationTask::getUpdateTime, LocalDateTime.now()));
-                publishNotifications(processing, action, dto.getHandleRemark());
-                count++;
+                String requestId = "auto:" + UUID.randomUUID();
+                boolean started = taskPersistenceService.markActionStarted(task.getId(),
+                        ModerationConstants.SYSTEM_HANDLER_ID, claim.getClaimToken(), requestId, claim.getVersion());
+                if (!started) {
+                    releaseClaim(task, claim.getClaimToken(), "自动审核状态已被其他实例变更");
+                    continue;
+                }
+                try {
+                    applyAction(processing, action, dto.getHandleRemark(), 0L);
+                    int finished = taskPersistenceService.markCompleted(task.getId(),
+                            ModerationConstants.SYSTEM_HANDLER_ID, claim.getClaimToken(), requestId,
+                            action, dto.getHandleRemark());
+                    if (finished == 0) {
+                        throw new BusinessException("自动审核状态已被其他实例变更");
+                    }
+                    publishNotifications(processing, action, dto.getHandleRemark());
+                    count++;
+                } catch (RuntimeException ignored) {
+                    taskPersistenceService.releaseAction(task.getId(), ModerationConstants.SYSTEM_HANDLER_ID,
+                            claim.getClaimToken(), requestId, abbreviate(ignored.getMessage()));
+                }
             } catch (RuntimeException ignored) {
                 if (claim != null) {
                     releaseClaim(task, claim.getClaimToken(), abbreviate(ignored.getMessage()));
@@ -529,6 +542,7 @@ public class ModerationServiceImpl implements ModerationService {
                 && task.getTargetType() == SocialConstants.ReportTargetType.FEEDBACK;
         if (task.getReporterId() != null) {
             notificationEventProducer.publishReportResult(
+                    task.getPublicId(),
                     task.getReporterId(),
                     route.routeType(),
                     route.articleId(),
@@ -545,6 +559,7 @@ public class ModerationServiceImpl implements ModerationService {
                 && task.getSubjectUserId() != null
                 && !Objects.equals(task.getSubjectUserId(), task.getReporterId())) {
             notificationEventProducer.publishPenaltyResult(
+                    task.getPublicId(),
                     task.getSubjectUserId(),
                     route.routeType(),
                     route.articleId(),
@@ -569,6 +584,7 @@ public class ModerationServiceImpl implements ModerationService {
                 null, null, null);
         if (ModerationConstants.HandleAction.AUDIT_APPROVE.equals(action)) {
             notificationEventProducer.publishArticleAuditPassed(
+                    task.getPublicId(),
                     task.getSubjectUserId(),
                     route.articleId(),
                     "你的帖子已通过人工审核并发布",

@@ -2,8 +2,11 @@ package com.game.community.ai.service.impl;
 
 import com.game.community.ai.agent.AgentModelRegistry;
 import com.game.community.ai.config.ModerationProperties;
+import com.game.community.ai.concurrency.ModelConcurrencyLimiter;
 import com.game.community.ai.moderation.AhoCorasickSensitiveWordMatcher;
 import com.game.community.ai.moderation.AiModerationScore;
+import com.game.community.ai.metrics.AiModerationMetrics;
+import com.game.community.ai.resilience.ProviderResilienceGuard;
 import com.game.community.ai.service.AiModerationService;
 import com.game.community.model.dto.aiagent.ModerationRequest;
 import com.game.community.model.dto.aiagent.ModerationImageRequest;
@@ -12,6 +15,7 @@ import com.game.community.model.enums.aiagent.ModerationContentType;
 import com.game.community.model.enums.aiagent.ModerationDecision;
 import com.game.community.model.vo.aiagent.ModerationResultVO;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.metadata.Usage;
@@ -27,10 +31,12 @@ import org.springframework.util.StringUtils;
 import java.net.URI;
 import java.net.URL;
 import java.util.Base64;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Collections;
+import java.util.Set;
 import java.util.concurrent.Semaphore;
 
 /** 文本 AC 预审 + 文本/图片模型评分的统一审核流程。 */
@@ -46,6 +52,9 @@ public class AiModerationServiceImpl implements AiModerationService {
     private final PromptTemplate imagePrompt;
     private final PromptTemplate articlePrompt;
     private final Semaphore modelSemaphore;
+    private final ModelConcurrencyLimiter globalConcurrencyLimiter;
+    private final ProviderResilienceGuard providerResilienceGuard;
+    private final AiModerationMetrics metrics;
     private final BeanOutputConverter<AiModerationScore> outputConverter =
             new BeanOutputConverter<>(AiModerationScore.class);
 
@@ -54,9 +63,45 @@ public class AiModerationServiceImpl implements AiModerationService {
                                    ModerationProperties properties,
                                    AhoCorasickSensitiveWordMatcher sensitiveWordMatcher,
                                    ResourceLoader resourceLoader) {
+        this(modelRegistry, properties, sensitiveWordMatcher, resourceLoader, ModelConcurrencyLimiter.allowAll());
+    }
+
+    /** 初始化审核流程，并注入集群级 Provider 并发保护。 */
+    public AiModerationServiceImpl(AgentModelRegistry modelRegistry,
+                                   ModerationProperties properties,
+                                   AhoCorasickSensitiveWordMatcher sensitiveWordMatcher,
+                                   ResourceLoader resourceLoader,
+                                   ModelConcurrencyLimiter globalConcurrencyLimiter) {
+        this(modelRegistry, properties, sensitiveWordMatcher, resourceLoader,
+                globalConcurrencyLimiter, ProviderResilienceGuard.allowAll());
+    }
+
+    /** 初始化审核流程，并注入集群级并发和 Provider 级保护。 */
+    public AiModerationServiceImpl(AgentModelRegistry modelRegistry,
+                                   ModerationProperties properties,
+                                   AhoCorasickSensitiveWordMatcher sensitiveWordMatcher,
+                                   ResourceLoader resourceLoader,
+                                   ModelConcurrencyLimiter globalConcurrencyLimiter,
+                                   ProviderResilienceGuard providerResilienceGuard) {
+        this(modelRegistry, properties, sensitiveWordMatcher, resourceLoader,
+                globalConcurrencyLimiter, providerResilienceGuard, AiModerationMetrics.noOp());
+    }
+
+    /** 初始化审核流程，并注入并发、Provider 和指标组件。 */
+    @Autowired
+    public AiModerationServiceImpl(AgentModelRegistry modelRegistry,
+                                   ModerationProperties properties,
+                                   AhoCorasickSensitiveWordMatcher sensitiveWordMatcher,
+                                   ResourceLoader resourceLoader,
+                                   ModelConcurrencyLimiter globalConcurrencyLimiter,
+                                   ProviderResilienceGuard providerResilienceGuard,
+                                   AiModerationMetrics metrics) {
         this.modelRegistry = modelRegistry;
         this.properties = properties;
         this.sensitiveWordMatcher = sensitiveWordMatcher;
+        this.globalConcurrencyLimiter = globalConcurrencyLimiter;
+        this.providerResilienceGuard = providerResilienceGuard;
+        this.metrics = metrics;
         this.systemPrompt = new PromptTemplate(resourceLoader.getResource(properties.getSystemPromptPath()));
         this.textPrompt = new PromptTemplate(resourceLoader.getResource(properties.getTextPromptPath()));
         this.imagePrompt = new PromptTemplate(resourceLoader.getResource(properties.getImagePromptPath()));
@@ -70,11 +115,14 @@ public class AiModerationServiceImpl implements AiModerationService {
         if (request == null || request.getType() == null) {
             return invalid(null, "审核类型不能为空");
         }
-        return switch (request.getType()) {
+        long start = System.nanoTime();
+        ModerationResultVO result = switch (request.getType()) {
             case TEXT -> moderateText(request);
             case IMAGE -> moderateImage(request);
             case ARTICLE -> moderateArticle(request);
         };
+        metrics.recordRequest(request.getType(), result, durationMs(start));
+        return result;
     }
 
     /** 文本先本地快速拒绝，未命中时才消耗模型调用。 */
@@ -128,11 +176,22 @@ public class AiModerationServiceImpl implements AiModerationService {
             return result;
         }
         result.setKeywordAudit(ModerationCheckResult.PASS);
+        List<ModerationImageRequest> images = request.getImages() == null
+                ? Collections.emptyList() : request.getImages();
+        long imageCount = images.stream().filter(this::hasImage).count();
+        if (imageCount > Math.max(0, properties.getMaxArticleImages())) {
+            return unavailable(result, new IllegalArgumentException("article image count exceeds configured limit"));
+        }
+        if (!StringUtils.hasText(fullText) && images.stream().noneMatch(this::hasImage)) {
+            result.setAiAudit(ModerationCheckResult.PASS);
+            result.setScore(10);
+            result.setReason("空文章无需审核");
+            result.setResult(ModerationDecision.PASS);
+            return result;
+        }
         if (fullText.length() > properties.getMaxTextChars()) {
             return unavailable(result, new IllegalArgumentException("article token length exceeds configured limit"));
         }
-        List<ModerationImageRequest> images = request.getImages() == null
-                ? Collections.emptyList() : request.getImages();
         try {
             AgentModelRegistry.ModelClient model = images.stream().anyMatch(this::hasImage)
                     ? modelRegistry.imageModeration(request.getProvider())
@@ -149,6 +208,7 @@ public class AiModerationServiceImpl implements AiModerationService {
         }
     }
 
+    /** 判断文章图片项是否包含可发送给模型的内容。 */
     private boolean hasImage(ModerationImageRequest image) {
         return image != null && (StringUtils.hasText(image.getImageUrl()) || StringUtils.hasText(image.getImageBase64()));
     }
@@ -160,12 +220,12 @@ public class AiModerationServiceImpl implements AiModerationService {
         }
         MimeType mimeType = resolveMimeType(image.getMimeType());
         if (StringUtils.hasText(image.getImageBase64())) {
-            byte[] bytes = Base64.getDecoder().decode(stripDataUrlPrefix(image.getImageBase64()));
+            byte[] bytes = decodeImage(image.getImageBase64());
             user.media(mimeType, new NamedByteArrayResource(bytes));
             return;
         }
         try {
-            user.media(mimeType, URI.create(image.getImageUrl()).toURL());
+            user.media(mimeType, validateImageUrl(image.getImageUrl()));
         } catch (Exception e) {
             throw new IllegalArgumentException("图片 URL 无效", e);
         }
@@ -185,11 +245,11 @@ public class AiModerationServiceImpl implements AiModerationService {
             String userPrompt = imagePrompt.render();
             MimeType mimeType = resolveMimeType(request.getMimeType());
             if (StringUtils.hasText(request.getImageBase64())) {
-                byte[] bytes = Base64.getDecoder().decode(stripDataUrlPrefix(request.getImageBase64()));
+                byte[] bytes = decodeImage(request.getImageBase64());
                 return callModel(result, model, spec -> spec.user(user -> user.text(userPrompt)
                         .media(mimeType, new NamedByteArrayResource(bytes))));
             }
-            URL imageUrl = URI.create(request.getImageUrl()).toURL();
+            URL imageUrl = validateImageUrl(request.getImageUrl());
             return callModel(result, model, spec -> spec.user(user -> user.text(userPrompt)
                     .media(mimeType, imageUrl)));
         } catch (Exception e) {
@@ -203,14 +263,22 @@ public class AiModerationServiceImpl implements AiModerationService {
                                          java.util.function.UnaryOperator<ChatClient.ChatClientRequestSpec> userConfigurer) {
         long start = System.nanoTime();
         boolean acquired = false;
+        boolean globalAcquired = false;
+        boolean providerCallSucceeded = false;
         try {
             acquired = modelSemaphore.tryAcquire();
             if (!acquired) {
                 throw new IllegalStateException("moderation model concurrency limit reached");
             }
+            globalAcquired = globalConcurrencyLimiter.tryAcquire(model.provider());
+            if (!globalAcquired) {
+                throw new IllegalStateException("global moderation model concurrency limit reached");
+            }
             ChatClient.ChatClientRequestSpec request = model.client().prompt()
                     .system(systemPrompt.render() + "\n\n" + outputConverter.getFormat());
-            ChatResponse response = userConfigurer.apply(request).call().chatResponse();
+            ChatResponse response = providerResilienceGuard.execute(model,
+                    () -> userConfigurer.apply(request).call().chatResponse());
+            providerCallSucceeded = true;
             if (response == null || response.getResult() == null || response.getResult().getOutput() == null) {
                 throw new IllegalStateException("模型返回为空");
             }
@@ -236,8 +304,12 @@ public class AiModerationServiceImpl implements AiModerationService {
             result.setDurationMs(durationMs(start));
             return unavailable(result, e);
         } finally {
+            metrics.recordProviderCall(model.provider(), model.model(), providerCallSucceeded, durationMs(start));
             if (acquired) {
                 modelSemaphore.release();
+            }
+            if (globalAcquired) {
+                globalConcurrencyLimiter.release(model.provider());
             }
         }
     }
@@ -258,6 +330,7 @@ public class AiModerationServiceImpl implements AiModerationService {
             case HUMAN_REVIEW -> 5;
         });
         result.setReason(failureReason(exception) + "，已按配置转为" + defaultReason(fallback));
+        metrics.recordFallback(result.getType());
         log.warn("AI审核调用失败: type={}, fallback={}, error={}",
                 result.getType(), fallback, exception.getMessage());
         return result;
@@ -356,6 +429,40 @@ public class AiModerationServiceImpl implements AiModerationService {
         return value.startsWith("data:") && separator >= 0 ? value.substring(separator + 1) : value;
     }
 
+    /** 在 Base64 解码前先检查编码长度，避免超大输入先分配堆内存。 */
+    private byte[] decodeImage(String value) {
+        String encoded = stripDataUrlPrefix(value);
+        long maxEncodedLength = (long) Math.ceil(Math.max(1, properties.getMaxImageBytes()) * 4D / 3D) + 4;
+        if (encoded.length() > maxEncodedLength) {
+            throw new IllegalArgumentException("image bytes exceed configured limit");
+        }
+        byte[] bytes = Base64.getDecoder().decode(encoded);
+        if (bytes.length > Math.max(1, properties.getMaxImageBytes())) {
+            throw new IllegalArgumentException("image bytes exceed configured limit");
+        }
+        return bytes;
+    }
+
+    /** 校验远程图片协议和精确 Host 白名单，默认禁止供应商直接读取外部地址。 */
+    private URL validateImageUrl(String value) {
+        try {
+            URI uri = URI.create(value);
+            if (!("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))
+                    || !StringUtils.hasText(uri.getHost())) {
+                throw new IllegalArgumentException("图片 URL 协议或 Host 无效");
+            }
+            Set<String> allowedHosts = new HashSet<>(properties.getAllowedImageHosts());
+            if (!properties.isAllowRemoteImageUrls() || !allowedHosts.contains(uri.getHost().toLowerCase(Locale.ROOT))) {
+                throw new IllegalArgumentException("图片 URL 不在允许的 Host 白名单");
+            }
+            return uri.toURL();
+        } catch (IllegalArgumentException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("图片 URL 无效", exception);
+        }
+    }
+
     /** 兼容少数模型在 JSON 外包裹 markdown 或思考内容的情况。 */
     private String extractJson(String content) {
         if (!StringUtils.hasText(content)) {
@@ -386,6 +493,7 @@ public class AiModerationServiceImpl implements AiModerationService {
 
     private static class NamedByteArrayResource extends ByteArrayResource {
 
+        /** 保留图片资源类型，供 Spring AI 组装多模态消息。 */
         NamedByteArrayResource(byte[] byteArray) {
             super(byteArray);
         }

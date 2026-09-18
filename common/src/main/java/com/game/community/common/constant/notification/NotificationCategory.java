@@ -15,6 +15,11 @@ public final class NotificationCategory {
     private NotificationCategory() {
     }
 
+    /** 返回通知中心固定分类顺序，供摘要接口和前端 Tab 共用。 */
+    public static List<String> all() {
+        return List.of(SYSTEM, LIKE_FAVORITE, FOLLOW, COMMENT);
+    }
+
     public static List<Integer> eventTypesOf(String category) {
         if (category == null) {
             return List.of();

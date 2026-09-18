@@ -21,6 +21,7 @@ COOKIE_JAR="$(mktemp)"
 TMP="$(mktemp)"
 AUTH_HEADER=""
 ARTICLE_ID=""
+ARTICLE_DB_ID=""
 COMMENT_ID=""
 REPLY_ID=""
 CATEGORY_ID=""
@@ -97,8 +98,8 @@ expect_code 200 "游客 GET /article/latest"
 LATEST_COUNT="$(json_get 'len(d.get("data") or [])' <"$TMP")"
 pass "最新帖数量=$LATEST_COUNT"
 
-# 若已有已发布帖，记下 id 供后续只读校验
-EXISTING_ID="$(json_get '(d.get("data") or [{}])[0].get("id","") if (d.get("data") or []) else ""' <"$TMP")"
+# 若已有已发布帖，记下 publicId 供举报链路校验
+EXISTING_ID="$(json_get '(d.get("data") or [{}])[0].get("publicId","") if (d.get("data") or []) else ""' <"$TMP")"
 
 section "2. 注册 / 登录"
 clear_email_limits
@@ -152,8 +153,12 @@ ARTICLE_ID="$(json_get 'd.get("data")' <"$TMP")"
 [[ -n "$ARTICLE_ID" && "$ARTICLE_ID" != "None" ]] || fail "未返回 articleId"
 pass "articleId=$ARTICLE_ID"
 
-# 审核链路可能未完全跑通：直接 SQL 置为已发布，保证后续社交接口可测
-sql_exec "USE game_community; UPDATE t_article SET status=1, published_time=NOW(), update_time=NOW() WHERE id=$ARTICLE_ID;" \
+# 审核链路可能未完全跑通：直接 SQL 置为已发布，保证后续社交接口可测。
+# HTTP 接口使用 publicId，只有这条测试脚本的数据库适配需要内部主键。
+ARTICLE_DB_ID="$(sql_exec "USE game_community; SELECT id FROM t_article WHERE public_id='$ARTICLE_ID' LIMIT 1;")" \
+  || fail "SQL 查询文章内部 ID 失败（检查 MySQL 容器与库名）"
+[[ -n "$ARTICLE_DB_ID" ]] || fail "未找到 publicId=$ARTICLE_ID 对应的文章内部 ID"
+sql_exec "USE game_community; UPDATE t_article SET status=1, published_time=NOW(), update_time=NOW() WHERE id=$ARTICLE_DB_ID;" \
   || fail "SQL 发布失败（检查 MySQL 容器与库名）"
 pass "SQL 强制发布 article=$ARTICLE_ID"
 
@@ -161,7 +166,7 @@ section "4. 游客/登录读详情 + 统计"
 # 清掉 Authorization 测游客（另开一次无 header）
 GUEST_TMP="$(mktemp)"
 curl -sS "$API/article/$ARTICLE_ID" >"$GUEST_TMP" || fail "游客详情请求失败"
-python3 -c "import json;d=json.load(open('$GUEST_TMP'));assert d.get('code')==200,d;assert d['data']['id']==$ARTICLE_ID" \
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d.get("code")==200,d; assert d["data"]["publicId"]==sys.argv[2]' "$GUEST_TMP" "$ARTICLE_ID" \
   || fail "游客读详情失败"
 pass "游客可读详情"
 rm -f "$GUEST_TMP"
@@ -193,12 +198,12 @@ pass "收藏检查通过"
 
 curl_json GET '/social/favorite/article/list?page=1&size=20' >/dev/null
 expect_code 200 "我的收藏列表"
-FAV_HIT="$(json_get "any(str(x.get('id'))=='$ARTICLE_ID' for x in (d.get('data') or []))" <"$TMP")"
+FAV_HIT="$(json_get "any(str(x.get('publicId'))=='$ARTICLE_ID' for x in (d.get('data') or []))" <"$TMP")"
 [[ "$FAV_HIT" == "True" ]] || fail "收藏列表未包含 article=$ARTICLE_ID"
 pass "收藏列表包含当前帖"
 
 section "6. 评论 / 回复 / 点赞评论"
-curl_json POST /social/comment "{\"articleId\":$ARTICLE_ID,\"content\":\"联调一级评论\"}" >/dev/null
+curl_json POST /social/comment "{\"articleId\":\"$ARTICLE_ID\",\"content\":\"联调一级评论\"}" >/dev/null
 expect_code 200 "发评论"
 COMMENT_ID="$(json_get 'd.get("data")' <"$TMP")"
 pass "commentId=$COMMENT_ID"
@@ -238,12 +243,13 @@ curl_json GET "/user/ids?ids=$ACCOUNT_ID" >/dev/null
 expect_code 200 "批量用户名片"
 
 section "9. 举报（可选）"
-curl_json POST /report "{\"targetType\":1,\"targetId\":$ARTICLE_ID,\"reason\":\"联调举报\"}" >/dev/null
+REPORT_TARGET_ID="${EXISTING_ID:-$ARTICLE_ID}"
+curl_json POST /report "{\"targetType\":1,\"targetId\":\"$REPORT_TARGET_ID\",\"reason\":\"联调举报\"}" >/dev/null
 RCODE="$(json_get 'd.get("code")' <"$TMP")"
 if [[ "$RCODE" == "200" ]]; then
   pass "举报提交成功"
 else
-  warn "举报返回 code=$RCODE（可忽略，若重复举报）"
+  warn "举报返回 code=${RCODE}（可忽略，若重复举报）"
 fi
 
 echo ""

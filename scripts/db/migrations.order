@@ -23,6 +23,7 @@ recommend-hot-rank-idempotency-migration.sql
 recommend-hot-rank-danmaku.sql
 notification.sql
 notification-v2-migration.sql
+notification-encoding-and-index-hardening.sql
 notification-feed-unread-count.sql
 notification-danmaku-migration.sql
 shop.sql
@@ -40,7 +41,6 @@ search-history-hardening.sql
 search-suggest-term.sql
 search-production-hardening-v2.sql
 search-v2-migration.sql
-ai-agent.sql
 xxl_job_tables.sql
 xxl-steam-jobs.sql
 game-community.sql
