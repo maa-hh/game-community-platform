@@ -84,6 +84,7 @@ search:
   sync:
     on-startup: ${SEARCH_SYNC_ON_STARTUP:true}
   ai:
+    # 默认关闭外部 embedding，生产开启前需配置 DASHSCOPE_API_KEY 并完成索引回填。
     enabled: ${SEARCH_AI_ENABLED:false}
     semantic-enabled: ${SEARCH_SEMANTIC_ENABLED:false}
     hybrid-enabled: ${SEARCH_HYBRID_ENABLED:false}

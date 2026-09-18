@@ -91,8 +91,10 @@ public class InitElasticsearchIndex {
                         .numberOfReplicas(String.valueOf(indexProperties.getArticleReplicas()))
                 )
                 .mappings(m -> m
+                        .dynamic(co.elastic.clients.elasticsearch._types.mapping.DynamicMapping.Strict)
                         .properties("id", p -> p.long_(l -> l))
-                        .properties("userId", p -> p.long_(l -> l))
+                        .properties("publicId", p -> p.keyword(k -> k))
+                        .properties("authorAccountId", p -> p.long_(l -> l))
                         .properties("username", p -> p.keyword(k -> k))
                         .properties("avatar", p -> p.keyword(k -> k))
                         .properties("title", p -> p.text(t -> t.analyzer("ik_max_word").searchAnalyzer("ik_smart")))
@@ -113,9 +115,9 @@ public class InitElasticsearchIndex {
                                 .properties("avatar", r -> r.keyword(k -> k))))
                         .properties("videoUrl", p -> p.keyword(k -> k))
                         .properties("categoryId", p -> p.long_(l -> l))
-                        .properties("categoryName", p -> p.keyword(k -> k))
+                        .properties("categoryName", p -> p.text(t -> t.analyzer("ik_max_word").searchAnalyzer("ik_smart")))
                         .properties("categoryIds", p -> p.long_(l -> l))
-                        .properties("categoryNames", p -> p.keyword(k -> k))
+                        .properties("categoryNames", p -> p.text(t -> t.analyzer("ik_max_word").searchAnalyzer("ik_smart")))
                         .properties("gameTags", p -> p.object(o -> o
                                 .properties("appId", g -> g.long_(l -> l))
                                 .properties("name", g -> g.text(t -> t.analyzer("ik_max_word").searchAnalyzer("ik_smart")))
@@ -198,6 +200,8 @@ public class InitElasticsearchIndex {
                             .dims(SearchConstants.EMBEDDING_DIMS)
                             .index(true)
                             .similarity("cosine")))
+                    .properties("publicId", p -> p.keyword(k -> k))
+                    .properties("authorAccountId", p -> p.long_(l -> l))
                     .properties("postType", p -> p.integer(i -> i))
                     .properties("refArticleId", p -> p.keyword(k -> k))
                     .properties("refArticle", p -> p.object(o -> o
@@ -211,6 +215,8 @@ public class InitElasticsearchIndex {
                             .properties("username", r -> r.keyword(k -> k))
                             .properties("avatar", r -> r.keyword(k -> k))))
                     .properties("videoUrl", p -> p.keyword(k -> k))
+                    .properties("categoryName", p -> p.text(t -> t.analyzer("ik_max_word").searchAnalyzer("ik_smart")))
+                    .properties("categoryNames", p -> p.text(t -> t.analyzer("ik_max_word").searchAnalyzer("ik_smart")))
                     .properties("gameTags", p -> p.object(o -> o
                             .properties("appId", g -> g.long_(l -> l))
                             .properties("name", g -> g.text(t -> t.analyzer("ik_max_word").searchAnalyzer("ik_smart")))

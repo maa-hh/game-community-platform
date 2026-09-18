@@ -45,12 +45,12 @@
 
 ### 2.2 Elasticsearch 索引
 
-#### article_index（文章搜索索引）
+#### article_index_v2（文章搜索索引）
 
 | 字段 | 类型 | 分词器 | 说明 |
 |------|------|--------|------|
 | id | long | — | 文章ID |
-| userId | long | — | 作者ID |
+| authorAccountId | long | — | 作者账号ID |
 | username | keyword | — | 作者用户名 |
 | avatar | keyword | — | 作者头像URL |
 | title | text | ik_max_word / ik_smart | 文章标题（搜索权重 ×10） |
@@ -58,7 +58,7 @@
 | content | text | ik_max_word / ik_smart | 文章正文（搜索权重 ×3） |
 | coverUrl | keyword | — | 封面URL |
 | categoryId | long | — | 分类ID |
-| categoryName | keyword | — | 分类名称（搜索权重 ×1） |
+| categoryName | text | ik_max_word / ik_smart | 分类名称（搜索权重 ×1） |
 | status | integer | — | 文章状态 |
 | publishedTime | date | — | 发布时间 |
 | createTime | date | — | 创建时间 |
@@ -115,7 +115,7 @@ public class IndexInitRunner implements CommandLineRunner {
 }
 ```
 
-**article_index 创建代码**：
+**article_index_v2 创建代码**：
 
 ```java
 elasticsearchClient.indices().create(CreateIndexRequest.of(c -> c
@@ -123,7 +123,7 @@ elasticsearchClient.indices().create(CreateIndexRequest.of(c -> c
     .settings(s -> s.numberOfShards("1").numberOfReplicas("0"))
     .mappings(m -> m
         .properties("id", p -> p.long_(l -> l))
-        .properties("userId", p -> p.long_(l -> l))
+        .properties("authorAccountId", p -> p.long_(l -> l))
         .properties("username", p -> p.keyword(k -> k))
         .properties("avatar", p -> p.keyword(k -> k))
         .properties("title", p -> p.text(t -> t.analyzer("ik_max_word").searchAnalyzer("ik_smart")))
@@ -131,7 +131,7 @@ elasticsearchClient.indices().create(CreateIndexRequest.of(c -> c
         .properties("content", p -> p.text(t -> t.analyzer("ik_max_word").searchAnalyzer("ik_smart")))
         .properties("coverUrl", p -> p.keyword(k -> k))
         .properties("categoryId", p -> p.long_(l -> l))
-        .properties("categoryName", p -> p.keyword(k -> k))
+        .properties("categoryName", p -> p.text(t -> t.analyzer("ik_max_word").searchAnalyzer("ik_smart")))
         .properties("status", p -> p.integer(i -> i))
         .properties("publishedTime", p -> p.date(d -> d))
         .properties("createTime", p -> p.date(d -> d))
@@ -155,7 +155,7 @@ elasticsearchClient.indices().create(CreateIndexRequest.of(c -> c
    - sort=latest 或无关键词：按 `publishedTime DESC, id DESC`
 5. 分页：默认每页 10 条，最大 50 条；页码有上限，避免超大 offset 拖垮 ES
 
-6. 语义模式调用 embedding 服务后使用 `embedding` dense_vector 的 kNN 召回；混合模式分别执行词法和向量召回后合并两路结果，保留语义独有召回。请求参数 `mode=lexical|semantic|hybrid`，并受 `search.ai.semantic-enabled` / `search.ai.hybrid-enabled` 控制。
+6. 语义模式调用 embedding 服务后使用 `embedding` dense_vector 的 kNN 召回；混合模式分别执行词法和向量召回，再按排名归一化后进行加权融合，并保留语义独有召回。请求参数 `mode=lexical|semantic|hybrid`，并受 `search.ai.semantic-enabled` / `search.ai.hybrid-enabled` 控制。
 
 ```java
 BoolQuery.Builder boolQuery = new BoolQuery.Builder();
@@ -381,7 +381,7 @@ private int levenshteinDistance(String s1, String s2) {
 ```mermaid
 flowchart TD
     A[GET /search/article?keyword=xxx] --> B[构建 BoolQuery]
-    B --> C[multiMatch: title^4 + summary^2 + content + categoryName]
+    B --> C[multiMatch: title^10 + summary^7 + gameTags.name^5 + content^3 + category]
     C --> D[filter: status=PUBLISHED]
     D --> E{sort 类型?}
     E -->|relevance| F[ES 相关性得分排序]
@@ -402,7 +402,7 @@ flowchart TD
     C -->|UPSERT| D[获取文章详情]
     D --> E{文章已发布?}
     E -->|是| F[补充作者+分类信息]
-    F --> G[写入 article_index]
+    F --> G[写入 article_index_v2]
     G --> H[提取建议词写入 suggest_index]
     E -->|否| I[删除 ES 索引]
     C -->|DELETE| I
@@ -413,7 +413,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     A[ApplicationReady] --> B[IndexInitRunner.run]
-    B --> C[初始化 article_index + suggest_index]
+    B --> C[初始化 article_index_v2 + suggest_index]
     C --> D[rebuildPublishedArticles 重建文章索引]
     D --> E[rebuildArticleSuggestions 重建建议词]
     E --> F[初始化完成]
@@ -540,6 +540,13 @@ search:
 | `search.ai.semantic-enabled` | false | 是否允许语义向量召回 |
 | `search.ai.hybrid-enabled` | false | 未指定 mode 时是否默认混合检索 |
 | `search.index.*` | 见配置 | ES 分片/副本容量参数 |
+
+开启语义/混合检索前，需要配置 `DASHSCOPE_API_KEY`，并同时设置
+`SEARCH_AI_ENABLED=true`、`SEARCH_SEMANTIC_ENABLED=true`。
+如果希望未指定 `mode` 的请求默认走混合检索，再设置
+`SEARCH_HYBRID_ENABLED=true`。服务重启后会在 `article_index_v2` 中按新的 IK mapping
+重建已发布帖子，并在 embedding 服务可用时回填向量；也可以调用管理员接口
+`POST /search/article/rebuild` 手动重建。
 
 ### 7.3 Feign 依赖
 

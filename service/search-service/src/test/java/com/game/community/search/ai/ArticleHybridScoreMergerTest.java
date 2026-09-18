@@ -32,6 +32,20 @@ class ArticleHybridScoreMergerTest {
         assertTrue(merged.get(0).getFinalScore() > merged.get(1).getFinalScore());
     }
 
+    @Test
+    void shouldPreferDualHitWithoutDependingOnRawScoreScale() {
+        ArticleDocument lexicalOnly = article(1L, "lexical");
+        ArticleDocument dualHit = article(2L, "dual");
+
+        List<ArticleHybridHit> merged = ArticleHybridScoreMerger.merge(
+                List.of(hit(lexicalOnly, 1000F), hit(dualHit, 900F)),
+                List.of(hit(dualHit, 0.21F)),
+                2);
+
+        assertEquals(2L, merged.get(0).getArticleId());
+        assertTrue(merged.get(0).getFinalScore() > merged.get(1).getFinalScore());
+    }
+
     private static ArticleDocument article(Long id, String title) {
         ArticleDocument document = new ArticleDocument();
         document.setId(id);
