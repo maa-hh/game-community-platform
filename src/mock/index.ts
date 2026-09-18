@@ -761,42 +761,6 @@ if (ENABLE_MOCK) {
     })),
   }));
 
-  // 推荐页数据（旧接口保留）
-  Mock.mock(/\/api\/recommend/, 'get', () => {
-    const denied = assertAccessToken();
-    if (denied) return denied;
-    return {
-      code: 200,
-      message: 'success',
-      data: {
-        banners: [
-          {
-            id: 10,
-            title: '本周编辑推荐',
-            imageUrl: 'https://picsum.photos/seed/rec1/800/300',
-            link: '/recommend',
-          },
-        ],
-        hotGames: [
-          {
-            id: 101,
-            name: '艾尔登法环',
-            cover: 'https://picsum.photos/seed/game1/200/120',
-            rating: 9.5,
-            tags: ['动作', '开放世界'],
-          },
-          {
-            id: 102,
-            name: '黑神话：悟空',
-            cover: 'https://picsum.photos/seed/game2/200/120',
-            rating: 9.2,
-            tags: ['动作', 'RPG'],
-          },
-        ],
-      },
-    };
-  });
-
   // Mock 仅在开发环境输出刷新链路，生产构建忽略该调试日志。
   // eslint-disable-next-line no-console
   console.info(

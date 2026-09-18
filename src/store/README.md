@@ -12,7 +12,6 @@ store/
 ├── modules/
 │   ├── counter.ts        # counter 模块（同步 action 示例）
 │   ├── home.ts           # home 模块（异步 thunk 示例）
-│   └── recommend.ts      # recommend 模块（异步 thunk 示例）
 └── README.md
 ```
 
@@ -846,7 +845,6 @@ const store = configureStore({
 | --------------------------------------- | --------------------------------------- |
 | `src/components/CounterPanel/index.tsx` | 演示 useAppSelector + shallowEqual      |
 | `src/store/modules/home.ts`             | 演示 createAsyncThunk + extraReducers   |
-| `src/store/modules/recommend.ts`        | 推荐页异步 thunk 示例                   |
 | `src/service/home.ts`                   | 首页 API（被 home thunk 调用）          |
 | `src/views/Home/index.tsx`              | 演示 dispatch(fetchHomeData) + 渲染数据 |
 | `src/views/Recommend/index.tsx`         | 推荐页异步数据展示                      |

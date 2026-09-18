@@ -1,6 +1,4 @@
 import hyRequest from '@/service/request';
-import { BASE_URL } from '@/service/config';
-import { getAccessToken } from '@/utils/storage';
 import type { IDataType } from '@/service/types';
 import { mapArticlesToLatestPosts } from '@/service/social';
 import { fetchArticlesRawByIds } from '@/utils/hydrateArticleForGameRepost';
@@ -11,7 +9,8 @@ import type { LatestPostItem } from '@/types/post';
 export type HotRankBoard = 'total' | 'weekly' | 'daily';
 
 export interface IHotRankItem {
-  id: number;
+  /** 后端公开接口不再返回内部数据库 id；仅作为旧服务兼容兜底。 */
+  id?: number;
   publicId: string;
   rank?: number;
   authorAccountId: number;
@@ -48,13 +47,6 @@ export interface IFetchHotRankParams {
   refresh?: boolean;
 }
 
-export interface IHotRankSsePayload {
-  board: string;
-  categoryId?: number | null;
-  periodKey?: string;
-  updatedAt?: string;
-}
-
 export async function fetchHotRankApi(params: IFetchHotRankParams) {
   const res = await hyRequest.get<IDataType<IHotRankItem[]>>({
     url: '/hot-article/rank',
@@ -68,28 +60,10 @@ export async function fetchHotRankApi(params: IFetchHotRankParams) {
   return res.data || [];
 }
 
-/** SSE：日榜被动刷新（游客也可连接） */
-export function createHotRankEventSource(
-  board: HotRankBoard = 'daily',
-  categoryId?: number,
-): EventSource {
-  const query = new URLSearchParams({ board });
-  if (categoryId != null) {
-    query.set('categoryId', String(categoryId));
-  }
-  const token = getAccessToken();
-  if (token) {
-    query.set('accessToken', token);
-  }
-  return new EventSource(`${BASE_URL}/hot-article/rank/sse/connect?${query}`, {
-    withCredentials: true,
-  });
-}
-
 /** 热榜条目走与首页/动态一致的文章映射（含游戏分享封面） */
 function hotRankItemToArticleRaw(item: IHotRankItem): IArticleRaw {
   return {
-    id: item.id,
+    id: item.id ?? 0,
     publicId: item.publicId,
     authorAccountId: item.authorAccountId,
     username: item.authorName,

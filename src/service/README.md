@@ -12,7 +12,7 @@ service/
 ├── request.ts      # axios 二次封装（HYRequest）
 ├── types.ts        # API 响应类型定义
 ├── home.ts         # 首页相关 API
-├── recommend.ts    # 推荐页相关 API
+├── hotRank.ts      # 推荐页热榜 API
 └── README.md
 ```
 
@@ -318,9 +318,12 @@ export function getGameList() {
 ```
 
 ```ts
-// service/recommend.ts
-export function getRecommendData() {
-  return hyRequest.get<IDataType<IRecommendData>>({ url: '/api/recommend' });
+// service/hotRank.ts
+export function fetchHotRankApi(params: IFetchHotRankParams) {
+  return hyRequest.get<IDataType<IHotRankItem[]>>({
+    url: '/hot-article/rank',
+    params,
+  });
 }
 ```
 
@@ -340,7 +343,7 @@ src/mock/index.ts   ← 开发环境在 index.tsx 中引入
 | ---------------- | ---- | ----------- |
 | `/api/banner`    | GET  | Banner 列表 |
 | `/api/games`     | GET  | 游戏列表    |
-| `/api/recommend` | GET  | 推荐页数据  |
+| `/hot-article/rank` | GET  | 总榜/周榜/日榜热榜 |
 
 新增 mock 接口：在 `mock/index.ts` 中追加 `Mock.mock(...)` 即可。
 
@@ -431,7 +434,6 @@ const { banners, games, loading } = useAppSelector((state) => state.home);
 | `src/mock/index.ts`              | mock 虚拟数据                                     |
 | `src/utils/storage.ts`           | token 读写                                        |
 | `src/store/modules/home.ts`      | 首页数据 thunk                                    |
-| `src/store/modules/recommend.ts` | 推荐页数据 thunk                                  |
 | `src/views/Home/index.tsx`       | 首页展示 mock 数据                                |
 | `src/views/Recommend/index.tsx`  | 推荐页                                            |
 | `src/store/README.md`            | createAsyncThunk、pending/fulfilled/rejected 详解 |

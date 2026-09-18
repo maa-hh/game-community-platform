@@ -7,7 +7,6 @@ import {
 } from 'react-redux';
 import counterReducer from './modules/counter';
 import homeReducer from './modules/home';
-import recommendReducer from './modules/recommend';
 import authReducer from './modules/auth';
 import articleProgressReducer from './modules/articleProgress';
 import notificationReducer from './modules/notification';
@@ -17,7 +16,6 @@ import profileRealtimeReducer from './modules/profileRealtime';
 const appReducer = combineReducers({
   counter: counterReducer,
   home: homeReducer,
-  recommend: recommendReducer,
   auth: authReducer,
   articleProgress: articleProgressReducer,
   notification: notificationReducer,

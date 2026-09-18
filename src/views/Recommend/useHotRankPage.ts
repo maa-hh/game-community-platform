@@ -5,11 +5,9 @@ import { useSearchParams } from 'react-router-dom';
 import { getPageDataCache, setPageDataCache } from '@/hooks/pageDataCache';
 import { useFeedItemLike } from '@/hooks/useFeedItemLike';
 import {
-  createHotRankEventSource,
   fetchHotRankApi,
   mapHotRankItemsToLatest,
   type HotRankBoard,
-  type IHotRankSsePayload,
 } from '@/service/hotRank';
 import { listCategoriesApi, type ICategory } from '@/service/content';
 import type { LatestPostItem } from '@/types/post';
@@ -19,8 +17,6 @@ import {
   normalizePeriodDate,
   parsePeriodKey,
 } from '@/utils/hotRankPeriod';
-
-const SSE_DEBOUNCE_MS = 300;
 
 const HOT_RANK_BOARDS: HotRankBoard[] = ['total', 'weekly', 'daily'];
 
@@ -63,16 +59,11 @@ export function useHotRankPage() {
 
   const periodKey = formatPeriodKey(board, periodDate);
   const todayKey = dayjs().format('YYYY-MM-DD');
-  /** 仅「日榜 + 今天」需要实时 SSE */
+  /** 仅「日榜 + 今天」默认请求实时投影。 */
   const isLiveDaily = board === 'daily' && periodKey === todayKey;
-  /** recommend-service 当前实现只支持主动拉取，旧 SSE 接口已废弃。 */
-  const sseEnabled = false;
 
   const loadSeqRef = useRef(0);
-  const sseDebounceRef = useRef<number | null>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
   const likeInflightRef = useRef(0);
-  const pendingSseReloadRef = useRef(false);
 
   const cacheKey = `recommend:${board}:${categoryId ?? 'all'}:${periodKey}`;
 
@@ -142,79 +133,13 @@ export function useHotRankPage() {
     }
   }, [cacheKey, items, loading]);
 
-  useEffect(() => {
-    const disconnect = () => {
-      eventSourceRef.current?.close();
-      eventSourceRef.current = null;
-      if (sseDebounceRef.current != null) {
-        window.clearTimeout(sseDebounceRef.current);
-        sseDebounceRef.current = null;
-      }
-    };
-
-    // 非日榜今天 / 页面切到后台 / 离开推荐页卸载 → 不连 SSE
-    if (!sseEnabled) {
-      disconnect();
-      return disconnect;
-    }
-
-    const source = createHotRankEventSource('daily', categoryId);
-    eventSourceRef.current = source;
-
-    const scheduleReload = () => {
-      if (sseDebounceRef.current != null) return;
-      sseDebounceRef.current = window.setTimeout(() => {
-        sseDebounceRef.current = null;
-        if (likeInflightRef.current > 0) {
-          pendingSseReloadRef.current = true;
-          return;
-        }
-        void loadRank({ refresh: false, silent: true });
-      }, SSE_DEBOUNCE_MS);
-    };
-
-    const matchesCurrentChannel = (payload: IHotRankSsePayload) => {
-      if (payload.board && payload.board !== 'daily') return false;
-      if (payload.periodKey && payload.periodKey !== todayKey) return false;
-      const payloadCategoryId = payload.categoryId ?? null;
-      const activeCategoryId = categoryId ?? null;
-      return payloadCategoryId === activeCategoryId;
-    };
-
-    const onPayload = (raw: string) => {
-      if (!raw) return;
-      try {
-        const payload = JSON.parse(raw) as IHotRankSsePayload;
-        if (!matchesCurrentChannel(payload)) return;
-        scheduleReload();
-      } catch {
-        // ignore malformed SSE
-      }
-    };
-
-    source.addEventListener('hot_rank_updated', (event) => {
-      onPayload((event as MessageEvent<string>).data);
-    });
-    source.onmessage = (event) => onPayload(event.data);
-    source.onerror = () => {
-      source.close();
-      if (eventSourceRef.current === source) {
-        eventSourceRef.current = null;
-      }
-    };
-
-    return disconnect;
-  }, [categoryId, loadRank, sseEnabled, todayKey]);
-
   const handleLike = useFeedItemLike(setItems, {
     syncHotScore: true,
     inflightRef: likeInflightRef,
     onSettled: () => {
       if (likeInflightRef.current > 0) {
-        pendingSseReloadRef.current = true;
         return;
       }
-      pendingSseReloadRef.current = false;
       void loadRank({ refresh: true, silent: true });
       // 点赞先写业务库，再经 Outbox/Kafka 更新热榜，补拉一次避免读到事件落库前的结果。
       window.setTimeout(() => {
@@ -257,7 +182,6 @@ export function useHotRankPage() {
     periodDate,
     periodKey,
     isLiveDaily,
-    sseEnabled,
     categories,
     items,
     loading,
