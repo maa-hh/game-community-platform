@@ -15,6 +15,7 @@ import StatAction from '@/base-ui/StatAction';
 import ProfileUserLink from '@/components/ProfileUserLink';
 import { formatCardTime } from '@/utils/formatTime';
 import { buildGameDetailNavigationState } from '@/utils/detailNavigation';
+import { preloadGameDetail } from '@/router/preload';
 
 import './style.less';
 
@@ -27,6 +28,7 @@ interface IProps {
   onLikeClick?: MouseEventHandler<HTMLButtonElement>;
   onCommentClick?: MouseEventHandler<HTMLButtonElement>;
   onClick?: MouseEventHandler<HTMLElement>;
+  onIntent?: () => void;
 }
 
 const ContentCard: FC<IProps> = ({
@@ -37,6 +39,7 @@ const ContentCard: FC<IProps> = ({
   onLikeClick,
   onCommentClick,
   onClick,
+  onIntent,
 }) => {
   const location = useLocation();
   const {
@@ -92,6 +95,8 @@ const ContentCard: FC<IProps> = ({
       }${isVideo ? ' is-video' : ''}${hasCardStyle ? ' is-decorated' : ''}`}
       style={hasCardStyle ? cardStyle : undefined}
       onClick={onClick}
+      onMouseEnter={onIntent}
+      onPointerDown={onIntent}
     >
       {showRankBadge ? (
         <div className="content-card__rank-group" aria-label={`第 ${rank} 名`}>
@@ -200,6 +205,8 @@ const ContentCard: FC<IProps> = ({
                   })}
                   className="content-card__tag content-card__tag--game"
                   onClick={(event) => event.stopPropagation()}
+                  onMouseEnter={() => void preloadGameDetail()}
+                  onPointerDown={() => void preloadGameDetail()}
                 >
                   {tag.iconUrl ? (
                     <img

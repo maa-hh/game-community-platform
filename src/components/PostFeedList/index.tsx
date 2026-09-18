@@ -21,6 +21,7 @@ import {
   getPostInteractionScope,
 } from '@/hooks/usePostInteraction';
 import { useAppSelector } from '@/store';
+import { preloadPostDetail } from '@/router/preload';
 
 import { sortHotRankItems } from '@/utils/sortHotRankItems';
 import type { LatestPostItem } from '@/types/post';
@@ -170,6 +171,7 @@ const PostFeedList: FC<IPostFeedListProps> = ({
         rank={showRank ? item.rank : undefined}
         hotScore={showRank ? item.hotScore : undefined}
         onClick={() => onItemClick(item)}
+        onIntent={() => void preloadPostDetail()}
         onLikeClick={
           onLikeClick
             ? (event) => {
@@ -239,6 +241,7 @@ const PostFeedList: FC<IPostFeedListProps> = ({
               rank={item.rank}
               hotScore={item.hotScore}
               onClick={() => onItemClick(item)}
+              onIntent={() => void preloadPostDetail()}
               onLikeClick={
                 onLikeClick
                   ? (event) => {
@@ -281,6 +284,7 @@ const PostFeedList: FC<IPostFeedListProps> = ({
                   hotScore: showRank ? item.hotScore : undefined,
                 }}
                 onClick={() => onItemClick(item)}
+                onIntent={() => void preloadPostDetail()}
                 onLikeClick={
                   onLikeClick
                     ? (event) => {

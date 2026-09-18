@@ -18,6 +18,7 @@ const HotRankRowCard: FC<HotRankRowCardProps> = ({
   hotScore,
   className,
   onClick,
+  onIntent,
   onLikeClick,
 }) => {
   const resolvedRank = rank ?? item.rank;
@@ -30,7 +31,13 @@ const HotRankRowCard: FC<HotRankRowCardProps> = ({
   const rootClass = ['hot-rank-row-card', className].filter(Boolean).join(' ');
 
   return (
-    <article className={rootClass} onClick={onClick} role="presentation">
+    <article
+      className={rootClass}
+      onClick={onClick}
+      onMouseEnter={onIntent}
+      onPointerDown={onIntent}
+      role="presentation"
+    >
       <PostRowPreview
         data={mapLatestPostToRowPreview(item)}
         rank={resolvedRank}

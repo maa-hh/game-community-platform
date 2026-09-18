@@ -22,6 +22,7 @@ export interface OverflowTagRowItem {
   state?: unknown;
   leading?: ReactNode;
   onClick?: MouseEventHandler<HTMLElement>;
+  onIntent?: () => void;
 }
 
 export interface OverflowTagRowProps {
@@ -136,6 +137,8 @@ const TagChip: FC<TagChipProps> = ({
         style={style}
         data-tag-item={measure ? '' : undefined}
         onClick={item.onClick}
+        onMouseEnter={item.onIntent}
+        onPointerDown={item.onIntent}
       >
         {content}
       </Link>

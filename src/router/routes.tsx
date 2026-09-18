@@ -6,6 +6,7 @@ import MainLayout from '@/layouts/Main';
 import HomeLayout from '@/layouts/Home';
 import AuthGuard from '@/router/guards';
 import AdminGuard from '@/router/AdminGuard';
+import { preloadGameDetail, preloadPostDetail } from '@/router/preload';
 
 // 同步引入首屏页面，保证首屏直出、无 loading 闪烁
 import Home from '@/views/Home';
@@ -21,8 +22,8 @@ import Shop from '@/views/Shop';
 
 // 次要页面懒加载，减小首屏 bundle 体积
 const NotFound = lazy(() => import('@/views/NotFound'));
-const PostDetail = lazy(() => import('@/views/PostDetail'));
-const GameDetail = lazy(() => import('@/views/GameDetail'));
+const PostDetail = lazy(preloadPostDetail);
+const GameDetail = lazy(preloadGameDetail);
 const AdminModeration = lazy(() => import('@/views/Admin/Moderation'));
 
 // 用路由表创建 BrowserRouter 实例（数据路由 API）

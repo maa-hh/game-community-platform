@@ -15,6 +15,7 @@ import { resolvePostDisplayTags } from '@/utils/categoryTag';
 import { resolvePostType } from '@/utils/postType';
 import { formatCount } from '@/utils/formatCount';
 import { buildGameDetailNavigationState } from '@/utils/detailNavigation';
+import { preloadGameDetail } from '@/router/preload';
 
 import './style.less';
 
@@ -24,6 +25,7 @@ export interface IFeedMasonryCardProps {
   rank?: number;
   hotScore?: number;
   onClick?: MouseEventHandler<HTMLElement>;
+  onIntent?: () => void;
   onLikeClick?: MouseEventHandler<HTMLButtonElement>;
   onFavoriteClick?: MouseEventHandler<HTMLButtonElement>;
 }
@@ -33,6 +35,7 @@ const FeedMasonryCard: FC<IFeedMasonryCardProps> = ({
   rank,
   hotScore,
   onClick,
+  onIntent,
   onLikeClick,
   onFavoriteClick,
 }) => {
@@ -87,6 +90,7 @@ const FeedMasonryCard: FC<IFeedMasonryCardProps> = ({
           coverUrl: tag.iconUrl,
         }),
         onClick: (event) => event.stopPropagation(),
+        onIntent: () => void preloadGameDetail(),
       });
     });
 
@@ -109,6 +113,8 @@ const FeedMasonryCard: FC<IFeedMasonryCardProps> = ({
       className="feed-masonry-card"
       style={mediaCssVars}
       onClick={onClick}
+      onMouseEnter={onIntent}
+      onPointerDown={onIntent}
       role={onClick ? 'presentation' : undefined}
     >
       <FeedCardCover

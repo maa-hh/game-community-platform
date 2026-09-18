@@ -9,6 +9,7 @@ export interface HotRankRowCardProps {
   hotScore?: number;
   className?: string;
   onClick?: MouseEventHandler<HTMLElement>;
+  onIntent?: () => void;
   onLikeClick?: MouseEventHandler<HTMLButtonElement>;
 }
 
