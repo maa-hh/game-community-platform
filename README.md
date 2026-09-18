@@ -66,4 +66,4 @@ git diff --check
 
 ## 文档和演示视频
 
-技术文档入口是 [`docs/README.md`](docs/README.md)。演示视频建议上传到代码托管平台的 Release、对象存储或视频平台，再把公开链接补到 README；不建议把大体积视频或带真实账号信息的录屏直接提交到 Git。
+技术文档入口是 [`docs/README.md`](docs/README.md)。
