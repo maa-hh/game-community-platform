@@ -11,6 +11,10 @@
 5. Redis Sorted Set 维护总榜、今日日榜和本周周榜实时投影，增量和重建均使用 Lua 原子操作。
 6. 前端主动调用 `/hot-article/rank` 获取榜单，不使用 SSE。
 
+服务启动时默认从行为事件表重建总榜和当前日/周榜的 Redis 投影，避免首个请求同步执行
+聚合。该预热只恢复当前可变投影，不执行日/周终榜固化；终榜固化仍由 XXL-JOB 在时间边界调度。
+可通过 `RECOMMEND_STARTUP_WARMUP_REDIS=false` 关闭启动预热。
+
 消费失败会有限重试，最终进入 `<topic>.DLT`。下游 content-service 暂时不可用时，消费者抛出异常，不静默丢弃事件。
 
 ## Redis
@@ -36,5 +40,5 @@
 - 首次部署建议 `RECOMMEND_KAFKA_AUTO_OFFSET_RESET=earliest`，确认回放完成后再按容量策略调整。
 - 弹幕历史回填按 `t_danmaku_message.status=1` 且视频帖已发布过滤，使用 `backfill-danmaku-{id}` 幂等事件 ID；启动回填和增量任务只插入缺失事件，不删除实时消费已写入的弹幕事件。
 - `hotRankBehaviorBackfillJob` 用于全量重建事实表；上线弹幕迁移后至少执行一次，并随后执行总榜、日榜、周榜重建任务。
-- `hotRankDanmakuBackfillJob` 在维护锁内重建弹幕来源事件并刷新总榜/当前日周榜；生产不建议依赖多实例启动预热，启动预热默认关闭，由 XXL-JOB 统一调度。
+- `hotRankDanmakuBackfillJob` 在维护锁内重建弹幕来源事件并刷新总榜/当前日周榜；多实例启动预热使用同一维护锁，只有持锁实例执行重建。
 - 必须监控 Consumer lag、DLT 数量、行为事件重复数、热榜重建耗时和 Redis 错误率。

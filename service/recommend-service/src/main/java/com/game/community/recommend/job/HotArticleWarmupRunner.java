@@ -10,38 +10,39 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 /**
- * 服务启动后执行一次热榜初始化任务（等同 XXL-JOB 三个新 Job，便于本地/重启后立即可用）。
+ * 服务启动后预热当前 Redis 榜单投影。
+ *
+ * <p>这里不执行日/周终榜固化。终榜固化属于 XXL-JOB 的时间边界任务，不能因为
+ * 某个实例重启就提前关闭窗口或覆盖历史快照。</p>
  */
 @Slf4j
 @Component
-@Order(1)
 @RequiredArgsConstructor
 public class HotArticleWarmupRunner {
 
     private final HotRankService hotRankService;
 
-    @Value("${recommend.startup.run-hot-rank-jobs:true}")
-    private boolean runHotRankJobs;
+    @Value("${recommend.startup.warmup-redis:true}")
+    private boolean warmupRedis;
 
     @EventListener(ApplicationReadyEvent.class)
+    @Order(1)
     public void warmupHotRank() {
-        if (!runHotRankJobs) {
-            log.info("启动热榜任务已关闭（recommend.startup.run-hot-rank-jobs=false）");
+        if (!warmupRedis) {
+            log.info("启动 Redis 热榜预热已关闭（recommend.startup.warmup-redis=false）");
             return;
         }
-        runStep("日榜终榜固化", () -> hotRankService.finalizeDailyBoard(null));
-        runStep("周榜固化", hotRankService::finalizeWeeklyBoard);
-        runStep("总榜重建", hotRankService::rebuildTotalBoard);
-        runStep("日/周实时榜重建", hotRankService::rebuildLivePeriodBoards);
+        runStep("总榜 Redis 投影预热", hotRankService::rebuildTotalBoard);
+        runStep("日/周实时榜 Redis 投影预热", hotRankService::rebuildLivePeriodBoards);
     }
 
     private void runStep(String name, Runnable action) {
         try {
-            log.info("启动热榜任务开始: {}", name);
+            log.info("启动 Redis 热榜预热开始: {}", name);
             action.run();
-            log.info("启动热榜任务完成: {}", name);
+            log.info("启动 Redis 热榜预热完成: {}", name);
         } catch (Exception e) {
-            log.warn("启动热榜任务失败（{}），将在访问或 XXL-JOB 调度时重试: {}", name, e.getMessage());
+            log.warn("启动 Redis 热榜预热失败（{}），将在访问或 XXL-JOB 调度时重试: {}", name, e.getMessage());
         }
     }
 }

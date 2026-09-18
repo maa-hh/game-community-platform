@@ -14,7 +14,6 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
-@Order(0)
 @RequiredArgsConstructor
 public class HotRankBehaviorBackfillRunner {
 
@@ -24,6 +23,7 @@ public class HotRankBehaviorBackfillRunner {
     private boolean backfillBehaviorEvents;
 
     @EventListener(ApplicationReadyEvent.class)
+    @Order(0)
     public void backfillOnStartup() {
         if (!backfillBehaviorEvents) {
             log.info("历史行为回填已关闭（recommend.startup.backfill-behavior-events=false）");
