@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-// 须在 App/store 之前执行：一次性清除旧登录态，便于测试鉴权跳转
+// 须在 App/store 之前执行：开发环境（或显式测试开关）一次性清除旧登录态
 import './bootstrap-clear-auth';
 import App from './App';
 

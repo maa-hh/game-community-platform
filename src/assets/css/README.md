@@ -216,27 +216,30 @@ export default function UserCard() {
 - 检查 `src/index.tsx` 是否引入了 `@/assets/css/index.less`。
 - 工具类定义在 `common.less` 中，只有 `index.less` 被入口引入后才会全局生效。
 
-### Q3: 想新增一个主题色
+### Q3: 想新增一个主题 token
 
-在 `common.less` 的 `:root` 块里同时添加 CSS 变量（用于运行时切换）和 LESS 变量（用于编译期引用），保持两者值一致：
+先确认这个值是否真的需要全局复用。品牌主色固定为橙色 `#ff6600`，不要为了单个页面新增紫色或渐变主题。需要运行时切换的值放在 light/dark 两组 CSS 变量中；只用于 LESS 编译的值才增加 LESS 变量：
 
 ```less
-:root {
-  --color-brand: #722ed1;
+:root,
+[data-theme='light'] {
+  --color-accent: #ff6600;
 }
-@brand-color: #722ed1;
+
+[data-theme='dark'] {
+  --color-accent: #ff6600;
+}
+@accent-color: #ff6600;
 ```
 
 ### Q4: 怎么实现深色模式
 
-在 `common.less` 追加媒体查询或 `[data-theme='dark']` 选择器覆盖 CSS 变量即可，业务代码用 `var(--xxx)` 自动跟随：
+项目由 `useTheme` 写入 `[data-theme='dark']`，因此应在 `[data-theme='dark']` 选择器覆盖 CSS 变量，业务代码使用 `var(--xxx)` 自动跟随。不要只依赖系统媒体查询，否则用户手动主题和 antd token 会不一致：
 
 ```less
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-bg: #1f1f1f;
-    --color-text: #e6e6e6;
-  }
+[data-theme='dark'] {
+  --color-bg: #1f1f1f;
+  --color-text: #e6e6e6;
 }
 ```
 

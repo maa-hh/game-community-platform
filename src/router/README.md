@@ -1,26 +1,55 @@
 # router 路由说明
 
-项目使用 React Router v7 数据路由。路由集中定义在 `src/router/routes.tsx`，`src/router/index.tsx` 只负责挂载 `RouterProvider`。
+项目使用 React Router v7 数据路由。`src/router/routes.tsx` 是唯一路由表，`src/router/index.tsx` 只负责挂载 `RouterProvider` 和 lazy fallback；页面目录不能自行创建 `<BrowserRouter>` 或散落 `<Route>`。
 
 ## 布局层级
 
 ```text
-Root
-├── 全局 AuthModalProvider / 鉴权兜底
-└── Main
-    ├── AppHeader
-    └── 页面内容盒
-
-Login
-└── 登录相关页面与全屏背景
+RootLayout
+├── 全局状态副作用（SSE、资料审核轮询、上传恢复）
+├── AppHeader / AuthModal / ArticleProgressBanner
+└── children
+    ├── HomeLayout → /
+    └── MainLayout → 站内内容盒
+        ├── 游客路由
+        └── AuthGuard → 登录路由 → AdminGuard → 管理员路由
 ```
 
-认证采用全局登录弹窗，不再使用独立认证路由布局。新增页面时先确认应挂在 `Main` 还是 `Home`，再在 `routes.tsx` 的对应 children 中注册。
+登录和注册是全局 `AuthModal`，不是独立 Login layout。`/login` 仅用于兼容旧链接并重定向到 `/`。
 
-## 路由约定
+## 当前路由表
 
-- 页面入口位于 `src/views/<Page>/index.tsx`，页面数据逻辑放在同目录 hook 或 service 层。
-- 不在页面内散落 `<Route>` 或重复创建 Router。
-- 需要登录的交互通过 `useRequireLogin`，不要复制 token 判断和跳转逻辑。
-- 详情页通过 navigation state 传递可选预览数据，但最终以服务端详情为准。
-- 页面刷新、返回和实时失效统一复用现有 `usePageRefresh`、RTK Query invalidation 与导航工具。
+| 路径                | 页面                     | 加载           | 守卫                       |
+| ------------------- | ------------------------ | -------------- | -------------------------- |
+| `/`                 | `views/Home`             | 同步           | 无                         |
+| `/community`        | `views/Community`        | 同步           | 无                         |
+| `/post/:id`         | `views/PostDetail`       | lazy + preload | 无                         |
+| `/game/:appId`      | `views/GameDetail`       | lazy + preload | 无                         |
+| `/recommend`        | `views/Recommend`        | 同步           | 无                         |
+| `/games`            | `views/Games`            | 同步           | 无                         |
+| `/feed`             | `views/Feed`             | 同步           | `AuthGuard`                |
+| `/profile`          | `views/Profile`          | 同步           | `AuthGuard`                |
+| `/search`           | `views/Search`           | 同步           | `AuthGuard`                |
+| `/shop`             | `views/Shop`             | 同步           | `AuthGuard`                |
+| `/notifications`    | `views/Notifications`    | 同步           | `AuthGuard`                |
+| `/post/editor`      | `views/PostEditor`       | 同步           | `AuthGuard`                |
+| `/admin/moderation` | `views/Admin/Moderation` | lazy           | `AuthGuard` + `AdminGuard` |
+| `*`                 | `views/NotFound`         | lazy           | 无                         |
+
+`/about` 重定向到 `/games`。详情页和编辑页标记 `disableKeepAlive`，避免播放器、上传任务或大表单在切换路由后继续占用资源。
+
+## 新增/修改路由流程
+
+1. 在 `views/<Page>/index.tsx` 创建页面，页面不要负责布局壳。
+2. 判断页面属于 Home（全幅）还是 Main（960px 内容盒）。
+3. 在 `routes.tsx` 对应 children 注册，决定同步 import 或 `lazy()`。
+4. 需要登录的页面放入 `AuthGuard`；管理员页面再嵌套 `AdminGuard`。
+5. 详情卡片如有预览数据，只通过 navigation state 作为首屏提示，页面必须请求服务端最终数据。
+6. 运行 lint/typecheck/build，并验证直接刷新目标历史 URL。
+
+## 鉴权和刷新
+
+- 页面级鉴权由 `guards.tsx` 判断本地会话并打开全局登录弹窗。
+- 单次按钮/写操作使用 `useRequireLogin`，不在组件复制 token 判断。
+- 刷新、返回和实时失效分别复用 `usePageRefresh`、导航工具、RTK Query invalidation 和 `profileRealtime`。
+- 认证状态失效由 service 发事件，不在路由层直接显示 Toast。

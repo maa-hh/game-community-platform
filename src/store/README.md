@@ -2,11 +2,13 @@
 
 项目使用 Redux Toolkit。状态按职责分为三类：
 
-| 类型 | 位置 | 规则 |
-| --- | --- | --- |
-| 身份与跨页面业务状态 | `src/store/modules/` | slice/thunk 管理登录、通知、上传进度、实时失效等状态 |
-| 服务端状态 | `src/store/services/` | RTK Query 统一缓存、刷新、失效、分页和并发 |
-| 页面临时状态 | 页面或业务 hook | 仅保留表单、弹窗、当前 tab 等局部状态 |
+完整模块清单和页面消费关系见 [`../../docs/frontend-modules.md`](../../docs/frontend-modules.md)，架构层数据流见 [`../../docs/frontend-architecture.md`](../../docs/frontend-architecture.md)。
+
+| 类型                 | 位置                  | 规则                                                 |
+| -------------------- | --------------------- | ---------------------------------------------------- |
+| 身份与跨页面业务状态 | `src/store/modules/`  | slice/thunk 管理登录、通知、上传进度、实时失效等状态 |
+| 服务端状态           | `src/store/services/` | RTK Query 统一缓存、刷新、失效、分页和并发           |
+| 页面临时状态         | 页面或业务 hook       | 仅保留表单、弹窗、当前 tab 等局部状态                |
 
 ## 当前入口
 
@@ -21,6 +23,12 @@
 - 列表分页使用 infinite query；合并展示前通过 `flattenFeedPages` 或同等纯函数按业务主键去重。
 - 写操作成功后使用 tag invalidation 或 `updateQueryData`，不要同时维护一份独立的页面缓存副本。
 - 需要保留旧数据等待新数据时使用缓存更新，不要先清空列表造成闪烁。
+
+## 当前 reducer 与 endpoint
+
+`src/store/index.ts` 当前注册 `auth`、`articleProgress`、`notification`、`postInteraction`、`profileRealtime` 和 `serverApi`。`serverApi` 当前提供 `communityFeed` 与 `followFeed` 两个 infinite query；它们的 query arg 必须区分用户、排序、分类和分页维度。
+
+新增服务端列表前先判断是否能复用这两个 feed 的模式。只有跨页面且会被多个消费者订阅的状态才进入 Redux；表单输入、当前弹窗和临时 tab 留在页面或业务 hook。
 
 ## Redux slice 约定
 

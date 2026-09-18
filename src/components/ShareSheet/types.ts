@@ -39,13 +39,3 @@ export interface ShareRepostModalProps {
   onCancel: () => void;
   onSubmit: () => void;
 }
-
-/** @deprecated 使用 ShareRepostModalProps */
-export interface RepostModalProps {
-  open: boolean;
-  quote: string;
-  submitting: boolean;
-  onQuoteChange: (value: string) => void;
-  onCancel: () => void;
-  onSubmit: () => void;
-}

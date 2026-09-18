@@ -11,6 +11,11 @@
 # production
 /build
 
+# local generated/exported artifacts
+/output
+/tmp
+*.class
+
 # misc
 .DS_Store
 .env.local

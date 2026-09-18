@@ -64,12 +64,12 @@ src/
 
 **原则：不同页面类型用不同布局壳子，不要全部塞进一个 Main。**
 
-| 布局       | 路径            | 用于       | 包含                                |
-| ---------- | --------------- | ---------- | ----------------------------------- |
-| MainLayout | `layouts/Main/` | 站内浏览页 | Header + `<Outlet />` + 可选 Footer |
-| RootLayout | `layouts/Root/` | 全局 Provider、AuthModal 与 KeepAlive | 应用根壳 |
-| HomeLayout | `layouts/Home/` | 官网首页 | 顶栏 + 无限宽内容 |
-| 无布局     | —               | 404 等     | 直接渲染页面                        |
+| 布局       | 路径            | 用于                                  | 包含                                |
+| ---------- | --------------- | ------------------------------------- | ----------------------------------- |
+| MainLayout | `layouts/Main/` | 站内浏览页                            | Header + `<Outlet />` + 可选 Footer |
+| RootLayout | `layouts/Root/` | 全局 Provider、AuthModal 与 KeepAlive | 应用根壳                            |
+| HomeLayout | `layouts/Home/` | 官网首页                              | 顶栏 + 无限宽内容                   |
+| 无布局     | —               | 404 等                                | 直接渲染页面                        |
 
 ### 路由嵌套示例
 
@@ -129,7 +129,7 @@ assets/
 base-ui/
 ├── Button/
 │   └── index.tsx
-└── InfoCard/      # 示例
+└── SurfaceCard/   # 示例：通用内容盒
     └── index.tsx
 ```
 

@@ -2,6 +2,8 @@
 
 `src/service/` 是前端唯一的 HTTP 访问边界。页面和组件不得直接调用 axios；请求统一通过 `request.ts` 的 `HYRequest`，由服务模块按业务域导出函数。
 
+完整的领域清单、上传/SSE/错误码和后端文档对照见 [`../../docs/frontend-contracts.md`](../../docs/frontend-contracts.md) 与 [`../../docs/frontend-modules.md`](../../docs/frontend-modules.md)。
+
 ## 当前结构
 
 ```text
@@ -54,3 +56,5 @@ REACT_APP_UPLOAD_CONCURRENCY=4
 - 后端可能返回字符串数字的历史字段，在 service 边界归一化；业务层使用稳定的前端类型。
 - 鉴权刷新由 `request.ts` 的单飞逻辑负责；请求层只发出登录失效事件，不直接调用 Ant Design UI。
 - 上传、SSE 和分页接口要保留后端返回的 `page`、`size`、`total`、游标等元数据，不能只返回数组。
+- 新增接口前先对照后端 `docs/architecture/README.md` 和对应 `docs/v2/*`；修改路径、业务码或字段时同步更新类型、mock、页面和联调文档。
+- service 不显示 Toast、不读 React context；错误交给调用方或统一 auth event，避免网络层依赖 UI。

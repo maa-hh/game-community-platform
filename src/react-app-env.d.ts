@@ -18,6 +18,8 @@ declare namespace NodeJS {
     readonly REACT_APP_BASE_URL: string;
     /** 是否启用 mock，对应 .env 中的 REACT_APP_ENABLE_MOCK（'true' | 'false'） */
     readonly REACT_APP_ENABLE_MOCK: string;
+    /** 启动时是否清除登录态，仅用于测试（'true' 时显式开启） */
+    readonly REACT_APP_RESET_AUTH_ON_BOOT: string;
     /** CRA 内置：development | production | test */
     readonly NODE_ENV: 'development' | 'production' | 'test';
   }

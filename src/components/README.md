@@ -50,20 +50,20 @@ ComponentName/
 
 ## 四、业务容器
 
-| 组件                                                   | 结构       | 用途                 |
-| ------------------------------------------------------ | ---------- | -------------------- |
-| `AppHeader`                                            | L 标准模板 | 顶栏                 |
-| `AuthModal`                                            | L          | 全局登录弹窗         |
-| `CommentSection` / `CommentItem`                       | L / M      | 评论体系             |
-| `ShareSheet` / `ShareCard`                             | L / M      | 分享与转发卡         |
-| `FeedPanel` / `PostBottomBar`                          | M          | 信息流壳 / 底栏      |
-| `ArticleProgressBanner`                                | M          | 审核进度条           |
-| `AuthorHeader` / `AuthorScrollBanner` / `FollowButton` | S          | 作者行 / 吸顶 / 关注 |
-| `PostActionBar` / `PostOwnerLinks`                     | S          | 详情互动 / 链接      |
-| `CommentOps` / `CommentReply` / `ReplyPopup`           | S          | 评论操作             |
-| `EmptyState` / `RepostBlock`                          | S          | 空状态等             |
-| `auth/*`                                               | M          | 登录注册表单         |
-| `profile/*`                                            | L / M      | 个人页相关           |
+| 组件                                         | 结构       | 用途            |
+| -------------------------------------------- | ---------- | --------------- |
+| `AppHeader`                                  | L 标准模板 | 顶栏            |
+| `AuthModal`                                  | L          | 全局登录弹窗    |
+| `CommentSection` / `CommentItem`             | L / M      | 评论体系        |
+| `ShareSheet` / `ShareCard`                   | L / M      | 分享与转发卡    |
+| `FeedPanel` / `PostBottomBar`                | M          | 信息流壳 / 底栏 |
+| `ArticleProgressBanner`                      | M          | 审核进度条      |
+| `FollowButton`                               | S          | 关注状态切换    |
+| `PostActionBar` / `PostOwnerLinks`           | S          | 详情互动 / 链接 |
+| `CommentOps` / `CommentReply` / `ReplyPopup` | S          | 评论操作        |
+| `EmptyState` / `RepostBlock`                 | S          | 空状态等        |
+| `auth/*`                                     | M          | 登录注册表单    |
+| `profile/*`                                  | L / M      | 个人页相关      |
 
 级别说明见 `COMPONENT_STRUCTURE.md` §二。
 
@@ -72,7 +72,7 @@ ComponentName/
 | Hook                                               | 用途               |
 | -------------------------------------------------- | ------------------ |
 | `useRequireLogin`                                  | 未登录打开登录弹窗 |
-| `useAuthModal` / `useTheme` / `useNotificationSse`   | 全局 UI / SSE      |
+| `useAuthModal` / `useTheme` / `useNotificationSse` | 全局 UI / SSE      |
 
 ---
 
