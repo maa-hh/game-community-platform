@@ -46,7 +46,7 @@ public class HotArticleJobHandler {
     @XxlJob("hotRankDanmakuBackfillJob")
     public void hotRankDanmakuBackfillJob() {
         log.info("XXL-JOB 触发历史弹幕行为回填");
-        long rows = hotRankBehaviorBackfillService.backfillFromSocial(false);
+        long rows = hotRankBehaviorBackfillService.refreshDanmakuFromSocial();
         log.info("历史弹幕行为回填完成，写入 {} 条，开始刷新热榜投影", rows);
         hotRankService.rebuildTotalBoard();
         hotRankService.rebuildLivePeriodBoards();

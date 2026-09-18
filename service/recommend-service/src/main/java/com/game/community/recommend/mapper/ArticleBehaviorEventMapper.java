@@ -29,6 +29,16 @@ public interface ArticleBehaviorEventMapper extends BaseMapper<ArticleBehaviorEv
     int insertIgnore(ArticleBehaviorEvent event);
 
     @Select("""
+            SELECT COALESCE(SUM(e.score_delta), 0)
+            FROM t_article_behavior_event e
+            WHERE e.article_id = #{articleId}
+              AND e.event_time >= #{start} AND e.event_time < #{end}
+            """)
+    Double sumArticleScore(@Param("articleId") Long articleId,
+                           @Param("start") LocalDateTime start,
+                           @Param("end") LocalDateTime end);
+
+    @Select("""
             SELECT e.article_id AS articleId, SUM(e.score_delta) AS totalScore
             FROM t_article_behavior_event e
             INNER JOIN t_article a ON e.article_id = a.id

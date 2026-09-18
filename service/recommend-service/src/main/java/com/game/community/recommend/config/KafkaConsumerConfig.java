@@ -17,6 +17,7 @@ import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.support.serializer.JsonDeserializer;
 import org.springframework.kafka.listener.ContainerProperties;
 import org.springframework.util.backoff.FixedBackOff;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -26,6 +27,9 @@ import java.util.Map;
  */
 @Configuration
 public class KafkaConsumerConfig {
+
+    @Value("${recommend.kafka.danmaku-concurrency:1}")
+    private int danmakuConcurrency;
 
     @Bean
     public CommonErrorHandler kafkaErrorHandler(KafkaTemplate<String, Object> kafkaTemplate) {
@@ -56,7 +60,7 @@ public class KafkaConsumerConfig {
                 new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory);
         factory.setCommonErrorHandler(kafkaErrorHandler);
-        factory.setConcurrency(3);
+        factory.setConcurrency(resolveConcurrency(kafkaProperties, 3));
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.RECORD);
         return factory;
     }
@@ -80,8 +84,14 @@ public class KafkaConsumerConfig {
                 new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory);
         factory.setCommonErrorHandler(kafkaErrorHandler);
-        factory.setConcurrency(1);
+        factory.setConcurrency(Math.max(1, danmakuConcurrency));
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.RECORD);
         return factory;
+    }
+
+    /** 优先使用 application.yml 的统一并发配置，避免代码硬编码覆盖部署参数。 */
+    private int resolveConcurrency(KafkaProperties kafkaProperties, int defaultValue) {
+        Integer configured = kafkaProperties.getListener().getConcurrency();
+        return configured == null || configured < 1 ? defaultValue : configured;
     }
 }

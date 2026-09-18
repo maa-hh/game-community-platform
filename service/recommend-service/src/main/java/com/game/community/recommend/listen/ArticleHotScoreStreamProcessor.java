@@ -10,6 +10,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
+/** Kafka 普通消费者：名称保留历史兼容，当前不再使用 Kafka Streams。 */
 @Slf4j
 @Component
 @RequiredArgsConstructor

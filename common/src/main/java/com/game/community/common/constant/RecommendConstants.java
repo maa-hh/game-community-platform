@@ -4,14 +4,17 @@ public final class RecommendConstants {
 
     public static final String RANK_KEY_PREFIX = "recommend:rank:";
 
-    public static final String SNAPSHOT_KEY_PREFIX = "recommend:snapshot:";
-
     /** 历史周期被动缓存（查库后写入，带 TTL，非实时榜 Key） */
-    public static final String PASSIVE_CACHE_KEY_PREFIX = "recommend:cache:rank:v2:";
+    public static final String PASSIVE_CACHE_KEY_PREFIX = "recommend:cache:rank:v3:";
 
     public static final String RANK_MAINTENANCE_LOCK_KEY = "recommend:lock:rank-maintenance";
 
     public static final String BEHAVIOR_BACKFILL_LOCK_KEY = "recommend:lock:behavior-backfill";
+
+    /** 公开 refresh 参数的分布式冷却键，避免每个请求同步触发聚合 SQL。 */
+    public static final String REFRESH_COOLDOWN_KEY_PREFIX = "recommend:lock:refresh:";
+
+    public static final long REFRESH_COOLDOWN_SECONDS = 5L;
 
     /** 被动缓存默认 TTL（秒） */
     public static final long PASSIVE_CACHE_TTL_SECONDS = 3600L;
@@ -46,28 +49,8 @@ public final class RecommendConstants {
     /** 回复点赞权重 */
     public static final double REPLY_LIKE_WEIGHT = 1D;
 
-    /** @deprecated 旧公式权重，仅兼容历史文档 */
-    @Deprecated
-    public static final double COMMENT_LIKE_WEIGHT_LEGACY = 1D;
-
-    /** @deprecated 旧公式权重，仅兼容历史文档 */
-    @Deprecated
-    public static final double REPLY_WEIGHT = 2D;
-
-    /** @deprecated 旧公式权重，仅兼容历史文档 */
-    @Deprecated
-    public static final double REPLY_LIKE_WEIGHT_LEGACY = 0.5D;
-
     public static String categoryScope(Long categoryId) {
         return categoryId == null ? CATEGORY_SCOPE_ALL : CATEGORY_SCOPE_PREFIX + categoryId;
-    }
-
-    public static String rankKey(String board, String periodSegment, String categoryScope) {
-        return RANK_KEY_PREFIX + board + ":" + periodSegment + ":" + categoryScope;
-    }
-
-    public static String snapshotKey(String board, String periodKey, String categoryScope) {
-        return SNAPSHOT_KEY_PREFIX + board + ":" + periodKey + ":" + categoryScope;
     }
 
     public static String passiveCacheKey(String board, String periodKey, String categoryScope) {

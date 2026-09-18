@@ -4,10 +4,6 @@ server:
 spring:
   application:
     name: recommend-service
-  # AI 配置
-  ai:
-    dashscope:
-      api-key: ${DASHSCOPE_API_KEY}
   # 数据源配置
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -70,9 +66,13 @@ xxl:
 
 # 推荐配置
 recommend:
+  lock:
+    rank-ttl-seconds: ${RECOMMEND_RANK_LOCK_TTL_SECONDS:600}
+    backfill-ttl-seconds: ${RECOMMEND_BACKFILL_LOCK_TTL_SECONDS:1800}
   kafka:
     consumer-group: ${RECOMMEND_KAFKA_CONSUMER_GROUP:recommend-service-hot-rank}
     danmaku-consumer-group: ${RECOMMEND_KAFKA_DANMAKU_CONSUMER_GROUP:recommend-service-danmaku-hot-rank}
+    danmaku-concurrency: ${RECOMMEND_KAFKA_DANMAKU_CONCURRENCY:1}
   startup:
     # 启动后自动执行热榜初始化（对应 hotRankDailyFinalizeJob / hotRankWeeklyJob / hotRankTotalDailyJob）
     # 生产由 XXL-JOB 调度；本地需要启动即预热时显式开启。

@@ -49,6 +49,12 @@ public class HotRankBehaviorEventServiceImpl implements HotRankBehaviorEventServ
     }
 
     @Override
+    public double sumArticleScore(Long articleId, LocalDateTime start, LocalDateTime end) {
+        Double score = articleBehaviorEventMapper.sumArticleScore(articleId, start, end);
+        return score == null ? 0D : score;
+    }
+
+    @Override
     public List<ArticleRankScoreAgg> aggregate(HotRankBoardType boardType, String periodKey, Long categoryId) {
         LocalDateTime[] range = resolveTimeRange(boardType, periodKey);
         if (categoryId == null) {

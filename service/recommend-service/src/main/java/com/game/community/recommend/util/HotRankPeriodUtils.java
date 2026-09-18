@@ -7,6 +7,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.time.temporal.WeekFields;
 
 public final class HotRankPeriodUtils {
@@ -114,9 +115,16 @@ public final class HotRankPeriodUtils {
 
     /** 解析周榜 periodKey（如 2026-W30）为当周周一（ISO） */
     public static LocalDate parseWeeklyPeriodKey(String periodKey) {
-        String[] parts = periodKey.split("-W");
+        if (periodKey == null || !periodKey.matches("\\d{4}-W\\d{2}")) {
+            throw new DateTimeParseException("非法周榜周期", periodKey == null ? "null" : periodKey, 0);
+        }
+        String[] parts = periodKey.split("-W", 2);
         int year = Integer.parseInt(parts[0]);
         int week = Integer.parseInt(parts[1]);
+        int maxWeek = LocalDate.of(year, 12, 28).get(ISO_WEEK.weekOfWeekBasedYear());
+        if (week < 1 || week > maxWeek) {
+            throw new DateTimeParseException("非法周榜周期", periodKey, 0);
+        }
         return LocalDate.of(year, 1, 1)
                 .with(ISO_WEEK.weekBasedYear(), year)
                 .with(ISO_WEEK.weekOfWeekBasedYear(), week)
