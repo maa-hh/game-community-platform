@@ -74,9 +74,9 @@ recommend:
     danmaku-consumer-group: ${RECOMMEND_KAFKA_DANMAKU_CONSUMER_GROUP:recommend-service-danmaku-hot-rank}
     danmaku-concurrency: ${RECOMMEND_KAFKA_DANMAKU_CONCURRENCY:1}
   startup:
-    # 启动后自动执行热榜初始化（对应 hotRankDailyFinalizeJob / hotRankWeeklyJob / hotRankTotalDailyJob）
-    # 生产由 XXL-JOB 调度；本地需要启动即预热时显式开启。
-    run-hot-rank-jobs: ${RECOMMEND_STARTUP_RUN_HOT_RANK_JOBS:false}
+    # 启动后重建当前 Redis 榜单投影；不会执行日/周终榜固化。
+    # 终榜固化仍只由 XXL-JOB 在时间边界执行，多实例通过 Redis 锁避免重复重建。
+    warmup-redis: ${RECOMMEND_STARTUP_WARMUP_REDIS:true}
     # 表为空时从 social/content 历史数据回填行为事件
     backfill-behavior-events: ${RECOMMEND_STARTUP_BACKFILL_BEHAVIOR_EVENTS:true}
 
