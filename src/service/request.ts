@@ -18,7 +18,7 @@ import {
   setAccessAuth,
   clearAuth,
   isAccessTokenExpired,
-  hasAuthSession,
+  hasUsableAuthSession,
 } from '@/utils/storage';
 import { emitAuthRequired } from '@/utils/authEvents';
 
@@ -74,7 +74,7 @@ function forceReLogin(tip = '登录已过期，请重新登录') {
  * 依赖 withCredentials 自动带上 HttpOnly Cookie
  */
 async function doRefreshToken(retryCount = 0): Promise<IRefreshResult> {
-  if (!hasAuthSession()) {
+  if (!hasUsableAuthSession()) {
     throw new Error('无登录会话');
   }
 
@@ -239,7 +239,10 @@ const hyRequest: HYRequest = new HYRequest({
       }
 
       // access 缺失或临近过期都先静默刷新，避免“会话还在但本地 access 被清掉”时发出裸请求。
-      if (hasAuthSession() && isAccessTokenExpired(ACCESS_REFRESH_BUFFER_MS)) {
+      if (
+        hasUsableAuthSession() &&
+        isAccessTokenExpired(ACCESS_REFRESH_BUFFER_MS)
+      ) {
         try {
           const newToken = await refreshAccessTokenSingleFlight();
           authConfig.headers.Authorization = `Bearer ${newToken}`;

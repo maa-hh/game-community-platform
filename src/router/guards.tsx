@@ -6,7 +6,8 @@ import { isAuthenticated } from '@/utils/storage';
 
 /**
  * 鉴权守卫：未登录时在当前路由打开全局登录弹窗，不做整页跳转。
- * 以会话标记为准（对应服务端持有 HttpOnly refresh Cookie）。
+ * 生产以会话标记为准（对应服务端持有 HttpOnly refresh Cookie），
+ * Mock 环境额外确认 refresh Cookie 仍存在。
  */
 function AuthGuard() {
   const { openAuth } = useAuthModal();

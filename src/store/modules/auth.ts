@@ -21,6 +21,7 @@ import {
   setUserInfo,
   getUserInfo,
   getAccessToken,
+  isAuthenticated,
   clearAuth,
   removeAccessToken,
   removeAccessExpireAt,
@@ -139,6 +140,7 @@ interface IAuthState {
 }
 
 function loadInitialUser(): IUserInfo | null {
+  if (!isAuthenticated()) return null;
   const raw = getUserInfo();
   if (!raw) return null;
   return normalizeUserInfo(raw as IUserInfo & { accountId: number });

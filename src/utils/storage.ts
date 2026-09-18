@@ -29,6 +29,7 @@ import {
   ACCESS_TOKEN_KEY,
   ACCESS_EXPIRE_AT_KEY,
   AUTH_SESSION_KEY,
+  ENABLE_MOCK,
   REFRESH_COOKIE_NAME,
 } from '@/service/config';
 import type { IUserInfo } from '@/service/types';
@@ -66,6 +67,27 @@ export function hasAuthSession(): boolean {
   return localStorage.getItem(AUTH_SESSION_KEY) === '1';
 }
 
+/**
+ * 判断当前会话是否还具备可用的刷新凭证。
+ *
+ * 生产环境的 refresh 是 HttpOnly Cookie，前端不能读取，只能相信会话标记，
+ * 最终由服务端校验；Mock 环境的 Cookie 可读，因此可以在发起 refresh 前
+ * 发现“旧 localStorage 会话标记 + 已不存在 Cookie”的残留登录态，避免无意义
+ * 的 refresh 请求和浏览器网络错误。
+ */
+export function hasUsableAuthSession(): boolean {
+  if (!hasAuthSession()) return false;
+  if (!ENABLE_MOCK) return true;
+
+  const hasRefreshCookie = document.cookie
+    .split(';')
+    .some((cookie) => cookie.trim().startsWith(`${REFRESH_COOKIE_NAME}=`));
+  if (hasRefreshCookie) return true;
+
+  clearAuth();
+  return false;
+}
+
 // ---------- access 过期时间 ----------
 
 export function getAccessExpireAt(): number {
@@ -90,10 +112,11 @@ export function isAccessTokenExpired(bufferMs = 0): boolean {
 
 /**
  * 是否已登录
- * 以会话标记为准（对应服务端仍持有 HttpOnly refresh Cookie）
+ * 生产以会话标记为准（对应服务端仍持有 HttpOnly refresh Cookie），
+ * Mock 环境额外确认可读的 refresh Cookie 仍存在。
  */
 export function isAuthenticated(): boolean {
-  return hasAuthSession();
+  return hasUsableAuthSession();
 }
 
 /**

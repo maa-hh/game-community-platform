@@ -73,7 +73,7 @@ import {
   resolveShareContent,
   resolveShareTitle,
 } from '@/utils/shareRepost';
-import { hasAuthSession, getUserInfo } from '@/utils/storage';
+import { getUserInfo, hasUsableAuthSession } from '@/utils/storage';
 import {
   enqueueCommentLikeAction,
   enqueueFavoriteAction,
@@ -744,7 +744,7 @@ export async function fetchPostDetailApi(
     const [stats, categoryMap, followedAuthor] = await Promise.all([
       fetchStats(id).catch(() => null),
       loadCategoryMap(),
-      hasAuthSession() && raw.authorAccountId
+      hasUsableAuthSession() && raw.authorAccountId
         ? checkFollowByAccountApi(raw.authorAccountId)
             .then((r) => Boolean(r.data?.followed))
             .catch(() => false)
@@ -756,7 +756,7 @@ export async function fetchPostDetailApi(
       : undefined;
 
     // 登录用户记一次浏览（失败忽略）
-    if (hasAuthSession()) {
+    if (hasUsableAuthSession()) {
       void hyRequest
         .get({ url: `/social/article/${id}` })
         .catch(() => undefined);
