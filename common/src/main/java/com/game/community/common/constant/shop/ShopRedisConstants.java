@@ -18,6 +18,8 @@ public final class ShopRedisConstants {
 
     public static final String ORDER_EXPIRE_QUEUE = "shop:order:expire:queue";
 
+    public static final String RECONCILE_LOCK = "shop:consistency:reconcile:lock";
+
     public static final long STOCK_TTL_SECONDS = 3600;
 
     public static final long RESERVATION_TTL_SECONDS = 900;
@@ -25,6 +27,8 @@ public final class ShopRedisConstants {
     public static final long ORDER_STATE_TTL_SECONDS = 1800;
 
     public static final long LIMIT_TTL_SECONDS = 86400;
+
+    public static final long RECONCILE_LOCK_TTL_SECONDS = 300;
 
     public static String stockKey(Long itemId) {
         return STOCK_KEY_PREFIX + "{" + itemId + "}";

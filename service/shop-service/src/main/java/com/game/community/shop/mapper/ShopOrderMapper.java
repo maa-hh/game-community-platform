@@ -24,6 +24,13 @@ public interface ShopOrderMapper extends BaseMapper<ShopOrder> {
     @Select("SELECT * FROM t_shop_order WHERE status = 1 ORDER BY id LIMIT #{limit}")
     List<ShopOrder> selectCreatingOrders(@Param("limit") int limit);
 
+    /**
+     * Redis 过期队列丢失时的数据库兜底扫描，只处理已经明确过期的待支付订单。
+     */
+    @Select("SELECT * FROM t_shop_order WHERE status = 2 AND expire_time IS NOT NULL "
+            + "AND expire_time <= NOW() ORDER BY expire_time, id LIMIT #{limit}")
+    List<ShopOrder> selectExpiredPendingOrders(@Param("limit") int limit);
+
     @Select("SELECT COALESCE(SUM(quantity), 0) FROM t_shop_order "
             + "WHERE user_id = #{userId} AND item_id = #{itemId} AND status = 1")
     int countCreatingQuantity(@Param("userId") Long userId, @Param("itemId") Long itemId);

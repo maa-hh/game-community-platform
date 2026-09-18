@@ -9,7 +9,7 @@ shop-service 只提供 `/shop/**`，不保留 `/api/shop/**`、`list`、`save` �
 | GET | `/shop/item/page` | 登录 | 商品分页 |
 | GET | `/shop/item/{itemId}` | 登录 | 商品详情 |
 | POST | `/shop/item` | 管理员 | 新建或更新商品 |
-| PUT | `/shop/item/{itemId}/status` | 管理员 | 上下架 |
+| PUT | `/shop/item/{itemId}/status` | 管理员 | JSON body `{status: 0|1}` 上下架 |
 
 商品价格使用 `BIGINT` 积分；库存 `-1` 表示不限库存；复购策略为 `ONCE_FOREVER`、`UNLIMITED`、`COOLDOWN`、`LIMIT_PER_WINDOW`。
 
@@ -34,7 +34,7 @@ shop-service 只提供 `/shop/**`，不保留 `/api/shop/**`、`list`、`save` �
 |---|---|---|---|
 | GET | `/shop/currency/me` | 登录 | 查询本人积分 |
 | GET | `/shop/currency/{userId}` | 管理员 | 查询用户积分 |
-| POST | `/shop/currency/add` | 管理员 | 增加积分 |
-| POST | `/shop/currency/deduct` | 管理员 | 扣减积分 |
+| POST | `/shop/currency/add` | 管理员 | JSON body `{userId, amount, requestId, remark}` 增加积分；`requestId` 用于幂等 |
+| POST | `/shop/currency/deduct` | 管理员 | JSON body `{userId, amount, requestId, remark}` 扣减积分；`requestId` 用于幂等 |
 
 积分变更必须产生唯一业务流水，禁止直接覆盖余额。

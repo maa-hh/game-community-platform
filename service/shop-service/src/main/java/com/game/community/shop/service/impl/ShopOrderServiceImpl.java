@@ -49,6 +49,7 @@ import org.springframework.util.StringUtils;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -143,6 +144,14 @@ public class ShopOrderServiceImpl implements ShopOrderService {
             redis.call('del', KEYS[5])
             return 1
             """, Long.class);
+
+    private static final DefaultRedisScript<Long> RELEASE_RECONCILE_LOCK_SCRIPT =
+            new DefaultRedisScript<>("""
+                    if redis.call('get', KEYS[1]) == ARGV[1] then
+                      return redis.call('del', KEYS[1])
+                    end
+                    return 0
+                    """, Long.class);
 
     private final ShopItemMapper itemMapper;
     private final ShopOrderMapper orderMapper;
@@ -360,7 +369,6 @@ public class ShopOrderServiceImpl implements ShopOrderService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public void processDeliveryTask(ShopDeliveryTask task, String token) {
         ShopOrder order = orderMapper.selectByOrderNo(task.getOrderNo());
         if (order == null) {
@@ -376,14 +384,24 @@ public class ShopOrderServiceImpl implements ShopOrderService {
             return;
         }
         grantCosmetic(order);
-        if (deliveryTaskMapper.markSent(task.getId(), token) == 0) {
-            return;
+        Boolean completed = transactionTemplate().execute(status -> {
+            if (deliveryTaskMapper.markSent(task.getId(), token) == 0) {
+                return false;
+            }
+            if (orderMapper.markCompleted(order.getOrderNo(), order.getUserId(), ShopConstants.ORDER_PAID,
+                    ShopConstants.ORDER_COMPLETED) == 0) {
+                throw new BusinessException("订单完成状态更新失败");
+            }
+            completeLimit(order);
+            return true;
+        });
+        if (!Boolean.TRUE.equals(completed)) {
+            log.warn("商城发货任务锁已失效，等待后续任务重试: taskId={}, orderNo={}", task.getId(), task.getOrderNo());
         }
-        if (orderMapper.markCompleted(order.getOrderNo(), order.getUserId(), ShopConstants.ORDER_PAID,
-                ShopConstants.ORDER_COMPLETED) == 0) {
-            throw new BusinessException("订单完成状态更新失败");
-        }
-        completeLimit(order);
+    }
+
+    private TransactionTemplate transactionTemplate() {
+        return new TransactionTemplate(transactionManager);
     }
 
     @Override
@@ -457,14 +475,30 @@ public class ShopOrderServiceImpl implements ShopOrderService {
     @Transactional(rollbackFor = Exception.class)
     public void cancelExpiredOrders() {
         long now = System.currentTimeMillis();
-        Set<String> orderNos = stringRedisTemplate.opsForZSet().rangeByScore(
-                ShopRedisConstants.ORDER_EXPIRE_QUEUE, 0, now, 0, 100);
-        if (orderNos == null) {
+        Set<String> orderNos = new LinkedHashSet<>();
+        try {
+            Set<String> redisOrderNos = stringRedisTemplate.opsForZSet().rangeByScore(
+                    ShopRedisConstants.ORDER_EXPIRE_QUEUE, 0, now, 0, 100);
+            if (redisOrderNos != null) {
+                orderNos.addAll(redisOrderNos);
+            }
+        } catch (RuntimeException ex) {
+            // Redis 不是订单状态源，故障时继续走 MySQL 兜底，避免待支付订单永久悬挂。
+            log.warn("商城订单过期 Redis 扫描失败，继续执行数据库兜底扫描", ex);
+        }
+        for (ShopOrder expiredOrder : orderMapper.selectExpiredPendingOrders(100)) {
+            if (expiredOrder != null && expiredOrder.getOrderNo() != null) {
+                orderNos.add(expiredOrder.getOrderNo());
+            }
+        }
+        if (orderNos.isEmpty()) {
             return;
         }
+        LocalDateTime currentTime = LocalDateTime.now();
         for (String orderNo : orderNos) {
             ShopOrder order = orderMapper.selectByOrderNoForUpdate(orderNo);
-            if (order == null || order.getStatus() != ShopConstants.ORDER_PENDING_PAY) {
+            if (order == null || order.getStatus() != ShopConstants.ORDER_PENDING_PAY
+                    || order.getExpireTime() == null || order.getExpireTime().isAfter(currentTime)) {
                 stringRedisTemplate.opsForZSet().remove(ShopRedisConstants.ORDER_EXPIRE_QUEUE, orderNo);
                 continue;
             }
@@ -480,27 +514,54 @@ public class ShopOrderServiceImpl implements ShopOrderService {
 
     @Override
     public void reconcileRedisState() {
-        for (ShopItem item : itemMapper.selectList(null)) {
-            if (item.getStock() >= 0) {
-                int available = Math.max(0, item.getStock() - itemMapper.countCreatingQuantity(item.getId()));
-                stringRedisTemplate.opsForValue().set(ShopRedisConstants.stockKey(item.getId()),
-                        String.valueOf(available), Duration.ofSeconds(ShopRedisConstants.STOCK_TTL_SECONDS));
+        String lockToken = UUID.randomUUID().toString();
+        Boolean locked = stringRedisTemplate.opsForValue().setIfAbsent(ShopRedisConstants.RECONCILE_LOCK,
+                lockToken, Duration.ofSeconds(ShopRedisConstants.RECONCILE_LOCK_TTL_SECONDS));
+        if (!Boolean.TRUE.equals(locked)) {
+            log.debug("商城 Redis 对账任务已由其他实例执行");
+            return;
+        }
+        try {
+            long pageNo = 1;
+            while (true) {
+                Page<ShopItem> page = itemMapper.selectPage(new Page<>(pageNo, 100, false), null);
+                if (page.getRecords().isEmpty()) {
+                    break;
+                }
+                for (ShopItem item : page.getRecords()) {
+                    reconcileItem(item);
+                }
+                if (page.getRecords().size() < 100) {
+                    break;
+                }
+                pageNo++;
             }
-            if (POLICY_UNLIMITED.equals(normalizePolicy(item.getRepurchasePolicy()))) {
-                continue;
-            }
-            LambdaQueryWrapper<ShopPurchaseLimit> wrapper = new LambdaQueryWrapper<ShopPurchaseLimit>()
-                    .eq(ShopPurchaseLimit::getItemId, item.getId());
-            for (ShopPurchaseLimit limit : purchaseLimitMapper.selectList(wrapper)) {
-                int creating = orderMapper.countCreatingQuantity(limit.getUserId(), item.getId());
-                int count = safeCount(limit.getPurchasedCount()) + safeCount(limit.getReservedCount()) + creating;
-                stringRedisTemplate.opsForValue().set(ShopRedisConstants.limitKey(item.getId(), limit.getUserId()),
-                        String.valueOf(count), Duration.ofSeconds(ShopRedisConstants.LIMIT_TTL_SECONDS));
-                stringRedisTemplate.opsForValue().set(ShopRedisConstants.limitLastKey(item.getId(), limit.getUserId()),
-                        String.valueOf(toEpochMillis(limit.getLastPurchaseAt())), Duration.ofSeconds(ShopRedisConstants.LIMIT_TTL_SECONDS));
-                stringRedisTemplate.opsForValue().set(ShopRedisConstants.limitWindowKey(item.getId(), limit.getUserId()),
-                        String.valueOf(toEpochMillis(limit.getWindowStartAt())), Duration.ofSeconds(ShopRedisConstants.LIMIT_TTL_SECONDS));
-            }
+        } finally {
+            stringRedisTemplate.execute(RELEASE_RECONCILE_LOCK_SCRIPT,
+                    List.of(ShopRedisConstants.RECONCILE_LOCK), lockToken);
+        }
+    }
+
+    private void reconcileItem(ShopItem item) {
+        if (item.getStock() >= 0) {
+            int available = Math.max(0, item.getStock() - itemMapper.countCreatingQuantity(item.getId()));
+            stringRedisTemplate.opsForValue().set(ShopRedisConstants.stockKey(item.getId()),
+                    String.valueOf(available), Duration.ofSeconds(ShopRedisConstants.STOCK_TTL_SECONDS));
+        }
+        if (POLICY_UNLIMITED.equals(normalizePolicy(item.getRepurchasePolicy()))) {
+            return;
+        }
+        LambdaQueryWrapper<ShopPurchaseLimit> wrapper = new LambdaQueryWrapper<ShopPurchaseLimit>()
+                .eq(ShopPurchaseLimit::getItemId, item.getId());
+        for (ShopPurchaseLimit limit : purchaseLimitMapper.selectList(wrapper)) {
+            int creating = orderMapper.countCreatingQuantity(limit.getUserId(), item.getId());
+            int count = safeCount(limit.getPurchasedCount()) + safeCount(limit.getReservedCount()) + creating;
+            stringRedisTemplate.opsForValue().set(ShopRedisConstants.limitKey(item.getId(), limit.getUserId()),
+                    String.valueOf(count), Duration.ofSeconds(ShopRedisConstants.LIMIT_TTL_SECONDS));
+            stringRedisTemplate.opsForValue().set(ShopRedisConstants.limitLastKey(item.getId(), limit.getUserId()),
+                    String.valueOf(toEpochMillis(limit.getLastPurchaseAt())), Duration.ofSeconds(ShopRedisConstants.LIMIT_TTL_SECONDS));
+            stringRedisTemplate.opsForValue().set(ShopRedisConstants.limitWindowKey(item.getId(), limit.getUserId()),
+                    String.valueOf(toEpochMillis(limit.getWindowStartAt())), Duration.ofSeconds(ShopRedisConstants.LIMIT_TTL_SECONDS));
         }
     }
 

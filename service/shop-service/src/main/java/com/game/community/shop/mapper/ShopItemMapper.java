@@ -20,4 +20,8 @@ public interface ShopItemMapper extends BaseMapper<ShopItem> {
 
     @Select("SELECT COALESCE(SUM(quantity), 0) FROM t_shop_order WHERE item_id = #{itemId} AND status = 1")
     int countCreatingQuantity(@Param("itemId") Long itemId);
+
+    /** 商品一旦产生过订单，装扮身份和发放规则必须保持稳定。 */
+    @Select("SELECT COUNT(*) FROM t_shop_order WHERE item_id = #{itemId}")
+    long countOrderHistory(@Param("itemId") Long itemId);
 }

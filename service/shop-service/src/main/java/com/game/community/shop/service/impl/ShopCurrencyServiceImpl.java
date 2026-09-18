@@ -44,7 +44,7 @@ public class ShopCurrencyServiceImpl implements ShopCurrencyService {
         ShopUserCurrency currency = ensureCurrencyForUpdate(userId);
         ShopPointsLedger existing = ledgerMapper.selectByBizRef(bizType, bizRef);
         if (existing != null) {
-            validateLedgerOwner(existing, userId);
+            validateLedgerReplay(existing, userId, amount);
             return toVO(currency);
         }
         currencyMapper.addPoints(userId, amount);
@@ -62,7 +62,7 @@ public class ShopCurrencyServiceImpl implements ShopCurrencyService {
         ShopUserCurrency currency = ensureCurrencyForUpdate(userId);
         ShopPointsLedger existing = ledgerMapper.selectByBizRef(bizType, bizRef);
         if (existing != null) {
-            validateLedgerOwner(existing, userId);
+            validateLedgerReplay(existing, userId, -amount);
             return toVO(currency);
         }
         if (currencyMapper.deductPoints(userId, amount) == 0) {
@@ -86,9 +86,12 @@ public class ShopCurrencyServiceImpl implements ShopCurrencyService {
         return currency;
     }
 
-    private void validateLedgerOwner(ShopPointsLedger ledger, Long userId) {
+    private void validateLedgerReplay(ShopPointsLedger ledger, Long userId, long expectedDelta) {
         if (!userId.equals(ledger.getUserId())) {
             throw new BusinessException("积分业务流水标识已被占用");
+        }
+        if (ledger.getDelta() == null || ledger.getDelta() != expectedDelta) {
+            throw new BusinessException("积分请求号已用于其他调整，请更换请求号");
         }
     }
 

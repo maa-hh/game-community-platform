@@ -2,6 +2,7 @@ package com.game.community.feign;
 
 import com.game.community.model.base.Result;
 import com.game.community.model.dto.cosmetic.BatchUserIdsDTO;
+import com.game.community.model.dto.cosmetic.BatchCosmeticStateDTO;
 import com.game.community.model.dto.cosmetic.GrantCosmeticDTO;
 import com.game.community.model.vo.cosmetic.CosmeticGrantResultVO;
 import com.game.community.model.vo.cosmetic.CosmeticItemStateVO;
@@ -70,6 +71,9 @@ public interface UserFeignClient {
     @GetMapping("/cosmetic/state")
     Result<CosmeticItemStateVO> getCosmeticItemState(@RequestParam("userId") Long userId,
                                                      @RequestParam("cosmeticCode") String cosmeticCode);
+
+    @PostMapping("/cosmetic/state/batch")
+    Result<Map<String, CosmeticItemStateVO>> getCosmeticItemStates(@RequestBody BatchCosmeticStateDTO dto);
 
     @PostMapping("/cosmetic/decorations/batch")
     Result<Map<Long, UserDecorationVO>> batchDecorations(@RequestBody BatchUserIdsDTO dto);
