@@ -30,6 +30,8 @@ public final class ArticleEmbeddingTextBuilder {
                     .reduce((left, right) -> left + " " + right)
                     .orElse(null));
         }
+        // 正文保留摘要片段，兼顾语义召回能力与 embedding 成本，避免长正文噪声挤掉标题和标签。
+        append(builder, limit(document.getContent(), 1200));
         String text = builder.toString().trim();
         if (text.length() <= SearchConstants.EMBED_TEXT_MAX_LEN) {
             return text;
@@ -45,5 +47,15 @@ public final class ArticleEmbeddingTextBuilder {
             builder.append('\n');
         }
         builder.append(value.trim());
+    }
+
+    private static String limit(String value, int maxLength) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        String normalized = value.replaceAll("<[^>]+>", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+        return normalized.length() <= maxLength ? normalized : normalized.substring(0, maxLength);
     }
 }

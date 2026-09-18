@@ -2,7 +2,11 @@ package com.game.community.common.constant.search;
 
 public final class SearchConstants {
 
-    public static final String ARTICLE_INDEX = "article_index";
+    /**
+     * 文章索引版本化。analyzer 属于不可原地修改的 mapping，切换版本可以避免
+     * 旧索引仍使用 standard analyzer，导致代码中的 IK 配置实际上没有生效。
+     */
+    public static final String ARTICLE_INDEX = "article_index_v2";
     public static final String SUGGEST_INDEX = "suggest_index";
     public static final String GAME_INDEX = "game_index";
 
@@ -58,6 +62,9 @@ public final class SearchConstants {
 
     /** 混合检索最大抓取条数（分页上限） */
     public static final int HYBRID_MAX_FETCH = 200;
+
+    /** 混合检索 RRF 的 rank 常数，降低低排名候选的影响。 */
+    public static final int HYBRID_RRF_K = 60;
 
     /** 启动重建使用 MySQL named lock，避免多实例重复全量重建。 */
     public static final String STARTUP_REBUILD_LOCK = "game-community:search:index-rebuild";

@@ -55,6 +55,6 @@ public class ArticleDocument implements Serializable {
 
     private LocalDateTime updateTime;
 
-    /** 标题+摘要+分区+游戏标签的语义向量 */
+    /** 标题+摘要+正文摘要+分区+游戏标签的语义向量 */
     private List<Float> embedding;
 }

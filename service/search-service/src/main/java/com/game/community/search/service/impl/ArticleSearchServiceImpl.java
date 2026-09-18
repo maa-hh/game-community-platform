@@ -56,10 +56,10 @@ public class ArticleSearchServiceImpl implements ArticleSearchService {
         String mode = resolveMode(searchDTO.getMode());
         if (SearchConstants.SEARCH_MODE_SEMANTIC.equals(mode) && shouldUseSemantic(keyword)) {
             SearchResult semanticResult = searchSemantic(page, size, keyword, categoryId);
-            if (semanticResult.isSuccess()) {
+            if (semanticResult.isSuccess() && hasHits(semanticResult)) {
                 return semanticResult;
             }
-            log.warn("语义检索失败，回退词法检索: {}", semanticResult.getErrorMsg());
+            log.warn("语义检索无可用召回，回退词法检索: {}", semanticResult.getErrorMsg());
         } else if (SearchConstants.SEARCH_MODE_HYBRID.equals(mode) && shouldUseHybrid(keyword)) {
             SearchResult hybridResult = searchHybrid(page, size, keyword, categoryId);
             if (hybridResult.isSuccess()) {
@@ -68,6 +68,10 @@ public class ArticleSearchServiceImpl implements ArticleSearchService {
             log.warn("混合检索失败，回退词法检索: {}", hybridResult.getErrorMsg());
         }
         return searchBm25Only(page, size, keyword, categoryId, false);
+    }
+
+    private boolean hasHits(SearchResult result) {
+        return result != null && result.getTotal() != null && result.getTotal() > 0;
     }
 
     private String resolveMode(String requestedMode) {
