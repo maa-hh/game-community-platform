@@ -112,9 +112,9 @@ interface IDataType<T = unknown> {
 - `GET /notification/summary`
 - `GET /notification/summary/categories`
 - `GET /notification/messages`
-- `POST /notification/messages/read-category`
-- `POST /notification/messages/read-all`
-- `POST /notification/feed/read`
+- `PUT /notification/messages/read-category`
+- `PUT /notification/messages/read-all`
+- `PUT /notification/feed/read`
 
 SSE 由 `createNotificationEventSource` 建立，前端需要兼容后端历史的数字字符串、`data` 包装和直接通知对象三种事件形状。联调要验证：
 
@@ -123,6 +123,11 @@ SSE 由 `createNotificationEventSource` 建立，前端需要兼容后端历史�
 - refresh 失效时连接关闭并回到登录门禁；
 - 重连不会重复增加未读数，通知 ID/事件 ID 要幂等；
 - 审核通过/驳回、评论、点赞、关注等事件能映射到正确 category 和页面路由。
+
+通知页进入时会并行刷新摘要、分类摘要和已展开列表。分类列表使用
+`createAsyncThunk.condition` 做请求去重；条件拒绝表示已有请求在执行，不是接口失败。
+展开分类时如果发现该分类正在加载，前端复用当前请求并继续执行分类已读，避免把正常的
+`Aborted due to condition callback returning false` 提示给用户，也避免红点因竞态残留。
 
 ## 7. 游戏、Steam、搜索、商城和审核
 

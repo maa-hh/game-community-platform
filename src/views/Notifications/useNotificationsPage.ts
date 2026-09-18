@@ -26,6 +26,19 @@ const emptyMessages = {
   error: false,
 };
 
+/**
+ * createAsyncThunk 用 condition 去重时会返回 rejected action；这不是接口失败，
+ * 不能把它提示成“刷新通知失败”。
+ */
+function isConditionRejected(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const value = error as { name?: unknown; message?: unknown };
+  return (
+    value.name === 'ConditionError' ||
+    value.message === 'Aborted due to condition callback returning false.'
+  );
+}
+
 export function useNotificationsPage() {
   const dispatch = useAppDispatch();
   const { message } = App.useApp();
@@ -59,7 +72,7 @@ export function useNotificationsPage() {
         );
       });
 
-      await Promise.all([
+      const results = await Promise.allSettled([
         dispatch(
           metaLoaded
             ? fetchNotificationMetaAction()
@@ -69,6 +82,12 @@ export function useNotificationsPage() {
           dispatch(fetchCategoryMessagesAction({ category })).unwrap(),
         ),
       ]);
+
+      const failedRequest = results.find(
+        (result): result is PromiseRejectedResult =>
+          result.status === 'rejected' && !isConditionRejected(result.reason),
+      );
+      if (failedRequest) throw failedRequest.reason;
     },
     [categoryMessages, categoryRefreshRequired, dispatch, metaLoaded],
   );
@@ -143,13 +162,33 @@ export function useNotificationsPage() {
 
       setExpandedKey(key);
       try {
-        await dispatch(fetchCategoryMessagesAction({ category: key })).unwrap();
+        const bucket = categoryMessages[key];
+        // 页面进入时可能已经在后台刷新该分类；不要重复发请求，也不要把
+        // condition 去重结果当成失败。已读状态仍需继续落库。
+        if (!bucket?.loading && !bucket?.loadingMore) {
+          try {
+            await dispatch(
+              fetchCategoryMessagesAction({ category: key }),
+            ).unwrap();
+          } catch (err) {
+            if (!isConditionRejected(err)) throw err;
+          }
+        }
         await markCategoryRead(key);
       } catch (err) {
-        message.error(formatApiError('加载通知失败', err));
+        if (!isConditionRejected(err)) {
+          message.error(formatApiError('加载通知失败', err));
+        }
       }
     },
-    [dispatch, expandedKey, markCategoryRead, message, openAuth],
+    [
+      categoryMessages,
+      dispatch,
+      expandedKey,
+      markCategoryRead,
+      message,
+      openAuth,
+    ],
   );
 
   usePageRefresh(refreshNotifications, true);
