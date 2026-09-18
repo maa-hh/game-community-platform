@@ -2,19 +2,18 @@ package com.game.community.search.service.impl;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import com.game.community.common.constant.search.SearchConstants;
-import com.game.community.feign.AiAgentFeignClient;
-import com.game.community.model.base.Result;
 import com.game.community.model.dto.aiagent.AiSearchTermsRequest;
 import com.game.community.model.elasticsearch.ArticleDocument;
-import com.game.community.model.vo.aiagent.AiSearchTermsResponseVO;
+import com.game.community.model.message.AiTaskRequestMessage;
+import com.game.community.model.message.SearchAiContext;
 import com.game.community.search.config.SearchAiProperties;
+import com.game.community.search.event.AiTaskProducer;
 import com.game.community.search.service.AiSuggestTermService;
 import com.game.community.search.service.SuggestTermService;
 import com.game.community.search.service.SuggestTermService.TermSeed;
 import com.game.community.search.util.SuggestTermNormalizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -30,14 +29,13 @@ import java.util.Objects;
 @RequiredArgsConstructor
 public class AiSuggestTermServiceImpl implements AiSuggestTermService {
 
-    private final AiAgentFeignClient aiAgentFeignClient;
+    private final AiTaskProducer aiTaskProducer;
     private final SearchAiProperties searchAiProperties;
     private final SuggestTermService suggestTermService;
     private final ElasticsearchClient elasticsearchClient;
     private final DataSource dataSource;
 
     @Override
-    @Async("aiExecutor")
     public void expandAsync(Long articleId, ArticleDocument document) {
         if (articleId == null || document == null) {
             return;
@@ -51,14 +49,10 @@ public class AiSuggestTermServiceImpl implements AiSuggestTermService {
             request.setSummary(document.getSummary());
             request.setContent(document.getContent());
             request.setProvider(searchAiProperties.getSearchTermsProvider());
-            Result<AiSearchTermsResponseVO> result = aiAgentFeignClient.expandSearchTerms(request);
-            List<String> terms = result != null && Integer.valueOf(200).equals(result.getCode())
-                    && result.getData() != null && result.getData().getTerms() != null
-                    ? result.getData().getTerms() : List.of();
-            if (terms.isEmpty()) {
-                return;
-            }
-            writeIfCurrent(articleId, document, terms);
+            SearchAiContext context = new SearchAiContext();
+            context.setOperation(SearchAiContext.SEARCH_TERMS);
+            context.setDocument(document);
+            aiTaskProducer.send(AiTaskRequestMessage.SEARCH_TERMS, articleId, request, context);
         } catch (Exception e) {
             log.warn("AI 扩词失败: articleId={}, reason={}", articleId, e.getMessage());
         }
@@ -68,7 +62,7 @@ public class AiSuggestTermServiceImpl implements AiSuggestTermService {
      * AI 请求完成后再次校验文章版本，并用 MySQL named lock 串行化同一文章的异步任务。
      * 这样旧任务即使晚于新任务返回，也会在写入前发现 ES 中已经是新版本并直接丢弃。
      */
-    private void writeIfCurrent(Long articleId, ArticleDocument expectedDocument, List<String> terms) throws Exception {
+    public void writeIfCurrent(Long articleId, ArticleDocument expectedDocument, List<String> terms) throws Exception {
         try (Connection connection = dataSource.getConnection()) {
             if (!tryAcquireLock(connection, articleId)) {
                 return;

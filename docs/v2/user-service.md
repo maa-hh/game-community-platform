@@ -17,6 +17,7 @@
 **核心职责**：
 - 邮箱验证码注册 / 登录 / 找回密码 / 登出 / 刷新 Token
 - 用户资料 CRUD、头像与字段审核
+- 资料和头像审核通过 Kafka 异步调用 ai-agent-service，DeepSeek 负责文字/图片判断
 - 账户生命周期（封禁、注销冷静期）
 - 对外只暴露 `accountId`；`userId` 不进入公开 VO
 
@@ -54,6 +55,8 @@
 
 ## 历史文档（手机号方案，已废弃）
 
+以下历史章节中的 DashScope、`AuditClient` 和同步 AI 调用示例均不代表当前实现。当前实现以本节补充的 Kafka 链路为准。
+
 ## 1. 服务概述
 
 用户服务是游戏社区平台的核心基础微服务，负责用户注册、登录、JWT 认证鉴权、用户资料管理、头像与资料审核等全部用户域功能。
@@ -68,19 +71,19 @@
 | 数据库 | MySQL 8.x (localhost:3307/game_community) |
 | 缓存 | Redis (localhost:6380, database 0) |
 | 对象存储 | MinIO (localhost:9000) — 公开桶 + 私有桶双桶模式 |
-| AI 审核 | Spring AI Alibaba DashScope (qwen-plus 文本, qwen3-vl-plus 图片) |
+| AI 审核 | Kafka 异步投递 ai-agent-service（DeepSeek 文字/图片审核） |
 | ORM | MyBatis-Plus 3.x (乐观锁 + 逻辑删除 + 分页) |
 | 认证方案 | 双 Token：access_token (30min JWT) + refresh_token (7day JWT, HttpOnly Cookie) |
 | 会话存储 | Redis (sessionId → UserSessionVO JSON, userId → activeSessionId) |
 
-**技术栈**：Spring Boot 3.x + Spring Cloud + MyBatis-Plus + Redis + MinIO + Spring AI DashScope + Nacos
+**技术栈**：Spring Boot 3.x + Spring Cloud + MyBatis-Plus + Redis + MinIO + Kafka + Nacos
 
 **核心职责**：
 - 手机号 + 验证码注册
 - 账号 ID + 密码登录
 - JWT 双 Token 签发 / 刷新 / 吊销
 - 用户资料 CRUD（含乐观锁 CAS 更新）
-- 用户资料 & 头像异步审核（DFA 本地敏感词 + DashScope AI 审核）
+- 用户资料 & 头像异步审核（DFA 本地敏感词 + Kafka AI 审核任务）
 - 头像上传（私有桶）→ 审核 → 发布（公开桶）双桶流转
 - 账号状态管理（正常/禁用/注销）
 - 密码修改（加盐 MD5，修改后强制下线）
@@ -864,9 +867,9 @@ private void runAfterCommit(Runnable action) {
 
 使用 Spring `TransactionSynchronization.afterCommit()` 确保审核任务行已持久化后再触发异步审核，避免审核线程查不到任务数据。
 
-### 3.6 资料审核链
+### 3.6 资料审核链（历史章节，当前以 Kafka 链路为准）
 
-> 当前实现已收口到 ai-agent-service：`AuditTaskExecutor` 通过 `AiAgentFeignClient` 获取 `ModerationResultVO`，按 0–3 拒绝、4–6 人工、7–10 通过推进资料状态。下面出现的本地 `AuditClient` / DFA 代码是迁移前背景，当前协议详见 `docs/v2/ai-agent-service.md` §8。
+> 当前实现已收口到 ai-agent-service：`AuditTaskExecutor` 通过 `AiTaskProducer` 投递 `MODERATION` 任务，`AiModerationResultListener` 消费结果并按 0–3 拒绝、4–6 人工、7–10 通过推进资料状态。下面出现的本地 `AuditClient` / DFA 代码是迁移前背景，当前协议详见 `docs/v2/ai-agent-service.md`。
 
 **完整流程**：
 
@@ -883,7 +886,7 @@ flowchart TD
     I -->|重复| J[拒绝: REJECTED]
     I -->|不重复| K[DFA 本地敏感词审核]
     K -->|未通过| J
-    K -->|通过| L[DashScope AI 文本审核]
+    K -->|通过| L[Kafka AI 资料审核任务]
     L -->|未通过| J
     L -->|通过| M[CAS 回写 t_user<br/>version + audit_status=AUDITING]
     M -->|回写成功| N[任务标记 PASSED]

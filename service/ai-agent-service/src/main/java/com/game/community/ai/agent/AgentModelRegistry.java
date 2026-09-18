@@ -8,6 +8,7 @@ import org.springframework.cloud.context.environment.EnvironmentChangeEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import jakarta.annotation.PostConstruct;
 
 import java.util.List;
 import java.util.Map;
@@ -39,6 +40,15 @@ public class AgentModelRegistry {
     /** 单元测试使用默认 OpenAI Compatible Adapter。 */
     public AgentModelRegistry(AgentModelProperties properties) {
         this(properties, List.of(new OpenAiCompatibleProviderAdapter()));
+    }
+
+    /** 启动时校验默认审核 Provider，避免 API Key 未加载时请求才静默降级。 */
+    @PostConstruct
+    public void validateDefaultProvider() {
+        ProviderSnapshot provider = provider(null, properties.getDefaultProvider());
+        log.info("AI 默认 Provider 配置就绪: provider={}, protocol={}, model={}, apiKeyConfigured={}, baseUrl={}",
+                provider.id(), provider.protocol(), provider.textModerationModel(),
+                StringUtils.hasText(provider.apiKey()), provider.baseUrl());
     }
 
     /** 获取通用 Chat 模型。 */

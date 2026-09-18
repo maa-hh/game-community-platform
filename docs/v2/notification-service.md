@@ -208,6 +208,10 @@ public class NotificationSseEventVO implements Serializable {
 **获取通知摘要**（`getSummary`）：
 - 查询 `t_notification_user_state`，返回 `NotificationSummaryVO(unreadNotificationCount, feedUnread)`
 
+**获取分类摘要**（`getCategorySummaries`）：
+- 按通知分类返回未读数量，供前端分类红点展示。
+- 分类未读数来自当前用户的通知消息状态，不替代总未读数。
+
 **分页查询通知列表**（`listMessages`）：
 - 按 `user_id` 过滤，可选按 `event_type` 过滤
 - 按 `create_time DESC, id DESC` 排序
@@ -221,6 +225,17 @@ public class NotificationSseEventVO implements Serializable {
 **标记Feed已读**（`markFeedRead`）：
 - 设置 `feed_unread_flag=0, last_feed_read_time=now`
 - 通过 SSE 推送 `notification_summary` 事件
+
+**标记分类已读**（`markCategoryAsRead`）：
+- 仅更新指定分类下的未读通知，并同步扣减用户总未读数。
+- 返回最新通知摘要；同时通过 SSE 推送 `notification_summary`，支持多标签页同步。
+
+### 3.4 前端请求竞态约束
+
+通知页进入时可能同时刷新多个分类，用户也可能立即展开其中一个分类。前端使用
+`createAsyncThunk.condition` 防止同一分类重复请求；条件拒绝表示已有请求在执行，不是服务端
+错误。展开分类时应复用进行中的请求，并继续调用分类已读接口，不能把
+`Aborted due to condition callback returning false` 当成刷新失败，否则会出现错误提示和红点不及时消除。
 
 ---
 
@@ -269,7 +284,9 @@ public class NotificationEventMessage implements Serializable {
 | 方法 | 路径 | 权限 | 说明 |
 |------|------|------|------|
 | GET | `/notification/summary` | @LoginCheck | 获取通知摘要（未读数+Feed红点） |
+| GET | `/notification/summary/categories` | @LoginCheck | 获取各通知分类未读数 |
 | GET | `/notification/messages` | @LoginCheck | 分页查询通知列表 |
+| PUT | `/notification/messages/read-category` | @LoginCheck | 标记指定分类已读，参数 `category` |
 | PUT | `/notification/messages/read-all` | @LoginCheck | 全部标记已读 |
 | PUT | `/notification/feed/read` | @LoginCheck | 标记Feed已读 |
 | GET | `/notification/sse/connect` | @LoginCheck | SSE连接（TEXT_EVENT_STREAM） |

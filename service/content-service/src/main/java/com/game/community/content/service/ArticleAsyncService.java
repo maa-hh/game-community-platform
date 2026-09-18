@@ -1,6 +1,8 @@
 package com.game.community.content.service;
 
 import com.game.community.model.dto.article.ArticleDTO;
+import com.game.community.model.message.ArticleModerationContext;
+import com.game.community.model.vo.aiagent.ModerationResultVO;
 
 import java.util.List;
 
@@ -24,6 +26,8 @@ public interface ArticleAsyncService {
      */
     void auditAndPublish(Long articleId, Long userId, ArticleDTO articleDTO,
                          String coverUrl, List<String> imageUrls);
+
+    void completeAuditAndPublish(ArticleModerationContext context, ModerationResultVO result);
 
     void publishAfterManualApproval(Long articleId);
 

@@ -57,8 +57,8 @@ public class ArticleSyncServiceImpl implements ArticleSyncService {
             return;
         }
         ArticleDocument document = toDocument(detail);
-        articleEmbeddingService.enrichEmbedding(document);
         elasticsearchService.indexArticle(document);
+        articleEmbeddingService.dispatchEmbedding(document);
         suggestTermService.replaceArticleTerms(articleId, buildArticleTermSeeds(document));
         aiSuggestTermService.expandAsync(articleId, document);
     }

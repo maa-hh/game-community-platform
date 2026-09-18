@@ -62,7 +62,8 @@ spring:
         config:
           default:
             connectTimeout: ${FEIGN_CONNECT_TIMEOUT_MS:2000}
-            readTimeout: ${FEIGN_READ_TIMEOUT_MS:5000}
+            # 其他远程接口的读取超时；AI 审核已通过 Kafka 异步投递，不依赖此超时。
+            readTimeout: ${FEIGN_READ_TIMEOUT_MS:15000}
             loggerLevel: basic
   # Kafka 配置
   kafka:
@@ -77,6 +78,7 @@ spring:
         request.timeout.ms: ${KAFKA_REQUEST_TIMEOUT_MS:5000}
         session.timeout.ms: ${KAFKA_SESSION_TIMEOUT_MS:15000}
         max.poll.interval.ms: ${KAFKA_MAX_POLL_INTERVAL_MS:300000}
+        spring.json.trusted.packages: com.game.community.model.message
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
@@ -92,7 +94,6 @@ feign:
   sentinel:
     enabled: true
 
-# AI Feign 远程调用熔断：失败时由共享 fallback 转人工审核，禁止误放行。
 resilience4j:
   circuitbreaker:
     configs:
@@ -104,10 +105,6 @@ resilience4j:
         failure-rate-threshold: 50
         wait-duration-in-open-state: 30s
         permitted-number-of-calls-in-half-open-state: 2
-    instances:
-      aiAgentFeignClientmoderate:
-        base-config: default
-
 # MinIO 配置
 minio:
   endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
@@ -125,6 +122,8 @@ minio:
   max-requests-per-host: ${MINIO_MAX_REQUESTS_PER_HOST:16}
   max-idle-connections: ${MINIO_MAX_IDLE_CONNECTIONS:32}
   keep-alive-minutes: ${MINIO_KEEP_ALIVE_MINUTES:5}
+  # 外部图片先由内容服务下载为 Base64，再交给 AI；禁止 AI 直接回源任意地址。
+  allowed-download-hosts: ${MINIO_ALLOWED_DOWNLOAD_HOSTS:cdn.akamai.steamstatic.com,shared.akamai.steamstatic.com,steamcdn-a.akamaihd.net,steamuserimages-a.akamaihd.net,images.steamusercontent.com}
 
 # MyBatis-Plus 配置
 mybatis-plus:

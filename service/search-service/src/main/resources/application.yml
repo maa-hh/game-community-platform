@@ -13,6 +13,11 @@ spring:
   # Elasticsearch 配置
   elasticsearch:
     uris: ${ELASTICSEARCH_URIS:http://localhost:9201}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6380}
+      timeout: ${REDIS_COMMAND_TIMEOUT:3000ms}
   # Nacos 配置
   cloud:
     nacos:
@@ -26,12 +31,6 @@ spring:
       transport:
         dashboard: ${SENTINEL_DASHBOARD:localhost:8859}
       eager: true
-    openfeign:
-      client:
-        config:
-          ai-agent-service:
-            connectTimeout: ${SEARCH_AI_CONNECT_TIMEOUT_MS:500}
-            readTimeout: ${SEARCH_AI_READ_TIMEOUT_MS:1500}
   # Kafka 配置
   kafka:
     bootstrap-servers: ${KAFKA_SERVERS:localhost:9093}
@@ -92,7 +91,8 @@ search:
     hybrid-enabled: ${SEARCH_HYBRID_ENABLED:false}
     ai-suggest-enabled: ${SEARCH_AI_SUGGEST_ENABLED:false}
     embedding-provider: ${SEARCH_AI_EMBEDDING_PROVIDER:dashscope}
-    search-terms-provider: ${SEARCH_AI_SEARCH_TERMS_PROVIDER:dashscope}
+    # DeepSeek Flash 支持文本 JSON 输出，默认用于 AI 扩词；Embedding 仍使用具备官方向量接口的 DashScope。
+    search-terms-provider: ${SEARCH_AI_SEARCH_TERMS_PROVIDER:deepseek}
     hybrid-candidate-k: ${SEARCH_HYBRID_CANDIDATE_K:50}
     hybrid-num-candidates: ${SEARCH_HYBRID_NUM_CANDIDATES:100}
   elasticsearch:

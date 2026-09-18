@@ -8,7 +8,11 @@ import com.game.community.model.dto.aiagent.AiEmbeddingRequest;
 import com.game.community.model.dto.aiagent.AiSearchTermsRequest;
 import com.game.community.model.vo.aiagent.AiEmbeddingResponseVO;
 import com.game.community.model.vo.aiagent.AiSearchTermsResponseVO;
-import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.prompt.PromptTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -21,19 +25,27 @@ import java.util.regex.Pattern;
 
 /** 为其他微服务提供无状态、可复用的 AI 基础能力。 */
 @Service
-@RequiredArgsConstructor
+@Slf4j
 public class AiCapabilityServiceImpl implements AiCapabilityService {
 
-    private static final String SEARCH_TERM_SYSTEM_PROMPT = """
-            你是游戏社区搜索运营助手。根据帖子标题、摘要和正文，生成适合用户搜索的简洁关键词。
-            只输出 JSON 字符串数组，不要 markdown，不要解释；每词 2-8 个汉字或常见英文缩写，最多 5 个。
-            优先保留游戏名、玩法、角色、攻略对象等可检索概念。
-            """;
-
     private static final Pattern JSON_ARRAY_PATTERN = Pattern.compile("\\[[\\s\\S]*?]");
+    private static final int MAX_SEARCH_TERMS = 5;
 
     private final AgentModelRegistry modelRegistry;
     private final ObjectMapper objectMapper;
+    private final PromptTemplate searchTermsSystemPrompt;
+
+    @Autowired
+    public AiCapabilityServiceImpl(AgentModelRegistry modelRegistry,
+                                   ObjectMapper objectMapper,
+                                   ResourceLoader resourceLoader,
+                                   @Value("${ai-agent.search.search-terms-system-prompt-path:classpath:prompts/search-terms-system.st}")
+                                   String searchTermsSystemPromptPath) {
+        this.modelRegistry = modelRegistry;
+        this.objectMapper = objectMapper;
+        this.searchTermsSystemPrompt = new PromptTemplate(
+                resourceLoader.getResource(searchTermsSystemPromptPath));
+    }
 
     @Override
     public AiEmbeddingResponseVO embedding(AiEmbeddingRequest request) {
@@ -51,14 +63,17 @@ public class AiCapabilityServiceImpl implements AiCapabilityService {
 
     @Override
     public AiSearchTermsResponseVO expandSearchTerms(AiSearchTermsRequest request) {
-        int maxTerms = Math.min(Math.max(request.getMaxTerms() == null ? 5 : request.getMaxTerms(), 1), 10);
+        int maxTerms = Math.min(Math.max(request.getMaxTerms() == null ? MAX_SEARCH_TERMS : request.getMaxTerms(), 1),
+                MAX_SEARCH_TERMS);
         AgentModelRegistry.ModelClient client = modelRegistry.chat(request.getProvider());
         String responseText = client.client().prompt()
-                .system(SEARCH_TERM_SYSTEM_PROMPT)
+                .system(searchTermsSystemPrompt.render())
                 .user(buildSearchTermPrompt(request))
                 .call()
                 .content();
         List<String> terms = parseTerms(responseText, maxTerms);
+        log.info("AI 搜索扩词完成: provider={}, model={}, requestedMaxTerms={}, actualTerms={}",
+                client.provider(), client.model(), maxTerms, terms.size());
         AiSearchTermsResponseVO response = new AiSearchTermsResponseVO();
         response.setTerms(terms);
         response.setProvider(client.provider());

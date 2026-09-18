@@ -17,6 +17,22 @@ START_FRONTEND="${START_FRONTEND:-1}"
 
 load_services "$CONF_FILE"
 
+wait_for_service() {
+  local name="$1"
+  local port="$2"
+  local health_url="http://127.0.0.1:${port}/actuator/health"
+  echo "[等待] ${name} 健康检查: ${health_url}"
+  for _ in $(seq 1 60); do
+    if curl -fsS --max-time 2 "$health_url" >/dev/null 2>&1; then
+      echo "[就绪] ${name} 已启动并可接收请求"
+      return 0
+    fi
+    sleep 1
+  done
+  echo "[失败] ${name} 未在 60 秒内就绪，请检查 ${LOG_DIR}/${name}.log" >&2
+  return 1
+}
+
 echo "========================================"
 echo " 游戏社区平台 - 全量启动"
 echo " 项目目录: $PROJECT_ROOT"
@@ -56,6 +72,9 @@ for i in "${!SERVICES[@]}"; do
   module="${SERVICE_MODULES[$i]}"
   port="${SERVICE_PORTS[$i]}"
   start_spring_service "$module" "$name" "$port" background
+  if [[ "$name" == "ai-agent-service" ]]; then
+    wait_for_service "$name" "$port"
+  fi
   sleep "$START_INTERVAL"
 done
 

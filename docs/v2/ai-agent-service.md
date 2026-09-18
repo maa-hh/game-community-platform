@@ -2,7 +2,7 @@
 
 ## 1. 服务定位
 
-`ai-agent-service` 负责统一内容审核、模型适配和无状态 AI 基础能力。业务服务通过内部 Feign 接口调用，供应商差异由本服务屏蔽；业务索引和检索仍由业务服务自己负责。
+`ai-agent-service` 负责统一内容审核、模型适配和无状态 AI 基础能力。内容、用户和搜索服务通过 Kafka 投递 AI 任务，由本服务异步执行并回写结果；供应商差异由本服务屏蔽，业务索引和检索仍由业务服务自己负责。
 
 当前保留能力：
 
@@ -12,6 +12,7 @@
 - Embedding 向量生成和搜索关键词扩展。
 - 统一结构化审核结果、分数阈值和不可用降级策略。
 - 审核提示词集中在 `src/main/resources/prompts` 管理。
+- 搜索扩词使用 `search-terms-system.st` 模板，最多返回 5 个去重关键词。
 - Redis 集群级并发许可、Provider 级限速/并发隔离/熔断和 Prometheus 指标。
 
 明确移除：
@@ -25,33 +26,37 @@
 - Spring Boot 3.4.2
 - Spring AI 1.0.3
 - OpenAI Compatible Chat API
+- Spring Kafka（AI 任务削峰与结果回写）
 - Nacos 注册与配置
-- Spring Cloud OpenFeign（由调用方使用）
 - Spring Validation、AOP、Springdoc
 
 服务端口：`8093`。
 
-内部接口：
+兼容/诊断接口（业务链路不再依赖这些 HTTP 调用）：
 
 - `POST /feign/ai/moderation`
 - `POST /feign/ai/embedding`
 - `POST /feign/ai/search-terms`
 
-调用链：
+正式业务调用链：
 
 ```text
-业务服务
-  -> Gateway / Feign
-  -> ai-agent-service
+content-service / user-service / search-service
+  -> AiTaskProducer
+  -> Kafka: ai-task-request-events
+  -> AiTaskListener
   -> AgentModelRegistry 选择 provider/model/protocol
   -> ModelProviderAdapter
   -> Provider API
-  -> 审核结果 / embedding / 搜索关键词
+  -> Kafka: ai-task-result-events
+  -> 业务服务结果监听器
 ```
+
+任务类型为 `MODERATION`、`EMBEDDING`、`SEARCH_TERMS`。请求消息携带业务快照和 `jobId`，结果消息携带成功状态、结果载荷或失败原因；业务侧按任务状态/CAS 处理重复结果。
 
 ## 3. Provider 配置抽象
 
-配置入口为 `ai-agent.models`，每个 provider 包含 `base-url`、`api-key`、`default-model` 和模型参数；审核请求只传递业务所需的模型标识，不直接依赖供应商 SDK。
+配置入口为 `ai-agent.models`，每个 provider 包含 `base-url`、`api-key`、能力模型和模型参数；审核请求只传递业务所需的模型标识，不直接依赖供应商 SDK。
 
 `AgentModelRegistry` 负责：
 
@@ -71,9 +76,11 @@ ai-agent:
     default-embedding-provider: dashscope
     providers:
       deepseek:
-        base-url: ${AI_DEEPSEEK_BASE_URL:https://api.deepseek.com}
-        api-key: ${AI_DEEPSEEK_API_KEY:}
-        default-model: ${AI_DEEPSEEK_MODEL:deepseek-chat}
+        base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+        api-key: ${DEEPSEEK_API_KEY:}
+        chat-model: ${DEEPSEEK_CHAT_MODEL:deepseek-flash}
+        text-moderation-model: ${DEEPSEEK_TEXT_MODEL:deepseek-flash}
+        image-moderation-model: ${DEEPSEEK_IMAGE_MODEL:deepseek-flash}
         protocol: openai-compatible
         completions-path: ${DEEPSEEK_COMPLETIONS_PATH:/chat/completions}
         temperature: 0.0
@@ -87,6 +94,8 @@ ai-agent:
         embedding-model: text-embedding-v4
 ```
 
+当前默认审核和搜索扩词 Provider 为 DeepSeek；向量生成默认保留 DashScope，因为 DeepSeek 当前配置未提供 embedding 接口。若切换到提供向量能力的其他 Provider，只需替换 `default-embedding-provider` 和对应配置，不修改业务服务。
+
 ## 4. 审核流程
 
 ### 4.1 文本审核
@@ -99,7 +108,7 @@ ai-agent:
 
 ### 4.2 图片和文章审核
 
-- 图片通过 Base64 媒体消息发送给视觉模型。
+- 图片优先通过 MinIO 短时签名 URL 发送；只有 `data:` 图片才保留 Base64 兼容路径。
 - 文章将正文和图片合并为一次多模态请求，避免正文和图片分别调用造成额外延迟与费用。
 - 图片数量、Base64 大小、模型上下文长度需要在网关和服务端同时设置上限。
 
@@ -113,9 +122,10 @@ ai-agent:
 - `moderation-text-user.st`：文本审核输入模板。
 - `moderation-image-user.st`：图片审核输入模板。
 - `moderation-article-user.st`：文章多模态审核输入模板。
+- `search-terms-system.st`：搜索扩词角色、JSON 输出约束和关键词数量上限。
 - `moderation/sensitive-words.txt`：本地敏感词库。
 
-模型输出必须能够解析为结构化 JSON；解析失败或字段缺失时不得默认放行，应进入配置的不可用降级策略。
+模型输出必须能够解析为结构化 JSON；解析失败或字段缺失时不得默认放行，应进入配置的不可用降级策略。搜索扩词在提示词和服务端均硬限制为最多 5 个去重关键词。
 
 ## 6. 并发和多实例说明
 
@@ -165,4 +175,4 @@ scripts/verify/ai-hardening-stage.sh stage5
 scripts/verify/ai-hardening-stage.sh stage6
 ```
 
-其中 stage1 验证双实例共享 Redis 并发许可，stage2 验证 Provider Adapter，stage3 验证超时和熔断，stage4 验证图片输入边界，stage5 验证 content-service Feign 熔断配置启动，stage6 验证 Prometheus 指标。
+其中 stage1 验证双实例共享 Redis 并发许可，stage2 验证 Provider Adapter，stage3 验证超时和熔断，stage4 验证图片输入边界，stage5 验证 content-service 的 Kafka AI 审核投递/结果监听配置，stage6 验证 Prometheus 指标。

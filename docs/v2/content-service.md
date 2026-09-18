@@ -18,7 +18,7 @@
 - 文章 CRUD（创建、草稿保存、发布、下架、删除、查询）
 - 分类管理（增删改查、启用/禁用）
 - 文件上传（图片上传至 MinIO）
-- 文章审核链（DFA 本地敏感词 → DashScope AI 文本审核 → DashScope AI 图片审核）
+- 文章审核链（DFA 本地敏感词 → Kafka → ai-agent-service 统一执行 DeepSeek 审核）
 - MongoDB 大文本内容存储（MySQL 存元数据，MongoDB 存正文）
 - Kafka 消息同步（发布/下架时同步至搜索服务）
 - 任务调度系统（立即执行 + 定时发布 + Redis 队列 + 补偿机制）
@@ -33,7 +33,7 @@
 | MongoDB | 文章正文存储 |
 | Kafka | 搜索同步事件 |
 | MinIO | 图片/文件对象存储 |
-| Spring AI Alibaba | DashScope AI 审核（qwen-plus 文本, qwen3-vl-plus 图片） |
+| Spring Kafka | AI 审核任务削峰、结果回写与业务状态解耦 |
 | Redis | 任务队列（List + ZSet）、关注列表缓存 |
 | FastJSON2 | 任务参数序列化 |
 
@@ -197,8 +197,8 @@ CREATE INDEX idx_article_audit_article_time ON t_article_audit(article_id, audit
 | 阶段值 | 含义 | 对应常量 |
 |--------|------|----------|
 | 1 | DFA 本地敏感词审核 | `AuditStage.LOCAL_TEXT` |
-| 2 | AI 文本审核（DashScope） | `AuditStage.AI_TEXT` |
-| 3 | AI 图片审核（DashScope） | `AuditStage.AI_IMAGE` |
+| 2 | AI 文本审核（ai-agent-service / DeepSeek） | `AuditStage.AI_TEXT` |
+| 3 | AI 图片审核（ai-agent-service / DeepSeek） | `AuditStage.AI_IMAGE` |
 
 **审核状态常量（ContentConstants.AuditStatus）：**
 
@@ -1349,17 +1349,19 @@ public void cancelTask(Long taskId) {
 }
 ```
 
-### 3.10 审核链详解
+### 3.10 审核链详解（当前实现）
 
-> 当前实现已收口到 ai-agent-service：content-service 通过 `AiAgentFeignClient` 发送文本或图片，统一结果为 `ModerationResultVO`。文本的 AC 自动机、模型选择、Prompt 和评分阈值均由 AI Agent 维护；本节后续旧代码仅保留为迁移背景，不能作为当前实现依据。当前协议详见 `docs/v2/ai-agent-service.md` §8。
+> 当前实现已收口到 ai-agent-service：content-service 通过 `AiTaskProducer` 投递 Kafka，结果由 `AiModerationResultListener` 消费并回写文章状态。模型选择、Prompt 和评分阈值由 AI Agent 维护；本节后续旧代码块仅保留为迁移背景，不能作为当前实现依据。当前协议详见 `docs/v2/ai-agent-service.md`。
 
 #### 3.10.1 审核链总览
 
 审核链由 `ArticleAuditServiceImpl.auditArticle()` 实现，按顺序执行三个阶段，任一阶段不通过即短路返回：
 
 ```
-DFA 本地敏感词 → AI 文本审核(DashScope) → AI 图片审核(DashScope, 逐张)
+DFA 本地敏感词 → Kafka AI_TASK(MODERATION) → DeepSeek 文本/图片审核 → Kafka 结果 → 发布或人工审核
 ```
+
+`ArticleAuditServiceImpl` 只负责组装文章正文和图片引用。`pending://` 图片转换为 MinIO 短时签名 URL，`data:` 图片保留 Base64 兼容路径，公网 `http(s)` 图片直接传 URL，不再由 content-service 下载远程图片。Kafka 投递失败或 AI 任务失败统一进入人工审核，避免同步 HTTP 超时占用发布线程。
 
 #### 3.10.2 DFA 本地敏感词审核
 
@@ -1433,7 +1435,7 @@ private AuditResult auditImage(String imageUrl) {
 }
 ```
 
-#### 3.10.5 DashScope AI 审核客户端
+#### 3.10.5 迁移前的 DashScope 审核客户端（已废弃）
 
 **AuditClient 接口：**
 
@@ -1531,7 +1533,7 @@ private AuditResult unavailableFallback(String scene, String rejectReason, long 
 }
 ```
 
-当 `audit.dashscope.fail-open-on-unavailable=false`（默认）时，DashScope 不可用则审核驳回；设为 `true` 则放行。
+以下 `audit.dashscope.*` 配置属于旧版同步实现，当前服务不再读取；现行 Provider、超时、熔断和降级配置统一放在 ai-agent-service。
 
 **AuditResult 结构：**
 
@@ -1870,12 +1872,6 @@ server:
 spring:
   application:
     name: content-service
-  ai:
-    dashscope:
-      api-key: ${DASHSCOPE_API_KEY:your-api-key-here}
-      chat:
-        options:
-          model: ${DASHSCOPE_CHAT_MODEL:qwen-plus}
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://localhost:3307/game_community?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false
@@ -1912,7 +1908,7 @@ minio:
   private-file-prefix: ${MINIO_PRIVATE_FILE_PREFIX:user-files/pending}
   presigned-expire-seconds: ${MINIO_PRESIGNED_EXPIRE_SECONDS:900}
 
-# 审核模型配置已迁移至 ai-agent-service；content-service 不再持有模型密钥。
+# 审核模型配置已迁移至 ai-agent-service；content-service 只持有 Kafka 连接配置。
 
 mybatis-plus:
   mapper-locations: classpath*:mapper/*.xml
@@ -1936,8 +1932,7 @@ logging:
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
 | `server.port` | 8082 | 服务端口 |
-| `spring.ai.dashscope.api-key` | - | DashScope API Key |
-| `spring.ai.dashscope.chat.options.model` | qwen-plus | Spring AI 默认聊天模型 |
+| `spring.kafka.bootstrap-servers` | localhost:9093 | AI 任务和文章同步消息的 Kafka 地址 |
 | `spring.datasource.url` | localhost:3307/game_community | MySQL 连接 |
 | `spring.data.mongodb.uri` | localhost:27018/game_community | MongoDB 连接 |
 | `spring.data.redis.host` | localhost | Redis 地址 |
@@ -1949,9 +1944,6 @@ logging:
 | `minio.public-bucket-name` | game-community-public | 公共桶名 |
 | `minio.private-bucket-name` | game-community-private | 私有桶名 |
 | `minio.presigned-expire-seconds` | 900 | 预签名URL过期秒数 |
-| `audit.dashscope.text-model` | qwen-plus | 文本审核模型 |
-| `audit.dashscope.image-model` | qwen3-vl-plus | 图片审核模型（视觉模型） |
-| `audit.dashscope.fail-open-on-unavailable` | false | DashScope 不可用时是否放行 |
 | `mybatis-plus.global-config.db-config.logic-delete-field` | deleted | 逻辑删除字段 |
 | `mybatis-plus.global-config.db-config.id-type` | auto | 主键自增策略 |
 

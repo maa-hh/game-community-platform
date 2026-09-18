@@ -11,6 +11,7 @@ import com.game.community.content.util.ArticleMediaHelper;
 import com.game.community.model.dto.article.ArticleDTO;
 import com.game.community.model.entity.article.Article;
 import com.game.community.model.enums.aiagent.ModerationDecision;
+import com.game.community.model.message.ArticleModerationContext;
 import com.game.community.model.vo.aiagent.ModerationResultVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -45,26 +46,45 @@ public class ArticleAsyncServiceImpl implements ArticleAsyncService {
 
     @Override
     public void auditAndPublish(Long articleId, Long userId, ArticleDTO articleDTO, String coverUrl, List<String> imageUrls) {
-        log.info("开始执行文章审核发布任务: articleId={}, userId={}", articleId, userId);
+        log.info("开始投递文章异步审核任务: articleId={}, userId={}", articleId, userId);
         if (shouldAbortPublish(articleId)) {
-            log.info("文章已取消上架或删除，跳过审核发布: articleId={}", articleId);
+            log.info("文章已取消上架或删除，跳过审核任务: articleId={}", articleId);
             return;
         }
+        ArticleModerationContext context = new ArticleModerationContext();
+        context.setArticleId(articleId);
+        context.setUserId(userId);
+        context.setArticle(articleDTO);
+        context.setCoverUrl(coverUrl);
+        context.setImageUrls(imageUrls == null ? List.of() : List.copyOf(imageUrls));
+        try {
+            articleAuditService.dispatchArticleAudit(context);
+        } catch (RuntimeException exception) {
+            String reason = "图片内容读取失败，转人工审核";
+            articlePublishPersistenceService.enterManualReview(articleId, userId, articleDTO, reason,
+                    LocalDateTime.now());
+            log.warn("文章 AI 任务投递前图片载荷无效，转人工审核: articleId={}, reason={}", articleId,
+                    exception.getMessage());
+        }
+    }
 
+    /** Kafka AI 结果回调入口；这里只处理仍处于 PENDING 的文章，天然幂等。 */
+    public void completeAuditAndPublish(ArticleModerationContext context, ModerationResultVO result) {
+        if (context == null || context.getArticleId() == null || context.getArticle() == null || result == null) {
+            log.warn("忽略无效文章 AI 结果");
+            return;
+        }
+        Long articleId = context.getArticleId();
+        Long userId = context.getUserId();
+        ArticleDTO articleDTO = context.getArticle();
+        String coverUrl = context.getCoverUrl();
+        List<String> imageUrls = context.getImageUrls() == null ? List.of() : context.getImageUrls();
         List<String> auditImages = new ArrayList<>();
         if (StringUtils.hasText(coverUrl)) {
             auditImages.add(coverUrl);
         }
-        if (imageUrls != null) {
-            for (String imageUrl : imageUrls) {
-                if (StringUtils.hasText(imageUrl) && !auditImages.contains(imageUrl)) {
-                    auditImages.add(imageUrl);
-                }
-            }
-        }
-
-        ModerationResultVO result = articleAuditService.auditArticle(
-                articleId, articleDTO.getTitle(), articleDTO.getContent(), auditImages);
+        auditImages.addAll(imageUrls);
+        articleAuditService.recordAudit(articleId, result, auditImages);
         if (shouldAbortPublish(articleId)) {
             log.info("审核完成后文章已取消，放弃发布: articleId={}", articleId);
             return;

@@ -13,6 +13,8 @@ public interface ElasticsearchService {
 
     void indexArticle(ArticleDocument document);
 
+    void updateArticleEmbedding(Long articleId, List<Float> vector);
+
     void deleteArticle(Long articleId);
 
     void deleteArticlesNotIn(Set<Long> articleIds);

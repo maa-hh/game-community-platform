@@ -19,11 +19,11 @@ public class SearchAiProperties {
 
     private boolean aiSuggestEnabled = false;
 
-    /** 内部 AI 能力服务使用的 embedding provider。 */
+    /** Kafka AI 任务使用的 embedding provider。 */
     private String embeddingProvider = "dashscope";
 
-    /** 内部 AI 能力服务使用的搜索词扩展 provider。 */
-    private String searchTermsProvider = "dashscope";
+    /** Kafka AI 任务使用的搜索词扩展 provider。 */
+    private String searchTermsProvider = "deepseek";
 
     private int hybridCandidateK = 50;
 

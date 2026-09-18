@@ -4,11 +4,38 @@ server:
 spring:
   application:
     name: ai-agent-service
+  # 统一读取项目根 .env；系统环境变量优先级更高，生产环境仍建议使用外部密钥管理。
+  config:
+    import:
+      - optional:file:./.env[.properties]
+      - optional:file:../.env[.properties]
+      - optional:file:../../.env[.properties]
   data:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6380}
       timeout: ${REDIS_COMMAND_TIMEOUT:2000ms}
+  kafka:
+    bootstrap-servers: ${KAFKA_SERVERS:localhost:9093}
+    consumer:
+      group-id: ai-agent-service-task
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: com.game.community.model.message
+        isolation.level: read_committed
+    listener:
+      ack-mode: record
+      concurrency: ${AI_KAFKA_CONCURRENCY:3}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: ${AI_KAFKA_RETRIES:5}
+      properties:
+        enable.idempotence: true
   # Nacos 配置
   cloud:
     nacos:
@@ -77,8 +104,12 @@ ai-agent:
     global-permit-lease-seconds: ${AUDIT_GLOBAL_PERMIT_LEASE_SECONDS:120}
     max-image-bytes: ${AUDIT_MAX_IMAGE_BYTES:5242880}
     max-article-images: ${AUDIT_MAX_ARTICLE_IMAGES:9}
-    allow-remote-image-urls: ${AUDIT_ALLOW_REMOTE_IMAGE_URLS:false}
-    allowed-image-hosts: ${AUDIT_ALLOWED_IMAGE_HOSTS:}
+    allow-remote-image-urls: ${AUDIT_ALLOW_REMOTE_IMAGE_URLS:true}
+    allowed-image-hosts: ${AUDIT_ALLOWED_IMAGE_HOSTS:game-resource1.3q.hair,cdn.akamai.steamstatic.com,shared.akamai.steamstatic.com,steamcdn-a.akamaihd.net,steamuserimages-a.akamaihd.net,images.steamusercontent.com}
+  search:
+    search-terms-system-prompt-path: ${AI_SEARCH_TERMS_SYSTEM_PROMPT_PATH:classpath:prompts/search-terms-system.st}
+  kafka:
+    result-send-timeout-ms: ${AI_KAFKA_RESULT_SEND_TIMEOUT_MS:5000}
 
 # 日志配置
 logging:

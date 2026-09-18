@@ -14,6 +14,7 @@
 - 用户搜索历史管理（MySQL 存储，默认最多 10 条，可配置）
 - 建议词管理（批量添加、XLS 导入、分页查询、删除）
 - 管理员手动触发索引重建
+- AI 能力通过 Kafka 异步调用 ai-agent-service：DashScope 生成向量，DeepSeek 生成搜索扩展词
 
 **技术栈**：Spring Boot 3 + Elasticsearch Java Client 8 + Kafka + MySQL + MyBatis-Plus + OpenFeign + Nacos + Sentinel + Apache POI
 
@@ -526,7 +527,7 @@ search:
     hybrid-enabled: ${SEARCH_HYBRID_ENABLED:false}
     ai-suggest-enabled: ${SEARCH_AI_SUGGEST_ENABLED:false}
     embedding-provider: ${SEARCH_AI_EMBEDDING_PROVIDER:dashscope}
-    search-terms-provider: ${SEARCH_AI_SEARCH_TERMS_PROVIDER:dashscope}
+    search-terms-provider: ${SEARCH_AI_SEARCH_TERMS_PROVIDER:deepseek}
   index:
     article-shards: ${SEARCH_ARTICLE_SHARDS:3}
     article-replicas: ${SEARCH_ARTICLE_REPLICAS:1}
@@ -545,16 +546,16 @@ search:
 | `spring.kafka.consumer.group-id` | search-service-sync | Kafka 消费组 |
 | `spring.kafka.consumer.auto-offset-reset` | earliest | 从最早消息开始消费 |
 | `search.history.max-records` | 10 | 每个用户保留的搜索历史条数（最大 100） |
-| `search.ai.enabled` | false | 是否允许调用内部 AI 能力服务 |
+| `search.ai.enabled` | false | 是否允许投递 AI 任务到 ai-agent-service |
 | `search.ai.semantic-enabled` | false | 是否允许语义向量召回 |
 | `search.ai.hybrid-enabled` | false | 未指定 mode 时是否默认混合检索 |
-| `search.ai.embedding-provider` | dashscope | 向量生成 provider，由 ai-agent-service 管理 |
-| `search.ai.search-terms-provider` | dashscope | 搜索词扩展 provider，由 ai-agent-service 管理 |
+| `search.ai.embedding-provider` | dashscope | 向量生成 provider，由 ai-agent-service 通过 Kafka 管理 |
+| `search.ai.search-terms-provider` | deepseek | 搜索词扩展 provider，由 ai-agent-service 通过 Kafka 管理 |
 | `search.maintenance.suggest-cleanup-cron` | `0 0 3 * * ?` | 建议词清理时间 |
 | `search.index.*` | 见配置 | ES 分片/副本容量参数 |
 
-开启语义/混合检索前，需要启动 ai-agent-service，并在其 provider 配置中配置
-`DASHSCOPE_API_KEY`，同时设置
+开启语义/混合检索前，需要启动 Kafka、ai-agent-service，并在其 provider 配置中配置
+`DASHSCOPE_API_KEY`（embedding）与 `DEEPSEEK_API_KEY`（搜索扩词），同时设置
 `SEARCH_AI_ENABLED=true`、`SEARCH_SEMANTIC_ENABLED=true`。
 如果希望未指定 `mode` 的请求默认走混合检索，再设置
 `SEARCH_HYBRID_ENABLED=true`。服务重启后会在 `article_index_v2` 中按新的 IK mapping
@@ -570,8 +571,8 @@ search:
 | ContentFeignClient | content-service | `listPublishedArticlesPage` | 分页获取已发布文章 |
 | ContentFeignClient | content-service | `getCategoryById` | 获取分类名称 |
 | UserFeignClient | user-service | `getUsersByIds` | 获取作者信息 |
-| AiAgentFeignClient | ai-agent-service | `embedding` | 获取文章/查询词向量 |
-| AiAgentFeignClient | ai-agent-service | `expandSearchTerms` | 异步生成文章搜索建议词 |
+| AiTaskProducer | Kafka | `EMBEDDING` | 异步获取文章/查询词向量 |
+| AiTaskProducer | Kafka | `SEARCH_TERMS` | 异步生成文章搜索建议词 |
 
 ### 7.4 启动类注解
 
@@ -580,6 +581,8 @@ search:
 @EnableFeignClients(basePackages = "com.game.community.feign")
 @SpringBootApplication(scanBasePackages = "com.game.community.search")
 ```
+
+`@EnableFeignClients` 仅用于内容、用户和 Steam 等查询接口；搜索服务不再通过 Feign 调用 ai-agent-service。AI 任务由 `AiTaskProducer` 投递到 `ai-task-request-events`，`AiResultListener` 消费 `ai-task-result-events` 后回写 ES、Redis 或建议词表。
 
 ### 7.5 内部关键参数
 
