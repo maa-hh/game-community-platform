@@ -1,8 +1,11 @@
 import hyRequest from '@/service/request';
 import type { IDataType } from '@/service/types';
-import { mapArticlesToLatestPosts } from '@/service/social';
-import { fetchArticlesRawByIds } from '@/utils/hydrateArticleForGameRepost';
-import type { IArticleRaw } from '@/utils/mapPost';
+import {
+  authorFrom,
+  mapArticleToLatest,
+  type IArticleRaw,
+  type IArticleStatsRaw,
+} from '@/utils/mapPost';
 import type { IGameTagRaw } from '@/utils/mapGameTag';
 import type { LatestPostItem } from '@/types/post';
 
@@ -60,7 +63,7 @@ export async function fetchHotRankApi(params: IFetchHotRankParams) {
   return res.data || [];
 }
 
-/** 热榜条目走与首页/动态一致的文章映射（含游戏分享封面） */
+/** 将热榜接口已经返回的首屏字段直接映射为卡片模型，避免重复请求文章详情和统计。 */
 function hotRankItemToArticleRaw(item: IHotRankItem): IArticleRaw {
   return {
     id: item.id ?? 0,
@@ -80,6 +83,8 @@ function hotRankItemToArticleRaw(item: IHotRankItem): IArticleRaw {
       item.categoryNames ??
       (item.categoryName ? [item.categoryName] : undefined),
     gameTags: item.gameTags,
+    // 热榜只返回已发布文章；补齐状态可让卡片映射保持和普通文章一致。
+    status: 1,
     publishedTime: item.publishedTime,
     createTime: item.createTime,
     updateTime: item.updateTime,
@@ -91,39 +96,29 @@ export async function mapHotRankItemsToLatest(
 ): Promise<LatestPostItem[]> {
   if (items.length === 0) return [];
 
-  const publicIds = items.map((item) => item.publicId);
-  const fetched = await fetchArticlesRawByIds(publicIds);
-  const fetchedById = new Map(fetched.map((row) => [row.publicId, row]));
-  const articles = items.map((item) => {
-    const fallback = hotRankItemToArticleRaw(item);
-    const canonical = fetchedById.get(item.publicId);
-    if (!canonical) return fallback;
-    // 热榜 VO 是精简结构，内容服务补全时也可能暂时没有游戏标签；
-    // 保留热榜自身或精简接口携带的字段，避免标签在二次映射中丢失。
-    return {
-      ...fallback,
-      ...canonical,
-      username: canonical.username ?? fallback.username,
-      avatar: canonical.avatar ?? fallback.avatar,
-      gameTags: canonical.gameTags ?? fallback.gameTags,
+  return items.map((item) => {
+    const raw = hotRankItemToArticleRaw(item);
+    const stats: IArticleStatsRaw = {
+      articleId: item.id ?? item.publicId,
+      publicId: item.publicId,
+      likeCount: item.likeCount,
+      commentCount: item.commentCount,
+      replyCount: item.replyCount,
+      viewCount: item.viewCount,
+      liked: item.liked,
     };
-  });
-  const mapped = await mapArticlesToLatestPosts(articles);
-  const mappedById = new Map(mapped.map((item) => [item.id, item]));
-
-  const result: LatestPostItem[] = [];
-  for (const item of items) {
-    const base = mappedById.get(item.publicId);
-    if (!base) continue;
-    result.push({
+    const base = mapArticleToLatest(
+      raw,
+      authorFrom(item.authorAccountId, item.authorName, item.authorAvatar),
+      stats,
+    );
+    return {
       ...base,
-      liked: item.liked ?? base.liked,
       rank: item.rank,
       hotScore:
         item.hotScore != null && Number.isFinite(Number(item.hotScore))
           ? Number(item.hotScore)
           : base.hotScore,
-    });
-  }
-  return result;
+    };
+  });
 }
