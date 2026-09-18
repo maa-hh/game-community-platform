@@ -27,14 +27,14 @@
 
 - `t_article_behavior_event.event_id` 非空且唯一。
 - `t_hot_rank_snapshot` 对榜单、周期、分类、排名和文章建立唯一约束。
-- 旧库执行 `sql/recommend-hot-rank-idempotency-migration.sql`、`sql/recommend-hot-rank-danmaku.sql`；新库使用 `sql/recommend-hot-rank-behavior.sql` 和 `sql/recommend-hot-rank.sql`。
+- 旧库执行 `sql/recommend-hot-rank-idempotency-migration.sql`、`sql/recommend-hot-rank-danmaku.sql`；新库按 `scripts/db/migrations.order` 依次执行 `sql/recommend-hot-rank-behavior.sql`、`sql/recommend-hot-rank.sql` 和 `sql/recommend-hot-rank-danmaku.sql`，其中弹幕迁移负责补齐 `danmaku_delta` 字段。
 
 ## 运维要求
 
 - 所有 recommend 实例必须使用相同 Redis、Kafka 和 MySQL 配置。
 - `XXL_JOB_ACCESS_TOKEN` 必须显式配置，不使用默认 token。
 - 首次部署建议 `RECOMMEND_KAFKA_AUTO_OFFSET_RESET=earliest`，确认回放完成后再按容量策略调整。
-- 弹幕历史回填按 `t_danmaku_message.status=1` 且视频帖已发布过滤，使用 `backfill-danmaku-{id}` 幂等事件 ID；已有行为事件表时启动回填仍会补弹幕，不会因为表非空而跳过。
+- 弹幕历史回填按 `t_danmaku_message.status=1` 且视频帖已发布过滤，使用 `backfill-danmaku-{id}` 幂等事件 ID；启动回填和增量任务只插入缺失事件，不删除实时消费已写入的弹幕事件。
 - `hotRankBehaviorBackfillJob` 用于全量重建事实表；上线弹幕迁移后至少执行一次，并随后执行总榜、日榜、周榜重建任务。
-- `hotRankDanmakuBackfillJob` 只幂等补入历史可见弹幕并刷新总榜/当前日周榜；生产不建议依赖多实例启动预热，启动预热默认关闭，由 XXL-JOB 统一调度。
+- `hotRankDanmakuBackfillJob` 在维护锁内重建弹幕来源事件并刷新总榜/当前日周榜；生产不建议依赖多实例启动预热，启动预热默认关闭，由 XXL-JOB 统一调度。
 - 必须监控 Consumer lag、DLT 数量、行为事件重复数、热榜重建耗时和 Redis 错误率。

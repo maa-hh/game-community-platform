@@ -5,6 +5,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.concurrent.Executor;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
 
 /**
@@ -23,5 +25,15 @@ public class RecommendAsyncConfig {
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
         executor.initialize();
         return executor;
+    }
+
+    /** 分布式维护锁续租线程，避免长时间回填或重建超过固定 TTL。 */
+    @Bean(destroyMethod = "shutdown")
+    public ScheduledExecutorService recommendLockRenewalExecutor() {
+        return Executors.newScheduledThreadPool(1, runnable -> {
+            Thread thread = new Thread(runnable, "recommend-lock-renewal");
+            thread.setDaemon(true);
+            return thread;
+        });
     }
 }

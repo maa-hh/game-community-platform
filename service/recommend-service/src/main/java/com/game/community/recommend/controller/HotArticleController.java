@@ -4,7 +4,9 @@ import com.game.community.common.annotation.LoginCheck;
 import com.game.community.model.base.PageResult;
 import com.game.community.model.base.Result;
 import com.game.community.model.dto.recommend.HotRankQueryDTO;
+import com.game.community.model.json.ApiJsonViews;
 import com.game.community.model.vo.article.HotArticleVO;
+import com.fasterxml.jackson.annotation.JsonView;
 import com.game.community.recommend.service.HotRankService;
 import com.game.community.utils.ThreadLocal.UserThreadLocal;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +27,7 @@ public class HotArticleController {
     private final HotRankService hotRankService;
 
     @GetMapping("/rank")
+    @JsonView(ApiJsonViews.Public.class)
     public Result<List<HotArticleVO>> rank(@Valid HotRankQueryDTO query) {
         return Result.success(hotRankService.listRank(query, UserThreadLocal.getUserId()));
     }
@@ -32,6 +35,7 @@ public class HotArticleController {
     /** 兼容旧客户端，数据源统一走新版热榜。 */
     @LoginCheck
     @GetMapping("/list")
+    @JsonView(ApiJsonViews.Public.class)
     public PageResult<HotArticleVO> list(@RequestParam(value = "page", defaultValue = "1") Long page,
                                          @RequestParam(value = "size", defaultValue = "12") Long size) {
         HotRankQueryDTO query = new HotRankQueryDTO();
@@ -41,6 +45,7 @@ public class HotArticleController {
     /** 兼容旧客户端，数据源统一走新版热榜。 */
     @LoginCheck
     @GetMapping("/category/{categoryId}")
+    @JsonView(ApiJsonViews.Public.class)
     public PageResult<HotArticleVO> listByCategory(@PathVariable("categoryId") Long categoryId,
                                                    @RequestParam(value = "page", defaultValue = "1") Long page,
                                                    @RequestParam(value = "size", defaultValue = "12") Long size) {

@@ -117,6 +117,31 @@ public class RedisUtils {
                     + "return score",
             Double.class);
 
+    private static final DefaultRedisScript<Long> Z_INCREMENT_IF_UNLOCKED_SCRIPT = new DefaultRedisScript<>(
+            "if redis.call('exists', KEYS[2]) == 1 then return 0 end; "
+                    + "local score = redis.call('ZINCRBY', KEYS[1], ARGV[1], ARGV[2]); "
+                    + "if tonumber(score) <= 0 then "
+                    + "redis.call('ZREM', KEYS[1], ARGV[2]); "
+                    + "else "
+                    + "local size = redis.call('ZCARD', KEYS[1]); "
+                    + "local limit = tonumber(ARGV[3]); "
+                    + "if size > limit then redis.call('ZREMRANGEBYRANK', KEYS[1], 0, size - limit - 1); end; "
+                    + "end; return 1",
+            Long.class);
+
+    private static final DefaultRedisScript<Long> Z_SET_SCORE_AND_TRIM_SCRIPT = new DefaultRedisScript<>(
+            "if tonumber(ARGV[1]) <= 0 then redis.call('ZREM', KEYS[1], ARGV[2]); return 1 end; "
+                    + "redis.call('ZADD', KEYS[1], ARGV[1], ARGV[2]); "
+                    + "local size = redis.call('ZCARD', KEYS[1]); "
+                    + "local limit = tonumber(ARGV[3]); "
+                    + "if size > limit then redis.call('ZREMRANGEBYRANK', KEYS[1], 0, size - limit - 1); end; return 1",
+            Long.class);
+
+    private static final DefaultRedisScript<Long> RENEW_LOCK_SCRIPT = new DefaultRedisScript<>(
+            "if redis.call('get', KEYS[1]) == ARGV[1] then "
+                    + "return redis.call('expire', KEYS[1], ARGV[2]) else return 0 end",
+            Long.class);
+
     private static final DefaultRedisScript<Long> Z_REPLACE_SCRIPT = new DefaultRedisScript<>(
             "redis.call('DEL', KEYS[1]); "
                     + "local limit = tonumber(ARGV[1]); "
@@ -214,6 +239,13 @@ public class RedisUtils {
     public boolean unlock(String key, String token) {
         Long result = stringRedisTemplate.execute(UNLOCK_SCRIPT,
                 Collections.singletonList(key), token);
+        return result != null && result == 1L;
+    }
+
+    /** 仅当锁仍属于当前持有者时续租，避免误续租其他实例的锁。 */
+    public boolean renewLock(String key, String token, long seconds) {
+        Long result = stringRedisTemplate.execute(RENEW_LOCK_SCRIPT,
+                Collections.singletonList(key), token, String.valueOf(seconds));
         return result != null && result == 1L;
     }
 
@@ -388,6 +420,25 @@ public class RedisUtils {
                 Z_INCREMENT_AND_TRIM_SCRIPT,
                 Collections.singletonList(key),
                 String.valueOf(delta), value, String.valueOf(limit));
+    }
+
+    /** 维护锁存在时拒绝实时增量，防止重建的全量替换被并发事件覆盖。 */
+    public boolean zIncrementScoreAndTrimUnlessLocked(String key, String lockKey,
+                                                       String value, double delta, long limit) {
+        Long result = stringRedisTemplate.execute(
+                Z_INCREMENT_IF_UNLOCKED_SCRIPT,
+                Arrays.asList(key, lockKey),
+                String.valueOf(delta), value, String.valueOf(limit));
+        return result != null && result == 1L;
+    }
+
+    /** 原子设置一个热榜成员的精确分数并裁剪低分成员。 */
+    public boolean zSetScoreAndTrim(String key, String value, double score, long limit) {
+        Long result = stringRedisTemplate.execute(
+                Z_SET_SCORE_AND_TRIM_SCRIPT,
+                Collections.singletonList(key),
+                String.valueOf(score), value, String.valueOf(limit));
+        return result != null && result == 1L;
     }
 
     /** 原子替换一个热榜 Sorted Set，避免重建期间出现空榜或半榜。 */

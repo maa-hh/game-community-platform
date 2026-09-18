@@ -23,5 +23,4 @@ public interface HotRankService {
     /** 按榜单、分类和周期查询热榜，内部主键只在服务边界内使用。 */
     List<HotArticleVO> listRank(HotRankQueryDTO query, Long userId);
 
-    void refreshDailyBoard(Long categoryId);
 }
