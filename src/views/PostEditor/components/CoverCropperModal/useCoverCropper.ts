@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SyntheticEvent } from 'react';
-import { message } from 'antd';
+import { App } from 'antd';
 import {
   centerCrop,
   convertToPixelCrop,
@@ -76,6 +76,7 @@ export function useCoverCropper(
   imageSrc: string,
   onConfirm: (dataUrl: string, blob: Blob) => void,
 ) {
+  const { message } = App.useApp();
   const imgRef = useRef<HTMLImageElement | null>(null);
   const cropRef = useRef<Crop | undefined>(undefined);
   const [crop, setCrop] = useState<Crop>();
@@ -141,7 +142,7 @@ export function useCoverCropper(
     } finally {
       setRotating(false);
     }
-  }, [rotating, workingImageSrc]);
+  }, [message, rotating, workingImageSrc]);
 
   const onCropChange = useCallback((_: PixelCrop, percentCrop: Crop) => {
     cropRef.current = percentCrop;

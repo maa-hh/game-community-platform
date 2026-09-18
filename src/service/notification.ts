@@ -29,14 +29,6 @@ function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === 'object' && value !== null;
 }
 
-function isNotificationMessage(value: unknown): value is INotificationMessage {
-  return (
-    isRecord(value) &&
-    typeof value.id === 'number' &&
-    typeof value.eventType === 'number'
-  );
-}
-
 function isNotificationSummary(value: unknown): value is INotificationSummary {
   return (
     isRecord(value) &&
@@ -58,6 +50,67 @@ function normalizeBoolean(value: unknown): boolean {
 function normalizeCount(value: unknown, fallback = 0): number {
   const count = Number(value);
   return Number.isFinite(count) && count >= 0 ? count : fallback;
+}
+
+function normalizeOptionalNumber(value: unknown): number | undefined {
+  if (value === null || value === undefined || value === '') return undefined;
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : undefined;
+}
+
+/**
+ * 后端历史接口与 SSE 可能把数字字段序列化为字符串；在进入 Redux 前统一
+ * 转换，避免同一条通知在列表、红点和跳转逻辑中出现不同类型。
+ */
+export function normalizeNotificationMessage(
+  value: unknown,
+): INotificationMessage | null {
+  if (!isRecord(value)) return null;
+
+  const id = normalizeOptionalNumber(value.id);
+  const eventType = normalizeOptionalNumber(value.eventType);
+  if (id === undefined || eventType === undefined) return null;
+
+  const aggregateActors = Array.isArray(value.aggregateActors)
+    ? value.aggregateActors
+        .filter(isRecord)
+        .map((actor) => ({
+          ...actor,
+          accountId: normalizeOptionalNumber(actor.accountId) ?? 0,
+        }))
+        .filter((actor) => actor.accountId > 0)
+    : undefined;
+
+  return {
+    ...(value as Partial<INotificationMessage>),
+    id,
+    eventType,
+    actorAccountId: normalizeOptionalNumber(value.actorAccountId),
+    articleId: normalizeOptionalNumber(value.articleId),
+    gameAppId: normalizeOptionalNumber(value.gameAppId),
+    commentId: normalizeOptionalNumber(value.commentId),
+    replyId: normalizeOptionalNumber(value.replyId),
+    danmakuId: normalizeOptionalNumber(value.danmakuId),
+    reportId: normalizeOptionalNumber(value.reportId),
+    targetAccountId: normalizeOptionalNumber(value.targetAccountId),
+    likeCount: normalizeOptionalNumber(value.likeCount),
+    routeType: normalizeOptionalNumber(value.routeType),
+    readStatus: normalizeOptionalNumber(value.readStatus),
+    aggregateTotal: normalizeOptionalNumber(value.aggregateTotal),
+    aggregateActors,
+    aggregated:
+      value.aggregated === undefined
+        ? undefined
+        : normalizeBoolean(value.aggregated),
+    aggregateHasLike:
+      value.aggregateHasLike === undefined
+        ? undefined
+        : normalizeBoolean(value.aggregateHasLike),
+    aggregateHasFavorite:
+      value.aggregateHasFavorite === undefined
+        ? undefined
+        : normalizeBoolean(value.aggregateHasFavorite),
+  };
 }
 
 /** 统一处理 SSE/接口可能返回的数字字段，避免红点因字符串或缺省字段失效。 */
@@ -85,11 +138,17 @@ export function parseNotificationSseEvent(
 ): INotificationSseEvent | null {
   if (!raw) return null;
 
-  const parsed = JSON.parse(raw) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
   const root = isRecord(parsed) && isRecord(parsed.data) ? parsed.data : parsed;
 
-  if (isNotificationMessage(root)) {
-    return { eventType: 'notification_created', message: root };
+  const directMessage = normalizeNotificationMessage(root);
+  if (directMessage) {
+    return { eventType: 'notification_created', message: directMessage };
   }
   if (!isRecord(root)) return null;
 
@@ -103,9 +162,7 @@ export function parseNotificationSseEvent(
   const summary =
     normalizeNotificationSummary(root.summary) ??
     normalizeNotificationSummary(root);
-  const message = isNotificationMessage(root.message)
-    ? root.message
-    : undefined;
+  const message = normalizeNotificationMessage(root.message) ?? undefined;
 
   if (!eventType && !summary && !message) return null;
 
@@ -183,7 +240,9 @@ export async function fetchNotificationMessagesApi(params: {
   });
   return {
     ...res,
-    data: res.data || [],
+    data: (res.data || [])
+      .map(normalizeNotificationMessage)
+      .filter((item): item is INotificationMessage => Boolean(item)),
   };
 }
 

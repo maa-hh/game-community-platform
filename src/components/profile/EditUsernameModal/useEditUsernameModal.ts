@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Form, message } from 'antd';
+import { App, Form } from 'antd';
 
 import { useAppDispatch, useAppSelector } from '@/store';
 import { updateUserProfile } from '@/store/modules/auth';
@@ -11,6 +11,7 @@ import { editUsernameModalConfig } from './config';
 import type { IEditUsernameFormValues } from './types';
 
 export function useEditUsernameModal(open: boolean, onClose: () => void) {
+  const { message } = App.useApp();
   const dispatch = useAppDispatch();
   const { user } = useAppSelector((state) => state.auth);
   const [form] = Form.useForm<IEditUsernameFormValues>();

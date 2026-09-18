@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { message } from 'antd';
+import { App } from 'antd';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { useArticleOwnerActions } from '@/hooks/useArticleOwnerActions';
@@ -119,6 +119,7 @@ export function useProfileFeed({
   authorUser,
   isOther = false,
 }: IProps) {
+  const { message } = App.useApp();
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useAppDispatch();
@@ -340,7 +341,7 @@ export function useProfileFeed({
         });
       }
     },
-    [likeMap, profileFeedCacheKey, requireLogin, user?.accountId],
+    [likeMap, message, profileFeedCacheKey, requireLogin, user?.accountId],
   );
 
   const handleRefresh = useCallback(async () => {
@@ -349,7 +350,7 @@ export function useProfileFeed({
     } catch {
       message.error(formatApiError('刷新失败', new Error()));
     }
-  }, [pagedList]);
+  }, [message, pagedList]);
 
   const handleItemClick = useCallback(
     (item: FeedItemData) => {
@@ -385,7 +386,7 @@ export function useProfileFeed({
           : buildReturnNavigationState(location),
       });
     },
-    [location, mainTab, goEdit, navigate],
+    [location, mainTab, goEdit, message, navigate],
   );
 
   const handleGoPublish = useCallback(() => {

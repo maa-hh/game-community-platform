@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { message } from 'antd';
+import { App } from 'antd';
 
 import { useRequireLogin } from '@/hooks/useRequireLogin';
 import { useOptimisticAction } from '@/hooks/useOptimisticAction';
@@ -41,6 +41,7 @@ function restoreSnapshot<T extends FavoritableFeedItem>(
 export function useFeedItemFavorite<T extends FavoritableFeedItem>(
   setItems: Dispatch<SetStateAction<T[]>>,
 ) {
+  const { message } = App.useApp();
   const { requireLogin } = useRequireLogin();
   const { updateInteraction, invalidateProfileInteractionCaches } =
     usePostInteractionActions();
@@ -114,6 +115,7 @@ export function useFeedItemFavorite<T extends FavoritableFeedItem>(
     },
     [
       invalidateProfileInteractionCaches,
+      message,
       requireLogin,
       runOptimisticAction,
       setItems,

@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
-import { message } from 'antd';
+import { App } from 'antd';
 
 import { useRequireLogin } from '@/hooks/useRequireLogin';
 import { useOptimisticAction } from '@/hooks/useOptimisticAction';
@@ -87,6 +87,7 @@ export function useFeedItemLike<T extends LikableFeedItem>(
   setItems: Dispatch<SetStateAction<T[]>>,
   options?: UseFeedItemLikeOptions,
 ) {
+  const { message } = App.useApp();
   const { requireLogin } = useRequireLogin();
   const { updateInteraction, invalidateProfileInteractionCaches } =
     usePostInteractionActions();
@@ -172,6 +173,7 @@ export function useFeedItemLike<T extends LikableFeedItem>(
     },
     [
       invalidateProfileInteractionCaches,
+      message,
       requireLogin,
       runOptimisticAction,
       setItems,

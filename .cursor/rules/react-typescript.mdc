@@ -24,9 +24,8 @@ export default memo(MyComp);
 ## 页面数据
 
 ```tsx
-// ✅ store 异步
-useEffect(() => { dispatch(fetchHomeData()); }, [dispatch]);
-const { data, loading } = useAppSelector((s) => s.home);
+// ✅ 服务端列表使用 RTK Query
+const { data, isFetching } = useCommunityFeedInfiniteQuery({ accountId });
 
 // ❌ 组件里直接调 service
 useEffect(() => { getBanners().then(...) }, []);
@@ -40,6 +39,6 @@ useEffect(() => { getBanners().then(...) }, []);
 
 ## UI 与样式
 
-- **UI 组件**：默认 antd 5（见 `.cursor/rules/ant-design.mdc`）
+- **UI 组件**：默认 antd 6.5.1（见 `.cursor/rules/ant-design.mdc`）
 - 全局：LESS `assets/css/`
 - 组件：antd 优先；需自定义时用 styled-components 或同目录 less

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { message } from 'antd';
+import { App } from 'antd';
 
 import { useAppDispatch, useAppSelector } from '@/store';
 import {
@@ -21,6 +21,7 @@ import type {
 } from '@/components/auth/constants';
 
 export function useAuthModalContent() {
+  const { message } = App.useApp();
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useAppDispatch();
@@ -42,7 +43,7 @@ export function useAuthModalContent() {
       message.warning(tip);
     }
     redirectFromRef.current = locationState?.from || currentPath;
-  }, [currentPath, open, locationState?.from, locationState?.tip]);
+  }, [currentPath, locationState?.from, locationState?.tip, message, open]);
 
   useEffect(() => {
     if (!successRedirecting) return;
@@ -56,7 +57,7 @@ export function useAuthModalContent() {
       lastAuthModeRef.current === 'register' ? '注册成功' : '登录成功',
       3,
     );
-  }, [currentPath, successRedirecting, dispatch, navigate, closeAuth]);
+  }, [currentPath, successRedirecting, dispatch, navigate, closeAuth, message]);
 
   const handleModeChange = (value: string | number) => {
     if (value === 'reset') return;

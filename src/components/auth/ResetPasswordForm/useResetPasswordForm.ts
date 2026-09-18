@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Form, message } from 'antd';
+import { App, Form } from 'antd';
 import type { InputRef } from 'antd/es/input';
 
 import { useAppDispatch } from '@/store';
@@ -9,6 +9,7 @@ import { SEND_COUNTDOWN } from '@/components/auth/constants';
 import type { IResetPasswordFormValues } from '@/components/auth/constants';
 
 export function useResetPasswordForm() {
+  const { message } = App.useApp();
   const dispatch = useAppDispatch();
   const [form] = Form.useForm<IResetPasswordFormValues>();
   const emailRef = useRef<InputRef>(null);
@@ -49,7 +50,7 @@ export function useResetPasswordForm() {
     } finally {
       setSendingCode(false);
     }
-  }, [dispatch, form, syncEmail]);
+  }, [dispatch, form, message, syncEmail]);
 
   return {
     form,

@@ -31,7 +31,7 @@ alwaysApply: true
 - 函数组件 + Hooks，不用 class
 - 页面不写在 layouts 里；layouts 不写业务表单
 - 网络：`dispatch(thunk)` → service → HYRequest，不在 useEffect 里直接 getBanners()
-- UI 默认 **antd 5**（规则 `.cursor/rules/ant-design.mdc`，Skill `.agents/skills/antd/`）
+- UI 默认 **antd 6.5.1**（规则 `.cursor/rules/ant-design.mdc`，Skill `.agents/skills/antd/`）
 - antd 主题在 `App.tsx` ConfigProvider；全局 LESS 在 `assets/css/`
 - 首屏页同步 import，冷门页 `lazy()` + Suspense
 - **UTF-8**：源码/Mock/含中文配置均 UTF-8；接口中文乱码先查后端 DB 种子字符集（勿在前端打补丁转码）

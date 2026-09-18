@@ -14,6 +14,7 @@ import {
   setPageDataCache,
   subscribePageDataCache,
 } from './pageDataCache';
+import { mergeById } from '@/utils/mergeById';
 
 export interface UsePageListOptions<T> {
   pageSize?: number;
@@ -22,6 +23,8 @@ export interface UsePageListOptions<T> {
   /** 依赖变化时重置并拉取第一页 */
   resetDeps?: unknown[];
   fetchPage: (page: number, size: number) => Promise<IPageResult<T>>;
+  /** 分页回填主键；未提供时按原数组替换，适用于无稳定主键的特殊列表。 */
+  getKey?: (item: T) => string | number | undefined;
 }
 
 interface PageListCache<T> {
@@ -37,6 +40,7 @@ export function usePageList<T>({
   cacheKey,
   resetDeps = [],
   fetchPage,
+  getKey,
 }: UsePageListOptions<T>) {
   const cached = cacheKey
     ? getPageDataCache<PageListCache<T>>(cacheKey)
@@ -111,7 +115,12 @@ export function usePageList<T>({
         setTotal(nextTotal);
         setPage(nextPage);
         setItems((prev) => {
-          const next = append ? [...prev, ...list] : list;
+          const next =
+            append && getKey
+              ? mergeById(prev, list, getKey)
+              : append
+                ? [...prev, ...list]
+                : list;
           setHasMore(next.length < nextTotal && list.length > 0);
           return next;
         });
@@ -125,7 +134,7 @@ export function usePageList<T>({
         setLoadingMore(false);
       }
     },
-    [enabled, pageSize],
+    [enabled, getKey, pageSize],
   );
 
   const reload = useCallback(async () => {

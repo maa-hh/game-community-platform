@@ -13,6 +13,7 @@ import {
 import type { NotificationCategoryKey } from '@/types/notification';
 import type { IPageResult } from '@/service/types';
 import { enrichNotificationMessages } from '@/utils/enrichNotificationMessages';
+import { mergeById } from '@/utils/mergeById';
 
 interface CategoryMessagesState {
   items: INotificationMessage[];
@@ -140,6 +141,16 @@ export const fetchCategoryMessagesAction = createAsyncThunk(
       items,
       total: Number(res.total ?? 0),
     };
+  },
+  {
+    condition: (payload, { getState }) => {
+      const state = getState() as { notification: NotificationState };
+      const bucket = state.notification.categoryMessages[payload.category];
+      if (!bucket) return true;
+      return payload.append
+        ? !bucket.loading && !bucket.loadingMore
+        : !bucket.loading;
+    },
   },
 );
 
@@ -296,7 +307,9 @@ const notificationSlice = createSlice({
           state.categoryMessages[category] ?? initialCategoryMessages();
         bucket.page = page;
         bucket.total = total;
-        bucket.items = append ? [...bucket.items, ...items] : items;
+        bucket.items = append
+          ? mergeById(bucket.items, items, (item) => item.id)
+          : items;
         bucket.hasMore = bucket.items.length < total;
         bucket.loading = false;
         bucket.loadingMore = false;

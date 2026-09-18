@@ -11,7 +11,7 @@ import {
   useParams,
   useSearchParams,
 } from 'react-router-dom';
-import { Button, message } from 'antd';
+import { App, Button } from 'antd';
 import { FlagOutlined } from '@ant-design/icons';
 
 import PageLoading from '@/base-ui/PageLoading';
@@ -107,6 +107,7 @@ function mergePostPreview(
 }
 
 function PostDetail() {
+  const { message } = App.useApp();
   const { id = '' } = useParams();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -413,7 +414,7 @@ function PostDetail() {
     } catch (err) {
       message.error(formatApiError('刷新失败', err));
     }
-  }, [reloadAll]);
+  }, [message, reloadAll]);
 
   const { buildOwnerMenuItems } = useArticleOwnerActions({
     onPublished: () => reloadDetail(),

@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { message } from 'antd';
+import { App } from 'antd';
 
 import { useOptimisticAction } from '@/hooks/useOptimisticAction';
 import { useRequireLogin } from '@/hooks/useRequireLogin';
@@ -19,6 +19,7 @@ export function usePostLikeAction(
   applyState: (next: PostLikeState) => void,
   readState: () => PostLikeState,
 ) {
+  const { message } = App.useApp();
   const { requireLogin } = useRequireLogin();
   const {
     updateInteraction,
@@ -90,6 +91,7 @@ export function usePostLikeAction(
     invalidateCommunityFeed,
     invalidateProfileInteractionCaches,
     isPending,
+    message,
     readState,
     requireLogin,
     runOptimisticAction,

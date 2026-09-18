@@ -23,7 +23,7 @@
 | `RootLayout` | `layouts/Root` | 挂全局 `AuthModal`（必须在 Router 内）      |
 | `MainLayout` | `layouts/Main` | 站内页：顶栏 + **统一内容盒**               |
 | `HomeLayout` | `layouts/Home` | 官网首页：顶栏 + **无限宽盒**，方便全屏视频 |
-| `AuthLayout` | `layouts/Auth` | 旧分栏认证壳（如仍用）                      |
+| `RootLayout` | `layouts/Root` | 全局 Provider、KeepAlive 与 AuthModal 容器       |
 
 ### 2.2 站内内容盒（核心）
 
@@ -152,7 +152,7 @@
 
 ## 9. 组件与实现约束
 
-- UI 库：**antd 5/6 项目已定版本**，写组件前查 antd Skill / CLI，不凭记忆写 props。
+- UI 库：**antd 6.5.1**，写组件前查 antd Skill / CLI，不凭记忆写 props；反馈和弹窗使用 `App.useApp()`，不使用静态 `message` / `Modal`。
 - 图标：`@ant-design/icons`
 - 样式：优先 antd props / `ConfigProvider` token；局部用同目录 `style.less` 或 styled-components。
 - **不要**引入第二套 UI 库。

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Empty, Input, Modal, Spin, message } from 'antd';
+import { App, Empty, Input, Modal, Spin } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 
 import GameCard from '@/views/Games/parts/GameCard';
@@ -21,6 +21,7 @@ interface IGameSearchModalProps {
 }
 
 function GameSearchModal({ open, onClose, onChanged }: IGameSearchModalProps) {
+  const { message } = App.useApp();
   const { requireLogin } = useRequireLogin();
   const [keyword, setKeyword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -68,7 +69,7 @@ function GameSearchModal({ open, onClose, onChanged }: IGameSearchModalProps) {
     } finally {
       setLoading(false);
     }
-  }, [keyword]);
+  }, [keyword, message]);
 
   const toggleFollow = async (game: IGameListItem) => {
     if (!requireLogin()) return;

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Upload, message } from 'antd';
+import { App, Upload } from 'antd';
 import type { UploadProps } from 'antd';
 
 import { useAppDispatch, useAppSelector } from '@/store';
@@ -15,6 +15,7 @@ import {
 } from './config';
 
 export function useAvatarViewerModal(onClose: () => void) {
+  const { message } = App.useApp();
   const dispatch = useAppDispatch();
   const { user } = useAppSelector((state) => state.auth);
   const [cropSrc, setCropSrc] = useState<string | null>(null);

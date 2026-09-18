@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { message } from 'antd';
+import { App } from 'antd';
 
 import { createGameSharePostApi } from '@/service/game';
 import { useRequireLogin } from '@/hooks/useRequireLogin';
@@ -21,27 +21,28 @@ import { PROFILE_DATA_DOMAIN } from '@/types/profileRealtime';
 
 import type { IGameShareSheetProps } from './types';
 
-async function copyText(text: string, successMessage: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-    message.success(successMessage);
-    return true;
-  } catch {
-    message.error('复制失败，请手动复制');
-    return false;
-  }
-}
-
 export function useGameShareSheet({
   detail,
   onClose,
   onReposted,
 }: IGameShareSheetProps) {
+  const { message } = App.useApp();
   const { requireLogin, user } = useRequireLogin();
   const [repostOpen, setRepostOpen] = useState(false);
   const [shareTitle, setShareTitle] = useState('');
   const [shareContent, setShareContent] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  const copyText = async (text: string, successMessage: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      message.success(successMessage);
+      return true;
+    } catch {
+      message.error('复制失败，请手动复制');
+      return false;
+    }
+  };
 
   const defaultShareTitle = useMemo(
     () => buildDefaultGameShareTitle(detail.name),

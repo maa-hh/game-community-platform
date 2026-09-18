@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { DatePicker, Segmented, Select, message } from 'antd';
+import { App, DatePicker, Segmented, Select } from 'antd';
 import type { Dayjs } from 'dayjs';
 
 import PostFeedList from '@/components/PostFeedList';
@@ -20,6 +20,7 @@ import { buildPostDetailNavigationState } from '@/utils/detailNavigation';
 import './style.less';
 
 function Recommend() {
+  const { message } = App.useApp();
   const navigate = useNavigate();
   const location = useLocation();
   const {

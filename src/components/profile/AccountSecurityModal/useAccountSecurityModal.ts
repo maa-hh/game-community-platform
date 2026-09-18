@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Form, Modal, message } from 'antd';
+import { App, Form } from 'antd';
 
 import { useAppDispatch, useAppSelector } from '@/store';
 import { logout } from '@/store/modules/auth';
@@ -26,6 +26,7 @@ import type {
 } from './types';
 
 export function useAccountSecurityModal(open: boolean, onClose: () => void) {
+  const { message, modal } = App.useApp();
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const { user } = useAppSelector((state) => state.auth);
@@ -71,12 +72,12 @@ export function useAccountSecurityModal(open: boolean, onClose: () => void) {
       navigate('/', { replace: true });
       message.success(tip);
     },
-    [dispatch, navigate, onClose],
+    [dispatch, message, navigate, onClose],
   );
 
   const handleMenuClick = (key: Exclude<PanelKey, 'menu'>) => {
     if (key === 'cancel') {
-      Modal.confirm({
+      modal.confirm({
         title: '确认注销吗？',
         content:
           '注销后将进入 7 天冷静期。冷静期内登录可自动取消注销；期满账号将被停用。',

@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { Button, Upload, message } from 'antd';
+import { App, Button, Upload } from 'antd';
 import {
   ArrowLeftOutlined,
   ArrowRightOutlined,
@@ -70,6 +70,7 @@ export default function CoverImageManager({
   onVideoCoverConfirm,
   videoCoverLoading = false,
 }: ICoverImageManagerProps) {
+  const { message } = App.useApp();
   const [gamePickerOpen, setGamePickerOpen] = useState(false);
   const [cropTarget, setCropTarget] = useState<EditorImage | null>(null);
   const [cropSrc, setCropSrc] = useState('');

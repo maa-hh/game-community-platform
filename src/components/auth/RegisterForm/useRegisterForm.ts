@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Form, message } from 'antd';
+import { App, Form } from 'antd';
 import type { InputRef } from 'antd/es/input';
 
 import { useAppDispatch } from '@/store';
@@ -9,6 +9,7 @@ import { SEND_COUNTDOWN } from '@/components/auth/constants';
 import type { IRegisterFormValues } from '@/components/auth/constants';
 
 export function useRegisterForm() {
+  const { message } = App.useApp();
   const dispatch = useAppDispatch();
   const [form] = Form.useForm<IRegisterFormValues>();
   const emailRef = useRef<InputRef>(null);
@@ -47,7 +48,7 @@ export function useRegisterForm() {
     } finally {
       setSendingCode(false);
     }
-  }, [dispatch, form, syncEmail]);
+  }, [dispatch, form, message, syncEmail]);
 
   return {
     form,

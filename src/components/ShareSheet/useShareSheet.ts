@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { message } from 'antd';
+import { App } from 'antd';
 
 import { createRepostApi, recordShareApi } from '@/service/social';
 import { useRequireLogin } from '@/hooks/useRequireLogin';
@@ -34,6 +34,7 @@ export function useShareSheet({
   onShared,
   onReposted,
 }: IShareSheetProps) {
+  const { message } = App.useApp();
   const { user, requireLogin } = useRequireLogin();
   const [repostOpen, setRepostOpen] = useState(false);
   const [repostTitle, setRepostTitle] = useState('');

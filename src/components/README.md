@@ -61,7 +61,7 @@ ComponentName/
 | `AuthorHeader` / `AuthorScrollBanner` / `FollowButton` | S          | 作者行 / 吸顶 / 关注 |
 | `PostActionBar` / `PostOwnerLinks`                     | S          | 详情互动 / 链接      |
 | `CommentOps` / `CommentReply` / `ReplyPopup`           | S          | 评论操作             |
-| `EmptyState` / `CounterPanel` / `RepostBlock`          | S          | 空状态等             |
+| `EmptyState` / `RepostBlock`                          | S          | 空状态等             |
 | `auth/*`                                               | M          | 登录注册表单         |
 | `profile/*`                                            | L / M      | 个人页相关           |
 

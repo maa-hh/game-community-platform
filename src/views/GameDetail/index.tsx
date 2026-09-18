@@ -16,7 +16,7 @@ import {
   Spin,
   Tabs,
   Typography,
-  message,
+  App,
 } from 'antd';
 import { CheckOutlined, PlusOutlined } from '@ant-design/icons';
 
@@ -56,6 +56,7 @@ const TAB_ITEMS: { key: GameDetailTabKey; label: string }[] = [
 ];
 
 function GameDetail() {
+  const { message } = App.useApp();
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();

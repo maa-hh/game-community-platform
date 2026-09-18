@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { message } from 'antd';
+import { App } from 'antd';
 
 import PostFeedList from '@/components/PostFeedList';
 import type { LatestPostItem } from '@/types/post';
@@ -12,6 +12,7 @@ import { useCommunityFeed } from './useCommunityFeed';
 import './style.less';
 
 function Community() {
+  const { message } = App.useApp();
   const navigate = useNavigate();
   const location = useLocation();
   const {
@@ -32,7 +33,7 @@ function Community() {
     } catch (error) {
       message.error(formatApiError('加载最新帖失败', error));
     }
-  }, [reload]);
+  }, [message, reload]);
   const handleItemClick = useCallback(
     (item: LatestPostItem) => {
       navigate(`/post/${item.id}`, {

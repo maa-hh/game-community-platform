@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { message } from 'antd';
+import { App } from 'antd';
 
 import {
   ARTICLE_STATUS,
@@ -34,6 +34,7 @@ interface ArticleProgressPollMeta {
 }
 
 export function useArticleProgressPoll() {
+  const { message } = App.useApp();
   const dispatch = useAppDispatch();
   const tasks = useAppSelector((state) => state.articleProgress.tasks);
   const accountId = useAppSelector((state) => state.auth.user?.accountId);
@@ -207,7 +208,7 @@ export function useArticleProgressPoll() {
       stopped = true;
       window.clearInterval(timer);
     };
-  }, [accountId, dispatch, pollKey]);
+  }, [accountId, dispatch, message, pollKey]);
 
   const items = tasks
     .filter(

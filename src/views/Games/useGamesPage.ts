@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { message } from 'antd';
+import { App } from 'antd';
 import { useSearchParams } from 'react-router-dom';
 
 import { fetchGameDiscoverApi } from '@/service/game';
@@ -94,6 +94,7 @@ function defaultOrderForSort(sort: GameDiscoverSort): GameDiscoverOrder {
 }
 
 export function useGamesPage() {
+  const { message } = App.useApp();
   const [searchParams, setSearchParams] = useSearchParams();
   const accountId = useAppSelector((state) => state.auth.user?.accountId);
   const isLoggedIn = Boolean(accountId);
@@ -228,7 +229,7 @@ export function useGamesPage() {
     } finally {
       setMyLoading(false);
     }
-  }, [isLoggedIn, minePageDataCacheKey]);
+  }, [isLoggedIn, message, minePageDataCacheKey]);
 
   const invalidateMineCache = useCallback(() => {
     invalidatePageDataCache(minePageDataCacheKey);
@@ -297,7 +298,14 @@ export function useGamesPage() {
         }
       }
     },
-    [discoverBoard, discoverFilters, discoverOrder, discoverPage, discoverSort],
+    [
+      discoverBoard,
+      discoverFilters,
+      discoverOrder,
+      discoverPage,
+      discoverSort,
+      message,
+    ],
   );
 
   useEffect(() => {
@@ -381,7 +389,7 @@ export function useGamesPage() {
     } finally {
       setImporting(false);
     }
-  }, [invalidateMineCache]);
+  }, [invalidateMineCache, message]);
 
   const changeDiscoverBoard = useCallback(
     (board: GameDiscoverBoard) => {

@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import type { FC } from 'react';
-import { Modal } from 'antd';
+import { App } from 'antd';
 import { DeleteOutlined, FlagOutlined } from '@ant-design/icons';
 
 import StatAction from '@/base-ui/StatAction';
@@ -22,6 +22,7 @@ const CommentOps: FC<CommentOpsProps> = ({
   onDelete,
   deleteTitle = '删除？',
 }) => {
+  const { modal } = App.useApp();
   return (
     <div className="comment-ops">
       <StatAction
@@ -49,7 +50,7 @@ const CommentOps: FC<CommentOpsProps> = ({
           type="button"
           className="comment-ops__text"
           onClick={() => {
-            Modal.confirm({ title: deleteTitle, onOk: onDelete });
+            modal.confirm({ title: deleteTitle, onOk: onDelete });
           }}
         >
           <DeleteOutlined />

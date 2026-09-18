@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import type { KeyboardEvent, MouseEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { message } from 'antd';
+import { App } from 'antd';
 
 import type { IShareCardProps } from './types';
 import { resolveGameRefAppId } from '@/utils/gameRepost';
@@ -16,6 +16,7 @@ export function useShareCard({
   preview = false,
   onClick,
 }: IShareCardProps) {
+  const { message } = App.useApp();
   const navigate = useNavigate();
   const location = useLocation();
   const isVideo = !data.unavailable && data.postType === 'video';
@@ -60,7 +61,7 @@ export function useShareCard({
           : undefined,
       });
     },
-    [data, location, navigate, onClick, preview, unavailable],
+    [data, location, message, navigate, onClick, preview, unavailable],
   );
 
   const handleKeyDown = useCallback(

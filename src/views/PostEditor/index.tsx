@@ -7,6 +7,7 @@ import React, {
 } from 'react';
 import type { FC } from 'react';
 import {
+  App,
   Button,
   Form,
   Input,
@@ -17,7 +18,6 @@ import {
   Spin,
   Tag,
   Upload,
-  message,
 } from 'antd';
 import { DeleteOutlined, VideoCameraOutlined } from '@ant-design/icons';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -202,6 +202,7 @@ function createMultiSelectEnterKeyDown(
 }
 
 const PostEditor: FC = () => {
+  const { message, modal } = App.useApp();
   const navigate = useNavigate();
   const goBack = useGoBack('draft');
   const { user } = useAppSelector((state) => state.auth);
@@ -256,26 +257,30 @@ const PostEditor: FC = () => {
   const richContentHtml = Form.useWatch<string>('contentHtml', form) ?? '';
   const richContentLength = richHtmlToPlainText(richContentHtml).length;
 
-  const handleLinkToolbar = useCallback((value: boolean) => {
-    const editor = richQuillRef.current?.getEditor();
-    if (!editor) return;
+  // 反馈统一走当前 Ant Design App 上下文，保证主题与容器配置一致。
+  const handleLinkToolbar = useCallback(
+    (value: boolean) => {
+      const editor = richQuillRef.current?.getEditor();
+      if (!editor) return;
 
-    const range = editor.getSelection();
-    if (!value) {
-      if (range) editor.format('link', false, 'user');
-      return;
-    }
-    if (!range) {
-      message.info('请先点击编辑区，再添加链接');
-      return;
-    }
+      const range = editor.getSelection();
+      if (!value) {
+        if (range) editor.format('link', false, 'user');
+        return;
+      }
+      if (!range) {
+        message.info('请先点击编辑区，再添加链接');
+        return;
+      }
 
-    linkSelectionRef.current = range;
-    const selectedText =
-      range.length > 0 ? editor.getText(range.index, range.length) : '';
-    setLinkUrl(/^https?:\/\//i.test(selectedText) ? selectedText : '');
-    setLinkModalOpen(true);
-  }, []);
+      linkSelectionRef.current = range;
+      const selectedText =
+        range.length > 0 ? editor.getText(range.index, range.length) : '';
+      setLinkUrl(/^https?:\/\//i.test(selectedText) ? selectedText : '');
+      setLinkModalOpen(true);
+    },
+    [message],
+  );
 
   const handleCleanToolbar = useCallback(() => {
     const editor = richQuillRef.current?.getEditor();
@@ -285,7 +290,7 @@ const PostEditor: FC = () => {
       return;
     }
     editor.removeFormat(range.index, range.length, 'user');
-  }, []);
+  }, [message]);
 
   const richTextModules = useMemo(
     () => ({
@@ -343,7 +348,7 @@ const PostEditor: FC = () => {
     listCategoriesApi()
       .then((res) => setCategories(res.data || []))
       .catch((err) => message.error(formatApiError('分区加载失败', err)));
-  }, []);
+  }, [message]);
 
   useEffect(
     () => () => {
@@ -526,7 +531,7 @@ const PostEditor: FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [editIdParam, form, navigate, user?.accountId]);
+  }, [editIdParam, form, message, navigate, user?.accountId]);
 
   const cancelPersistentUpload = () => {
     const taskId = uploadTaskIdRef.current;
@@ -905,7 +910,7 @@ const PostEditor: FC = () => {
   const onCancelPublish = () => {
     if (!articleId) return;
     const published = articleStatus === ARTICLE_STATUS.PUBLISHED;
-    Modal.confirm({
+    modal.confirm({
       title: published ? '移入草稿箱？' : '取消上架？',
       content:
         '将停止上传并取消审核任务，内容仅作者可见，已上传文件会继续保留。',
@@ -933,7 +938,7 @@ const PostEditor: FC = () => {
 
   const onDelete = () => {
     if (!articleId) return;
-    Modal.confirm({
+    modal.confirm({
       title: '删除内容？',
       content: '将停止上传、取消审核，并删除 MinIO 中的相关文件，不可恢复。',
       okText: '删除',

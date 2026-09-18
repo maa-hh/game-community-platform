@@ -6,16 +6,7 @@ import React, {
   useState,
 } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import {
-  Button,
-  Empty,
-  Modal,
-  Spin,
-  Tag,
-  Tabs,
-  Typography,
-  message,
-} from 'antd';
+import { App, Button, Empty, Spin, Tag, Tabs, Typography } from 'antd';
 import {
   CameraOutlined,
   EditOutlined,
@@ -139,6 +130,7 @@ function auditTag(status?: number | null) {
 }
 
 function Profile() {
+  const { message, modal } = App.useApp();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -347,7 +339,7 @@ function Profile() {
     next.delete('steam');
     setSearchParams(next, { replace: true });
     window.dispatchEvent(new CustomEvent('steam-bind-success'));
-  }, [isSelf, searchParams, setSearchParams]);
+  }, [isSelf, message, searchParams, setSearchParams]);
 
   const username =
     (isFieldBusy(user?.usernameAuditStatus)
@@ -575,7 +567,7 @@ function Profile() {
     if (!requireLogin() || !viewUser?.accountId) return;
     const next = !blocked;
     const actionText = next ? '拉黑' : '取消拉黑';
-    Modal.confirm({
+    modal.confirm({
       title: next ? '确认拉黑该用户？' : '确认取消拉黑？',
       content: next
         ? '拉黑后将无法查看对方内容，对方也无法与你互动。'

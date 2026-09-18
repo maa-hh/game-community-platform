@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { Modal, message } from 'antd';
+import { App } from 'antd';
 import type { MenuProps } from 'antd';
 import { useNavigate } from 'react-router-dom';
 
@@ -39,6 +39,7 @@ interface OwnerActionParams {
 export function useArticleOwnerActions(
   options?: UseArticleOwnerActionsOptions,
 ) {
+  const { message, modal } = App.useApp();
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const accountId = useAppSelector((state) => state.auth.user?.accountId);
@@ -56,7 +57,7 @@ export function useArticleOwnerActions(
   const publish = useCallback(
     (id: string, title?: string) => {
       const displayTitle = title?.trim() || '内容';
-      Modal.confirm({
+      modal.confirm({
         title: '提交上架？',
         content: '将提交审核，审核通过后对其他人可见。',
         okText: '上架',
@@ -84,14 +85,14 @@ export function useArticleOwnerActions(
         },
       });
     },
-    [accountId, dispatch, onPublished],
+    [accountId, dispatch, message, modal, onPublished],
   );
 
   const unpublish = useCallback(
     (id: string, status?: number, title?: string) => {
       const isPublished = status === ARTICLE_STATUS.PUBLISHED;
       const displayTitle = title?.trim() || '内容';
-      Modal.confirm({
+      modal.confirm({
         title: isPublished ? '下架内容？' : '取消上架？',
         content: isPublished
           ? '下架后内容将移入草稿，其他用户将无法看到。'
@@ -123,12 +124,12 @@ export function useArticleOwnerActions(
         },
       });
     },
-    [accountId, onUnpublished],
+    [accountId, message, modal, onUnpublished],
   );
 
   const remove = useCallback(
     (id: string, redirectTo?: string, status?: number) => {
-      Modal.confirm({
+      modal.confirm({
         title: '删除内容？',
         content: '将删除文件与元数据，不可恢复。',
         okText: '删除',
@@ -154,7 +155,7 @@ export function useArticleOwnerActions(
         },
       });
     },
-    [accountId, navigate, onDeleted],
+    [accountId, message, modal, navigate, onDeleted],
   );
 
   const togglePublish = useCallback(

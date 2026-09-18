@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Modal, message } from 'antd';
+import { App } from 'antd';
 
 import {
   fetchSteamAuthUrlApi,
@@ -44,6 +44,7 @@ export function useSteamSection({
   targetAccountId,
   readOnly = false,
 }: Pick<ISteamSectionProps, 'targetAccountId' | 'readOnly'> = {}) {
+  const { message, modal } = App.useApp();
   const isOtherView = readOnly && targetAccountId != null;
   const cacheKey = `steam-section:${targetAccountId ?? 'self'}`;
   const cached = getPageDataCache<SteamSectionCache>(cacheKey);
@@ -128,7 +129,7 @@ export function useSteamSection({
     } finally {
       setLoading(false);
     }
-  }, [cacheKey, isOtherView, targetAccountId]);
+  }, [cacheKey, isOtherView, message, targetAccountId]);
 
   useEffect(() => {
     if (cached) return;
@@ -138,7 +139,7 @@ export function useSteamSection({
   usePageRefresh(() => load(), true);
 
   const bindSteam = useCallback(() => {
-    Modal.confirm({
+    modal.confirm({
       title: '确认绑定 Steam？',
       content:
         '请确认你已有 Steam 账号，并且当前环境可以正常登录 Steam。确认后将跳转至 Steam 授权页面。',
@@ -161,7 +162,7 @@ export function useSteamSection({
         }
       },
     });
-  }, []);
+  }, [message, modal]);
 
   const syncLibrary = useCallback(async () => {
     if (syncingRef.current) return;
@@ -203,7 +204,7 @@ export function useSteamSection({
       syncingRef.current = false;
       setSyncing(false);
     }
-  }, [load]);
+  }, [load, message]);
 
   useEffect(() => {
     if (isOtherView || syncingRef.current || !profile?.steamId) {
@@ -228,7 +229,7 @@ export function useSteamSection({
   }, [isOtherView, load, syncLibrary]);
 
   const unbind = useCallback(() => {
-    Modal.confirm({
+    modal.confirm({
       title: '确认解绑 Steam？',
       content: '解绑后将无法展示 Steam 游戏库，可随时重新绑定。',
       okText: '解绑',
@@ -252,7 +253,7 @@ export function useSteamSection({
         }
       },
     });
-  }, [cacheKey]);
+  }, [cacheKey, message, modal]);
 
   const bound = Boolean(profile?.steamId || profile?.bound);
 

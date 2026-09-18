@@ -9,6 +9,7 @@ import { invalidatePageDataCache } from '@/hooks/pageDataCache';
 import { invalidateProfileDataCaches } from '@/utils/profileDataCache';
 import type { ProfileDataDomain } from '@/types/profileRealtime';
 import type { PostInteraction } from '@/store/modules/postInteraction';
+import { serverApi } from '@/store/services/serverApi';
 
 export { getPostInteractionScope } from '@/store/modules/postInteraction';
 
@@ -42,7 +43,15 @@ export function usePostInteractionActions() {
 
   const invalidateCommunityFeed = useCallback(() => {
     invalidatePageDataCache(communityFeedCacheKey(accountId));
-  }, [accountId]);
+    dispatch(
+      serverApi.util.invalidateTags([
+        {
+          type: 'CommunityFeed',
+          id: String(accountId ?? 'anonymous'),
+        },
+      ]),
+    );
+  }, [accountId, dispatch]);
 
   const invalidateProfileInteractionCaches = useCallback(
     (domains: readonly ProfileDataDomain[]) => {

@@ -16,7 +16,7 @@ import {
   Spin,
   Tabs,
   Tag,
-  message,
+  App,
 } from 'antd';
 import { GiftOutlined, ShoppingOutlined } from '@ant-design/icons';
 
@@ -95,6 +95,7 @@ function buildBackpackCacheKey(
 }
 
 function ShopPage() {
+  const { message } = App.useApp();
   const { user } = useAppSelector((state) => state.auth);
   const accountId = String(user?.accountId ?? 'anonymous');
   const pointsCacheKey = `shop:points:${accountId}`;
@@ -164,7 +165,7 @@ function ShopPage() {
     } catch (error) {
       message.error(formatApiError('加载积分失败', error));
     }
-  }, [pointsCacheKey]);
+  }, [message, pointsCacheKey]);
 
   const loadStore = useCallback(
     async (options?: { cache?: boolean }) => {
@@ -186,7 +187,7 @@ function ShopPage() {
         if (requestId === storeRequestIdRef.current) setLoadingStore(false);
       }
     },
-    [storeCacheKey],
+    [message, storeCacheKey],
   );
 
   const loadBackpack = useCallback(
@@ -247,6 +248,7 @@ function ShopPage() {
       backpackPageSize,
       backpackState,
       backpackCacheKey,
+      message,
     ],
   );
 

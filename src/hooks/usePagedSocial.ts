@@ -16,6 +16,7 @@ export function usePostComments(articleId: string) {
     pageSize: COMMENT_PAGE_SIZE,
     enabled: Boolean(articleId),
     resetDeps: [articleId],
+    getKey: (item) => item.id,
     fetchPage: (page, size) =>
       fetchPostCommentsPageApi(articleId, page, size, {
         replyPageSize: REPLY_PAGE_SIZE,
@@ -28,6 +29,7 @@ export function useCommentReplies(commentId: string, enabled: boolean) {
     pageSize: REPLY_PAGE_SIZE,
     enabled: enabled && Boolean(commentId),
     resetDeps: [commentId, enabled],
+    getKey: (item) => item.id,
     fetchPage: (page, size) => fetchPostRepliesPageApi(commentId, page, size),
   });
 }
@@ -57,6 +59,7 @@ export function useSearchUsers(keyword: string, enabled: boolean) {
     enabled: enabled && Boolean(keyword),
     cacheKey: `search-users:${keyword}`,
     resetDeps: [keyword],
+    getKey: (item) => item.accountId,
     fetchPage,
   });
 }
@@ -88,6 +91,7 @@ export function useSearchArticles(keyword: string, enabled: boolean) {
     enabled: enabled && Boolean(keyword),
     cacheKey: `search-articles:${keyword}`,
     resetDeps: [keyword],
+    getKey: (item) => item.id,
     fetchPage,
   });
 }
@@ -117,6 +121,7 @@ export function useSearchGames(keyword: string, enabled: boolean) {
     enabled: enabled && Boolean(keyword),
     cacheKey: `search-games:${keyword}`,
     resetDeps: [keyword],
+    getKey: (item) => item.appId,
     fetchPage,
   });
 }

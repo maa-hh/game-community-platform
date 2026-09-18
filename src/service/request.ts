@@ -4,7 +4,6 @@ import axios, {
   AxiosResponse,
   InternalAxiosRequestConfig,
 } from 'axios';
-import { message } from 'antd';
 import {
   BASE_URL,
   TIMEOUT,
@@ -68,7 +67,6 @@ function forceReLogin(tip = '登录已过期，请重新登录') {
   resetAuthRefreshState();
   clearAuth();
   emitAuthRequired(tip);
-  message.error(tip);
 }
 
 /**

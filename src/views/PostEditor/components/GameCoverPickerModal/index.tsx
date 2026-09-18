@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Empty, Modal, Spin, message } from 'antd';
+import { App, Empty, Modal, Spin } from 'antd';
 import { CheckOutlined } from '@ant-design/icons';
 
 import { fetchGameDetailApi } from '@/service/game';
@@ -30,6 +30,7 @@ export default function GameCoverPickerModal({
   onCancel,
   onConfirm,
 }: IGameCoverPickerModalProps) {
+  const { message } = App.useApp();
   const [loading, setLoading] = useState(false);
   const [candidates, setCandidates] = useState<IGameCoverOption[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
@@ -100,7 +101,7 @@ export default function GameCoverPickerModal({
     return () => {
       cancelled = true;
     };
-  }, [gameAppIds, gameOptions, open]);
+  }, [gameAppIds, gameOptions, message, open]);
 
   const visibleCandidates = candidates.filter(
     (item) => !failedUrls.has(item.url),

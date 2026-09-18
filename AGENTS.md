@@ -12,7 +12,7 @@
 
 ## 项目要点
 
-- React 19 + TS + CRACO + Redux Toolkit + React Router v7 + antd 5 + axios + LESS
+- React 19 + TS + CRACO + Redux Toolkit + RTK Query + React Router v7 + antd 6.5.1 + axios + LESS
 - 路径别名 `@/` → `src/`
 - 布局：`Root`（AuthModal）· `Main`（顶栏+内容盒）· `Login`（顶栏+全屏视频，无限宽）
 - 请求链：views → dispatch(thunk) → service → HYRequest → mock/API

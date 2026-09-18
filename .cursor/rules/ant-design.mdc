@@ -1,12 +1,12 @@
 ---
-description: UI 默认使用 Ant Design 5；写 antd 组件前查 API
+description: UI 默认使用 Ant Design 6.5.1；写 antd 组件前查 API
 globs: src/**/*.{ts,tsx}
 alwaysApply: true
 ---
 
 # Ant Design 规范
 
-本项目 **UI 组件库默认 antd 5**，不要手写原生表单/表格/弹窗替代 antd 已有能力。
+本项目 **UI 组件库默认 antd 6.5.1**，不要手写原生表单/表格/弹窗替代 antd 已有能力。
 
 ## 引入
 
@@ -50,4 +50,4 @@ antd doc <Component> --lang zh --format json
 ## 禁止
 
 - 不要引入第二套 UI 库（Material UI、Chakra 等）
-- 不要在组件里改 antd 全局 less 主题文件（antd 5 用 CSS-in-JS + ConfigProvider）
+- 不要在组件里改 antd 全局 less 主题文件（antd 6 用 CSS-in-JS + ConfigProvider）

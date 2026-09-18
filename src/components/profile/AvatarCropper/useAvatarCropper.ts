@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { message } from 'antd';
+import { App } from 'antd';
 
 import {
   blobToDataUrl,
@@ -13,6 +13,7 @@ export function useAvatarCropper(
   imageSrc: string,
   onConfirm: (dataUrl: string, blob: Blob) => void,
 ) {
+  const { message } = App.useApp();
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] =

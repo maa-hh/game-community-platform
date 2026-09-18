@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Modal, Slider, Typography, message } from 'antd';
+import { App, Modal, Slider, Typography } from 'antd';
 
 import { captureVideoFrameFromElement } from '@/utils/videoPoster';
 
@@ -21,6 +21,7 @@ export default function VideoFramePickerModal({
   onCancel,
   onConfirm,
 }: IVideoFramePickerModalProps) {
+  const { message } = App.useApp();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [sourceUrl, setSourceUrl] = useState('');
   const [duration, setDuration] = useState(0);

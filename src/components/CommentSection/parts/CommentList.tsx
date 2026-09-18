@@ -1,6 +1,6 @@
 import React, { memo, useMemo } from 'react';
 import type { FC } from 'react';
-import { message, Spin } from 'antd';
+import { App, Spin } from 'antd';
 
 import ListEndHint from '@/base-ui/ListEndHint';
 import { REPLY_PAGE_SIZE } from '@/components/CommentItem/config';
@@ -31,6 +31,7 @@ const CommentList: FC<CommentListProps> = ({
   infinite,
   loading = false,
 }) => {
+  const { message } = App.useApp();
   const hasPendingReplies = comments.some(
     (comment) =>
       (comment.replyPage ?? 0) * (comment.replyPageSize ?? REPLY_PAGE_SIZE) <

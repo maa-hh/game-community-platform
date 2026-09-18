@@ -9,7 +9,7 @@ import {
   Segmented,
   Spin,
   Tabs,
-  message,
+  App,
 } from 'antd';
 import { PlusOutlined, SyncOutlined } from '@ant-design/icons';
 
@@ -72,6 +72,7 @@ function toListItem(game: IUserGameItem): IGameListItem {
 }
 
 function Games() {
+  const { message } = App.useApp();
   const location = useLocation();
   const navigate = useNavigate();
   const { requireLogin, isLoggedIn } = useRequireLogin();
@@ -221,7 +222,7 @@ function Games() {
         }
       }
     },
-    [cancelGameSearchSuggestion, clearGameSearch, pageSize],
+    [cancelGameSearchSuggestion, clearGameSearch, message, pageSize],
   );
 
   const handleDiscoverBoardChange = useCallback(

@@ -1,31 +1,35 @@
 import { combineReducers, configureStore } from '@reduxjs/toolkit';
+import { setupListeners } from '@reduxjs/toolkit/query';
 import {
   useDispatch,
   useSelector,
   shallowEqual,
   TypedUseSelectorHook,
 } from 'react-redux';
-import counterReducer from './modules/counter';
-import homeReducer from './modules/home';
 import authReducer from './modules/auth';
 import articleProgressReducer from './modules/articleProgress';
 import notificationReducer from './modules/notification';
 import postInteractionReducer from './modules/postInteraction';
 import profileRealtimeReducer from './modules/profileRealtime';
+import { serverApi } from './services/serverApi';
 
 const appReducer = combineReducers({
-  counter: counterReducer,
-  home: homeReducer,
   auth: authReducer,
   articleProgress: articleProgressReducer,
   notification: notificationReducer,
   postInteraction: postInteractionReducer,
   profileRealtime: profileRealtimeReducer,
+  [serverApi.reducerPath]: serverApi.reducer,
 });
 
 const store = configureStore({
   reducer: appReducer,
+  middleware: (getDefaultMiddleware) =>
+    getDefaultMiddleware().concat(serverApi.middleware),
 });
+
+// 让 RTK Query 在窗口重新聚焦或网络恢复时按订阅状态执行刷新。
+setupListeners(store.dispatch);
 
 // 从 store 自动推导 RootState 类型，state 结构变化时类型自动同步
 type GetStateFnType = typeof store.getState;

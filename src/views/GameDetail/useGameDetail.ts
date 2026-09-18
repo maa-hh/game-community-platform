@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { message } from 'antd';
+import { App } from 'antd';
 import { useSearchParams } from 'react-router-dom';
 
 import { useCursorList } from '@/hooks/useCursorList';
@@ -118,6 +118,7 @@ export function useGameDetail(
   appId: number,
   previewDetail?: IGameDetail | null,
 ) {
+  const { message } = App.useApp();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = parseGameTab(searchParams.get('tab'));
   const discussionPageRef = useRef(1);
@@ -210,6 +211,7 @@ export function useGameDetail(
     enabled: Number.isFinite(appId) && appId > 0 && activeTab === 'discuss',
     resetDeps: [appId, activeTab],
     getCursor: () => String(discussionPageRef.current),
+    getKey: (item) => item.id,
     fetchBatch,
   });
 
@@ -323,7 +325,7 @@ export function useGameDetail(
         setReviewsLoading(false);
       }
     },
-    [appId, gameCacheKey, reviewSort],
+    [appId, gameCacheKey, message, reviewSort],
   );
 
   const loadMyReview = useCallback(
@@ -511,7 +513,7 @@ export function useGameDetail(
       message.error(formatApiError('提交成就同步失败', err));
       setSteamAchievementSyncing(false);
     }
-  }, [appId, gameCacheKey, isLoggedIn, pollSteamAchievementStats]);
+  }, [appId, gameCacheKey, isLoggedIn, message, pollSteamAchievementStats]);
 
   const toggleFollow = useCallback(async () => {
     if (!Number.isFinite(appId) || appId <= 0) return;
@@ -538,7 +540,7 @@ export function useGameDetail(
     } finally {
       setFollowLoading(false);
     }
-  }, [accountId, appId, followed, gameCacheKey]);
+  }, [accountId, appId, followed, gameCacheKey, message]);
 
   const loadStatsAndSyncAchievements = useCallback(
     async (force = false) => {
@@ -650,7 +652,7 @@ export function useGameDetail(
         setReviewSubmitting(false);
       }
     },
-    [appId, gameCacheKey, loadDetail, loadMyReview, loadReviews],
+    [appId, gameCacheKey, loadDetail, loadMyReview, loadReviews, message],
   );
 
   const removeMyReview = useCallback(async () => {
@@ -675,7 +677,7 @@ export function useGameDetail(
     } finally {
       setReviewSubmitting(false);
     }
-  }, [appId, gameCacheKey, loadDetail, loadReviews]);
+  }, [appId, gameCacheKey, loadDetail, loadReviews, message]);
 
   return {
     activeTab,

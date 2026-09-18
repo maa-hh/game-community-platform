@@ -15,7 +15,7 @@
 | 路由  | React Router v7          | 数据路由 `createBrowserRouter` + History 模式               |
 | 状态  | Redux Toolkit            | `createAsyncThunk` 发请求，`useAppSelector` 读数据          |
 | 请求  | axios（HYRequest 封装）  | 组件不直接调 axios，走 `service/`                           |
-| UI 库 | Ant Design 5             | 主题在 `App.tsx` 的 `ConfigProvider`；`index.less` 引 reset |
+| UI 库 | Ant Design 6.5.1         | 主题在 `App.tsx` 的 `ConfigProvider`；`index.less` 引 reset |
 | 样式  | LESS + styled-components | 全局用 LESS；`base-ui`/布局可用 styled-components           |
 | Mock  | mockjs                   | 开发环境拦截 API，见 `src/mock/`                            |
 
@@ -47,7 +47,7 @@ src/
 ├── base-ui/       # 基础 UI（无业务语义，可封装 antd）
 ├── components/    # 业务通用组件（如 AppHeader、UserCard）
 ├── hooks/         # 全局自定义 Hook
-├── layouts/       # 页面布局壳子（Main、Auth 等）
+├── layouts/       # 页面布局壳子（Root、Main、Home）
 ├── mock/          # 开发环境 mock 数据
 ├── router/        # 路由表 + RouterProvider
 ├── service/       # axios 封装 + API
@@ -67,7 +67,8 @@ src/
 | 布局       | 路径            | 用于       | 包含                                |
 | ---------- | --------------- | ---------- | ----------------------------------- |
 | MainLayout | `layouts/Main/` | 站内浏览页 | Header + `<Outlet />` + 可选 Footer |
-| AuthLayout | `layouts/Auth/` | 登录、注册 | 全屏居中卡片，**无 Header**         |
+| RootLayout | `layouts/Root/` | 全局 Provider、AuthModal 与 KeepAlive | 应用根壳 |
+| HomeLayout | `layouts/Home/` | 官网首页 | 顶栏 + 无限宽内容 |
 | 无布局     | —               | 404 等     | 直接渲染页面                        |
 
 ### 路由嵌套示例
@@ -84,12 +85,6 @@ src/
 },
 {
   path: '/',
-  element: <AuthLayout />,
-  children: [
-    { path: 'login', element: <Login /> },
-    { path: 'register', element: <Register /> },
-  ],
-},
 { path: '*', element: <NotFound /> },
 ```
 
@@ -100,7 +95,7 @@ src/
 | 布局壳子（Header + 内容区） | `layouts/Main/`         |
 | 顶栏导航、Logo、用户区      | `components/AppHeader/` |
 | 登录表单 UI                 | `components/auth/`      |
-| 全屏居中背景                | `layouts/Auth/`         |
+| 全局登录弹窗                | `components/AuthModal/` |
 
 **页面（views）不写 Header，布局由 layouts 负责。**
 
@@ -162,7 +157,7 @@ base-ui/
 ### 5. `layouts/` — 布局壳子
 
 - 只负责拼装结构（Header、Outlet、Footer），不写具体业务页面逻辑。
-- 一个布局一个目录：`layouts/Main/`、`layouts/Auth/`。
+- 一个布局一个目录：`layouts/Root/`、`layouts/Main/`、`layouts/Home/`。
 
 ---
 
@@ -178,24 +173,24 @@ base-ui/
 ### 7. `service/` — 网络请求
 
 - 组件**不直接调 axios**，走 `hyRequest.get/post/...`。
-- 按模块拆分：`home.ts`、`recommend.ts`、`auth.ts`。
+- 按业务域拆分：`content.ts`、`social.ts`、`game.ts`、`notification.ts` 等；服务端缓存由 `store/services/` 管理。
 - 配置：`service/config.ts`；封装：`service/request.ts`。
 - 环境变量：`REACT_APP_BASE_URL`、`REACT_APP_ENABLE_MOCK`。
 
 **数据流：**
 
 ```
-views dispatch(thunk) → store createAsyncThunk → service API → HYRequest → mock/后端
+页面/hook → RTK Query 或 thunk → service API → HYRequest → mock/后端
 ```
 
 ---
 
 ### 8. `store/` — 全局状态
 
-- 网络请求用 `createAsyncThunk`，不在组件里直接 `getBanners()`。
+- 业务状态用 `createAsyncThunk`，服务端列表优先用 RTK Query，不在组件里自行维护缓存 Map。
 - 异步状态用 `extraReducers` 监听 `pending/fulfilled/rejected`。
 - 使用 `useAppSelector`、`useAppDispatch`，多字段选取加 `appShallowEqual`。
-- 按模块：`store/modules/home.ts`、`counter.ts` 等。
+- 按模块：`store/modules/auth.ts`、`notification.ts`、`articleProgress.ts` 等；服务端列表状态放在 `store/services/` 的 RTK Query endpoint。
 
 ---
 
@@ -301,8 +296,8 @@ views/ ──► layouts/ ──► components/ ──► base-ui/
 import { Button } from 'antd';
 import { useEffect } from 'react';
 
-import { useAppDispatch } from '@/store';
-import { fetchHomeData } from '@/store/modules/home';
+import { useAppSelector } from '@/store';
+import { useCommunityFeedInfiniteQuery } from '@/store/services/serverApi';
 ```
 
 ---
@@ -312,11 +307,11 @@ import { fetchHomeData } from '@/store/modules/home';
 以「带 Header 的首页 + 登录页」为例：
 
 ```
-1. layouts/Main/、layouts/Auth/     搭布局壳子
+1. layouts/Main/、layouts/Home/     确认布局壳子
 2. components/AppHeader/              顶栏
 3. router/routes.tsx                  嵌套路由绑定布局
 4. views/Home/                        官网首页（挂 HomeLayout）
-5. service/auth.ts + store/modules/   需要时再加
+5. service/<domain>.ts + store/services/ 需要服务端缓存时再加
 6. mock/index.ts                      开发阶段 mock
 ```
 
@@ -353,6 +348,6 @@ npm run typecheck   # 等价于 npx tsc --noEmit
 2. **拒绝「暂时放这」** — 不随意塞 `components/`。
 3. **复用 ≥2 次才上提** — 从 `views/X/` 提到 `components/` 或 `hooks/`。
 4. **布局与页面分离** — Header 在 layouts/components，不在 views。
-5. **登录注册不走 Main** — 用 AuthLayout。
-6. **请求走 service + store** — 页面只 dispatch + selector。
+5. **登录注册使用全局 AuthModal**，不要新增独立认证布局。
+6. **请求走 service + RTK Query/thunk** — 页面不直接调 axios。
 7. **写完必须自测** — `lint` + `typecheck` 通过后再说做完。

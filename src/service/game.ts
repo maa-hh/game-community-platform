@@ -364,7 +364,7 @@ export async function createGameSharePostApi(payload: {
 export async function fetchGameDiscussionsApi(
   appId: number,
   options: { page?: number; size?: number } = {},
-): Promise<IDataType<LatestPostItem[]>> {
+): Promise<IPageResult<LatestPostItem>> {
   const size = options.size ?? 20;
   const page = options.page ?? 1;
   const res = await hyRequest.get<IPageResult<IArticleRaw>>({
@@ -376,5 +376,9 @@ export async function fetchGameDiscussionsApi(
     code: res.code,
     message: res.message,
     data: await mapArticlesToLatestPosts(articles),
+    page: Number(res.page ?? page),
+    size: Number(res.size ?? size),
+    total: Number(res.total ?? articles.length),
+    expanding: Boolean(res.expanding),
   };
 }

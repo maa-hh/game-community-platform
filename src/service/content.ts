@@ -440,7 +440,7 @@ export function getArticleDetailApi(id: string, moderationPreview = false) {
           coverUrl?: string;
           videoUrl?: string;
           postType?: number;
-          accountId?: number;
+          authorAccountId?: number;
           username?: string;
           avatar?: string;
         };
@@ -477,7 +477,7 @@ export type IArticleEditDetail = IArticleItem & {
     coverUrl?: string;
     videoUrl?: string;
     postType?: number;
-    accountId?: number;
+    authorAccountId?: number;
     username?: string;
     avatar?: string;
   };

@@ -12,6 +12,7 @@ import {
   setPageDataCache,
   subscribePageDataCache,
 } from './pageDataCache';
+import { mergeById } from '@/utils/mergeById';
 
 export interface UseCursorListOptions<T> {
   pageSize?: number;
@@ -25,6 +26,8 @@ export interface UseCursorListOptions<T> {
   /** 从最后一条记录提取游标（如 ISO 时间或 id） */
   getCursor: (item: T) => string | undefined;
   fetchBatch: (cursor: string | undefined, size: number) => Promise<T[]>;
+  /** 增量回填主键；未提供时保持兼容的纯追加行为。 */
+  getKey?: (item: T) => string | number | undefined;
   /** 自定义是否还有更多；默认 batch.length >= pageSize */
   hasMoreFromBatch?: (batch: T[], pageSize: number) => boolean;
 }
@@ -46,6 +49,7 @@ export function useCursorList<T>({
   resetDeps = [],
   getCursor,
   fetchBatch,
+  getKey,
   hasMoreFromBatch,
 }: UseCursorListOptions<T>) {
   const cache = cacheKey
@@ -105,13 +109,18 @@ export function useCursorList<T>({
         : batch.length >= pageSize;
       setHasMore(more);
       setItems((prev) => {
-        const next = append ? [...prev, ...batch] : batch;
+        const next =
+          append && getKey
+            ? mergeById(prev, batch, getKey)
+            : append
+              ? [...prev, ...batch]
+              : batch;
         const last = next[next.length - 1];
         cursorRef.current = last ? getCursor(last) : undefined;
         return next;
       });
     },
-    [getCursor, hasMoreFromBatch, pageSize],
+    [getCursor, getKey, hasMoreFromBatch, pageSize],
   );
 
   const loadBatch = useCallback(

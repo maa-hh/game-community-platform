@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { message } from 'antd';
+import { App } from 'antd';
 
 import { useReportModal } from '@/hooks/useReportModal';
 import { useOptimisticAction } from '@/hooks/useOptimisticAction';
@@ -26,6 +26,7 @@ export function useCommentSection({
   onCommentCountChange,
   highlight,
 }: ICommentSectionProps) {
+  const { message } = App.useApp();
   const { user, requireLogin } = useRequireLogin();
   const { reportOpen, reportTarget, openReport, closeReport } =
     useReportModal();
@@ -432,7 +433,7 @@ export function useCommentSection({
         });
       }
     },
-    [comments, mutateComments, replyLoadingIds],
+    [comments, message, mutateComments, replyLoadingIds],
   );
 
   const toggleExpand = async (commentId: string) => {
