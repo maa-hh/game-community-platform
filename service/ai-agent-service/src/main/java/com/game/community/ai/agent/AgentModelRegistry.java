@@ -1,18 +1,19 @@
 package com.game.community.ai.agent;
 
 import com.game.community.ai.config.AgentModelProperties;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.openai.OpenAiChatModel;
-import org.springframework.ai.openai.OpenAiChatOptions;
-import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cloud.context.environment.EnvironmentChangeEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
-import org.springframework.retry.support.RetryTemplate;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * 按 provider + model 创建并缓存 Spring AI ChatClient。
@@ -20,21 +21,35 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class AgentModelRegistry {
 
     private final AgentModelProperties properties;
+    private final Map<String, ModelProviderAdapter> adapters;
     private final Map<String, ChatClient> clients = new ConcurrentHashMap<>();
+    private final Map<String, ModelProviderAdapter.EmbeddingClient> embeddingClients = new ConcurrentHashMap<>();
 
-    /** 获取通用对话模型。 */
+    /** 生产环境注入全部 Provider Adapter，按协议标识建立路由表。 */
+    @Autowired
+    public AgentModelRegistry(AgentModelProperties properties, List<ModelProviderAdapter> adapters) {
+        this.properties = properties;
+        this.adapters = adapters.stream().collect(Collectors.toUnmodifiableMap(
+                adapter -> adapter.protocol().trim().toLowerCase(), Function.identity()));
+    }
+
+    /** 单元测试使用默认 OpenAI Compatible Adapter。 */
+    public AgentModelRegistry(AgentModelProperties properties) {
+        this(properties, List.of(new OpenAiCompatibleProviderAdapter()));
+    }
+
+    /** 获取通用 Chat 模型。 */
     public ModelClient chat(String providerId) {
-        ProviderSnapshot provider = provider(providerId);
+        ProviderSnapshot provider = provider(providerId, properties.getDefaultProvider());
         return client(provider, requiredModel(provider.chatModel(), "chat-model"));
     }
 
     /** 获取文本审核模型。 */
     public ModelClient textModeration(String providerId) {
-        ProviderSnapshot provider = provider(providerId);
+        ProviderSnapshot provider = provider(providerId, properties.getDefaultProvider());
         String model = StringUtils.hasText(provider.textModerationModel())
                 ? provider.textModerationModel() : provider.chatModel();
         return client(provider, requiredModel(model, "text-moderation-model/chat-model"));
@@ -42,19 +57,39 @@ public class AgentModelRegistry {
 
     /** 获取图片审核模型。 */
     public ModelClient imageModeration(String providerId) {
-        ProviderSnapshot provider = provider(providerId);
+        ProviderSnapshot provider = provider(providerId, properties.getDefaultProvider());
         return client(provider, requiredModel(provider.imageModerationModel(), "image-moderation-model"));
+    }
+
+    /** 获取并缓存指定 provider 的 embedding 客户端。 */
+    public EmbeddingModelClient embedding(String providerId) {
+        ProviderSnapshot provider = provider(providerId, properties.getDefaultEmbeddingProvider());
+        String model = requiredModel(provider.embeddingModel(), "embedding-model");
+        String cacheKey = provider.id() + ":" + model;
+        ModelProviderAdapter.EmbeddingClient client = embeddingClients.computeIfAbsent(cacheKey,
+                ignored -> buildEmbeddingClient(provider, model));
+        return new EmbeddingModelClient(provider.id(), model, client);
     }
 
     /** 清空模型客户端缓存，供配置刷新后重建。 */
     public void reload() {
         clients.clear();
+        embeddingClients.clear();
+    }
+
+    /** 配置中心刷新模型参数后清理旧客户端，避免继续使用旧地址或旧密钥。 */
+    @EventListener(EnvironmentChangeEvent.class)
+    public void onEnvironmentChange(EnvironmentChangeEvent event) {
+        if (event.getKeys().stream().anyMatch(key -> key.startsWith("ai-agent.models."))) {
+            reload();
+            log.info("AI 模型配置已刷新，客户端缓存已清理");
+        }
     }
 
     /** 解析默认供应商别名并校验配置。 */
-    private ProviderSnapshot provider(String requestedId) {
+    private ProviderSnapshot provider(String requestedId, String defaultProvider) {
         String providerId = StringUtils.hasText(requestedId) && !"default".equalsIgnoreCase(requestedId.trim())
-                ? requestedId.trim() : properties.getDefaultProvider();
+                ? requestedId.trim() : defaultProvider;
         AgentModelProperties.Provider configured = properties.getProviders().get(providerId);
         if (configured == null || !configured.isEnabled()) {
             throw new IllegalArgumentException("模型供应商不存在或未启用: " + providerId);
@@ -63,50 +98,37 @@ public class AgentModelRegistry {
             throw new IllegalStateException("模型供应商缺少 base-url 或 api-key: " + providerId);
         }
         return new ProviderSnapshot(providerId, configured.getBaseUrl(), configured.getCompletionsPath(),
-                configured.getApiKey(), configured.getChatModel(), configured.getTextModerationModel(),
-                configured.getImageModerationModel(), configured.getTemperature());
+                configured.getApiKey(), configured.getChatModel(), configured.getEmbeddingModel(),
+                configured.getTextModerationModel(), configured.getImageModerationModel(),
+                configured.getTemperature(), configured.getProtocol(), configured);
     }
 
     /** 创建指定模型的 Spring AI 客户端并按配置组合缓存。 */
     private ModelClient client(ProviderSnapshot provider, String model) {
         String cacheKey = provider.id() + ":" + model;
         ChatClient client = clients.computeIfAbsent(cacheKey, ignored -> buildClient(provider, model));
-        return new ModelClient(provider.id(), model, client);
+        return new ModelClient(provider.id(), model, client, provider.configuration());
     }
 
-    /** 使用 Spring AI OpenAI 兼容 API 构造模型。 */
+    /** 根据 Provider 协议选择适配器构造模型客户端。 */
     private ChatClient buildClient(ProviderSnapshot provider, String model) {
-        OpenAiApi api = OpenAiApi.builder()
-                .baseUrl(provider.baseUrl())
-                .completionsPath(resolveCompletionsPath(provider.baseUrl(), provider.completionsPath()))
-                .apiKey(provider.apiKey())
-                .build();
-        OpenAiChatOptions options = OpenAiChatOptions.builder()
-                .model(model)
-                .temperature(provider.temperature())
-                .build();
-        OpenAiChatModel chatModel = OpenAiChatModel.builder()
-                .openAiApi(api)
-                .defaultOptions(options)
-                // 审核请求不自动重试，避免供应商已接收但响应超时时重复计费；失败直接转人工。
-                .retryTemplate(RetryTemplate.builder().maxAttempts(1).build())
-                .build();
-        log.info("创建 Spring AI 模型客户端: provider={}, model={}", provider.id(), model);
-        return ChatClient.builder(chatModel).build();
+        String protocol = StringUtils.hasText(provider.protocol())
+                ? provider.protocol().trim().toLowerCase() : OpenAiCompatibleProviderAdapter.PROTOCOL;
+        ModelProviderAdapter adapter = adapters.get(protocol);
+        if (adapter == null) {
+            throw new IllegalStateException("不支持的模型供应商协议: " + protocol);
+        }
+        return adapter.createClient(provider.id(), provider.configuration(), model);
     }
 
-    /** 避免供应商 base-url 已含 /v1 时形成 /v1/v1/chat/completions。 */
-    private String resolveCompletionsPath(String baseUrl, String configuredPath) {
-        String path = StringUtils.hasText(configuredPath) ? configuredPath.trim() : "/v1/chat/completions";
-        if (!path.startsWith("/")) {
-            path = "/" + path;
+    private ModelProviderAdapter.EmbeddingClient buildEmbeddingClient(ProviderSnapshot provider, String model) {
+        String protocol = StringUtils.hasText(provider.protocol())
+                ? provider.protocol().trim().toLowerCase() : OpenAiCompatibleProviderAdapter.PROTOCOL;
+        ModelProviderAdapter adapter = adapters.get(protocol);
+        if (adapter == null) {
+            throw new IllegalStateException("不支持的模型供应商协议: " + protocol);
         }
-        String normalizedBaseUrl = baseUrl.endsWith("/")
-                ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
-        if (normalizedBaseUrl.endsWith("/v1") && path.startsWith("/v1/")) {
-            return path.substring(3);
-        }
-        return path;
+        return adapter.createEmbeddingClient(provider.id(), provider.configuration(), model);
     }
 
     /** 校验场景所需模型名。 */
@@ -117,11 +139,18 @@ public class AgentModelRegistry {
         return model;
     }
 
-    public record ModelClient(String provider, String model, ChatClient client) {
+    /** 返回已解析的 provider、模型名和可复用客户端。 */
+    public record ModelClient(String provider, String model, ChatClient client,
+                              AgentModelProperties.Provider configuration) {
+    }
+
+    public record EmbeddingModelClient(String provider, String model,
+                                       ModelProviderAdapter.EmbeddingClient client) {
     }
 
     private record ProviderSnapshot(String id, String baseUrl, String completionsPath, String apiKey,
-                                    String chatModel, String textModerationModel,
-                                    String imageModerationModel, Double temperature) {
+                                    String chatModel, String embeddingModel, String textModerationModel,
+                                    String imageModerationModel, Double temperature, String protocol,
+                                    AgentModelProperties.Provider configuration) {
     }
 }

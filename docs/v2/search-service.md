@@ -521,12 +521,12 @@ search:
   history:
     max-records: ${SEARCH_HISTORY_MAX_RECORDS:10}
   ai:
-    api-key: ${DASHSCOPE_API_KEY:}
     enabled: ${SEARCH_AI_ENABLED:false}
     semantic-enabled: ${SEARCH_SEMANTIC_ENABLED:false}
     hybrid-enabled: ${SEARCH_HYBRID_ENABLED:false}
-    connect-timeout-ms: ${SEARCH_AI_CONNECT_TIMEOUT_MS:500}
-    read-timeout-ms: ${SEARCH_AI_READ_TIMEOUT_MS:1500}
+    ai-suggest-enabled: ${SEARCH_AI_SUGGEST_ENABLED:false}
+    embedding-provider: ${SEARCH_AI_EMBEDDING_PROVIDER:dashscope}
+    search-terms-provider: ${SEARCH_AI_SEARCH_TERMS_PROVIDER:dashscope}
   index:
     article-shards: ${SEARCH_ARTICLE_SHARDS:3}
     article-replicas: ${SEARCH_ARTICLE_REPLICAS:1}
@@ -545,13 +545,16 @@ search:
 | `spring.kafka.consumer.group-id` | search-service-sync | Kafka 消费组 |
 | `spring.kafka.consumer.auto-offset-reset` | earliest | 从最早消息开始消费 |
 | `search.history.max-records` | 10 | 每个用户保留的搜索历史条数（最大 100） |
+| `search.ai.enabled` | false | 是否允许调用内部 AI 能力服务 |
 | `search.ai.semantic-enabled` | false | 是否允许语义向量召回 |
 | `search.ai.hybrid-enabled` | false | 未指定 mode 时是否默认混合检索 |
-| `search.ai.api-key` | - | DashScope API Key，统一由 `DASHSCOPE_API_KEY` 注入 |
+| `search.ai.embedding-provider` | dashscope | 向量生成 provider，由 ai-agent-service 管理 |
+| `search.ai.search-terms-provider` | dashscope | 搜索词扩展 provider，由 ai-agent-service 管理 |
 | `search.maintenance.suggest-cleanup-cron` | `0 0 3 * * ?` | 建议词清理时间 |
 | `search.index.*` | 见配置 | ES 分片/副本容量参数 |
 
-开启语义/混合检索前，需要配置 `DASHSCOPE_API_KEY`，并同时设置
+开启语义/混合检索前，需要启动 ai-agent-service，并在其 provider 配置中配置
+`DASHSCOPE_API_KEY`，同时设置
 `SEARCH_AI_ENABLED=true`、`SEARCH_SEMANTIC_ENABLED=true`。
 如果希望未指定 `mode` 的请求默认走混合检索，再设置
 `SEARCH_HYBRID_ENABLED=true`。服务重启后会在 `article_index_v2` 中按新的 IK mapping
@@ -567,6 +570,8 @@ search:
 | ContentFeignClient | content-service | `listPublishedArticlesPage` | 分页获取已发布文章 |
 | ContentFeignClient | content-service | `getCategoryById` | 获取分类名称 |
 | UserFeignClient | user-service | `getUsersByIds` | 获取作者信息 |
+| AiAgentFeignClient | ai-agent-service | `embedding` | 获取文章/查询词向量 |
+| AiAgentFeignClient | ai-agent-service | `expandSearchTerms` | 异步生成文章搜索建议词 |
 
 ### 7.4 启动类注解
 

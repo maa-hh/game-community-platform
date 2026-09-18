@@ -11,13 +11,16 @@ import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
 import com.game.community.common.constant.content.ContentConstants;
 import com.game.community.common.constant.search.SearchConstants;
+import com.game.community.feign.AiAgentFeignClient;
+import com.game.community.model.base.Result;
+import com.game.community.model.dto.aiagent.AiEmbeddingRequest;
 import com.game.community.model.dto.search.SearchPageDTO;
 import com.game.community.model.dto.search.SearchResult;
 import com.game.community.model.elasticsearch.ArticleDocument;
+import com.game.community.model.vo.aiagent.AiEmbeddingResponseVO;
 import com.game.community.model.vo.article.ArticleSearchItemVO;
 import com.game.community.search.ai.ArticleHybridScoreMerger;
 import com.game.community.search.ai.ArticleHybridScoreMerger.ArticleHybridHit;
-import com.game.community.search.ai.DashScopeClient;
 import com.game.community.search.config.SearchAiProperties;
 import com.game.community.search.service.ArticleSearchService;
 import lombok.RequiredArgsConstructor;
@@ -34,7 +37,7 @@ import java.util.List;
 public class ArticleSearchServiceImpl implements ArticleSearchService {
 
     private final ElasticsearchClient elasticsearchClient;
-    private final DashScopeClient dashScopeClient;
+    private final AiAgentFeignClient aiAgentFeignClient;
     private final SearchAiProperties searchAiProperties;
 
     @Override
@@ -104,7 +107,6 @@ public class ArticleSearchServiceImpl implements ArticleSearchService {
     private boolean shouldUseSemantic(String keyword) {
         return searchAiProperties.isEnabled()
                 && searchAiProperties.isSemanticEnabled()
-                && dashScopeClient.isConfigured()
                 && StringUtils.hasText(keyword);
     }
 
@@ -112,7 +114,6 @@ public class ArticleSearchServiceImpl implements ArticleSearchService {
         return searchAiProperties.isEnabled()
                 && searchAiProperties.isHybridEnabled()
                 && searchAiProperties.isSemanticEnabled()
-                && dashScopeClient.isConfigured()
                 && StringUtils.hasText(keyword);
     }
 
@@ -120,7 +121,7 @@ public class ArticleSearchServiceImpl implements ArticleSearchService {
         int fetchSize = Math.min(Math.max(page * size, searchAiProperties.getHybridCandidateK()),
                 SearchConstants.HYBRID_MAX_FETCH);
         try {
-            List<Float> vector = dashScopeClient.embedding(keyword);
+            List<Float> vector = embedding(keyword);
             if (vector.isEmpty()) {
                 return failedResult("embedding unavailable");
             }
@@ -159,7 +160,7 @@ public class ArticleSearchServiceImpl implements ArticleSearchService {
                                     .filter(filterQuery))),
                     ArticleDocument.class);
 
-            List<Float> vector = dashScopeClient.embedding(keyword);
+            List<Float> vector = embedding(keyword);
             if (vector.isEmpty()) {
                 SearchResult fallback = new SearchResult();
                 fallback.setErrorMsg("embedding unavailable");
@@ -212,6 +213,18 @@ public class ArticleSearchServiceImpl implements ArticleSearchService {
             result.setErrorMsg("混合搜索暂不可用");
             return result;
         }
+    }
+
+    private List<Float> embedding(String text) {
+        AiEmbeddingRequest request = new AiEmbeddingRequest();
+        request.setText(text);
+        request.setProvider(searchAiProperties.getEmbeddingProvider());
+        Result<AiEmbeddingResponseVO> result = aiAgentFeignClient.embedding(request);
+        if (result == null || !Integer.valueOf(200).equals(result.getCode()) || result.getData() == null
+                || result.getData().getVector() == null) {
+            return List.of();
+        }
+        return result.getData().getVector();
     }
 
     private SearchResult searchBm25Only(int page, int size, String keyword, Long categoryId, boolean latestSort) {

@@ -1,11 +1,12 @@
 package com.game.community.search.service.impl;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.game.community.common.constant.search.SearchConstants;
+import com.game.community.feign.AiAgentFeignClient;
+import com.game.community.model.base.Result;
+import com.game.community.model.dto.aiagent.AiSearchTermsRequest;
 import com.game.community.model.elasticsearch.ArticleDocument;
-import com.game.community.search.ai.DashScopeClient;
+import com.game.community.model.vo.aiagent.AiSearchTermsResponseVO;
 import com.game.community.search.config.SearchAiProperties;
 import com.game.community.search.service.AiSuggestTermService;
 import com.game.community.search.service.SuggestTermService;
@@ -21,33 +22,17 @@ import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AiSuggestTermServiceImpl implements AiSuggestTermService {
 
-    private static final Pattern JSON_ARRAY_PATTERN = Pattern.compile("\\[[\\s\\S]*?]");
-
-    private static final String SYSTEM_PROMPT = """
-            你是游戏社区搜索运营助手。根据帖子标题、摘要和正文，生成适合用户搜索的简洁关键词。
-            要求：
-            1. 只输出 JSON 字符串数组，不要 markdown，不要解释
-            2. 每词 2-8 个汉字或常见英文缩写
-            3. 最多 5 个，与文章主题强相关，优先保留游戏名、玩法、角色、攻略对象等可检索概念
-            """;
-
-    private final DashScopeClient dashScopeClient;
+    private final AiAgentFeignClient aiAgentFeignClient;
     private final SearchAiProperties searchAiProperties;
     private final SuggestTermService suggestTermService;
-    private final ObjectMapper objectMapper;
     private final ElasticsearchClient elasticsearchClient;
     private final DataSource dataSource;
 
@@ -57,13 +42,19 @@ public class AiSuggestTermServiceImpl implements AiSuggestTermService {
         if (articleId == null || document == null) {
             return;
         }
-        if (!searchAiProperties.isEnabled() || !searchAiProperties.isAiSuggestEnabled()
-                || !dashScopeClient.isConfigured()) {
+        if (!searchAiProperties.isEnabled() || !searchAiProperties.isAiSuggestEnabled()) {
             return;
         }
         try {
-            String response = dashScopeClient.chat(SYSTEM_PROMPT, buildUserPrompt(document));
-            List<String> terms = parseTerms(response);
+            AiSearchTermsRequest request = new AiSearchTermsRequest();
+            request.setTitle(document.getTitle());
+            request.setSummary(document.getSummary());
+            request.setContent(document.getContent());
+            request.setProvider(searchAiProperties.getSearchTermsProvider());
+            Result<AiSearchTermsResponseVO> result = aiAgentFeignClient.expandSearchTerms(request);
+            List<String> terms = result != null && Integer.valueOf(200).equals(result.getCode())
+                    && result.getData() != null && result.getData().getTerms() != null
+                    ? result.getData().getTerms() : List.of();
             if (terms.isEmpty()) {
                 return;
             }
@@ -146,50 +137,4 @@ public class AiSuggestTermServiceImpl implements AiSuggestTermService {
         }
     }
 
-    private String buildUserPrompt(ArticleDocument document) {
-        StringBuilder builder = new StringBuilder();
-        builder.append("标题：").append(nullToEmpty(document.getTitle())).append('\n');
-        builder.append("摘要：").append(nullToEmpty(document.getSummary())).append('\n');
-        builder.append("正文：").append(limit(document.getContent(), SearchConstants.EMBED_TEXT_MAX_LEN));
-        return builder.toString();
-    }
-
-    /** 限制发送给模型的正文长度，避免单篇长文拖慢异步扩词队列。 */
-    private String limit(String value, int maxLength) {
-        String text = nullToEmpty(value);
-        return text.length() <= maxLength ? text : text.substring(0, maxLength);
-    }
-
-    private List<String> parseTerms(String response) {
-        if (!StringUtils.hasText(response)) {
-            return List.of();
-        }
-        String trimmed = response.trim();
-        Set<String> terms = new LinkedHashSet<>();
-        try {
-            List<String> direct = objectMapper.readValue(trimmed, new TypeReference<>() {
-            });
-            direct.stream().filter(StringUtils::hasText).map(String::trim).forEach(terms::add);
-            if (!terms.isEmpty()) {
-                return new ArrayList<>(terms);
-            }
-        } catch (Exception ignored) {
-            // fallback to regex extraction
-        }
-        Matcher matcher = JSON_ARRAY_PATTERN.matcher(trimmed);
-        if (matcher.find()) {
-            try {
-                List<String> extracted = objectMapper.readValue(matcher.group(), new TypeReference<>() {
-                });
-                extracted.stream().filter(StringUtils::hasText).map(String::trim).forEach(terms::add);
-            } catch (Exception e) {
-                log.debug("AI 扩词 JSON 解析失败: {}", e.getMessage());
-            }
-        }
-        return new ArrayList<>(terms);
-    }
-
-    private String nullToEmpty(String value) {
-        return value == null ? "" : value;
-    }
 }

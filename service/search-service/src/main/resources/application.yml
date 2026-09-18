@@ -26,6 +26,12 @@ spring:
       transport:
         dashboard: ${SENTINEL_DASHBOARD:localhost:8859}
       eager: true
+    openfeign:
+      client:
+        config:
+          ai-agent-service:
+            connectTimeout: ${SEARCH_AI_CONNECT_TIMEOUT_MS:500}
+            readTimeout: ${SEARCH_AI_READ_TIMEOUT_MS:1500}
   # Kafka 配置
   kafka:
     bootstrap-servers: ${KAFKA_SERVERS:localhost:9093}
@@ -80,20 +86,15 @@ search:
   sync:
     on-startup: ${SEARCH_SYNC_ON_STARTUP:true}
   ai:
-    # 默认关闭外部 embedding，生产开启前需配置 DASHSCOPE_API_KEY 并完成索引回填。
+    # 默认关闭内部 AI 能力调用，开启前需先启动 ai-agent-service。
     enabled: ${SEARCH_AI_ENABLED:false}
-    api-key: ${DASHSCOPE_API_KEY:}
     semantic-enabled: ${SEARCH_SEMANTIC_ENABLED:false}
     hybrid-enabled: ${SEARCH_HYBRID_ENABLED:false}
     ai-suggest-enabled: ${SEARCH_AI_SUGGEST_ENABLED:false}
-    embedding-endpoint: https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings
-    chat-endpoint: https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
-    embedding-model: ${DASHSCOPE_EMBEDDING_MODEL:text-embedding-v4}
-    chat-model: ${DASHSCOPE_CHAT_MODEL:qwen-plus}
+    embedding-provider: ${SEARCH_AI_EMBEDDING_PROVIDER:dashscope}
+    search-terms-provider: ${SEARCH_AI_SEARCH_TERMS_PROVIDER:dashscope}
     hybrid-candidate-k: ${SEARCH_HYBRID_CANDIDATE_K:50}
     hybrid-num-candidates: ${SEARCH_HYBRID_NUM_CANDIDATES:100}
-    connect-timeout-ms: ${SEARCH_AI_CONNECT_TIMEOUT_MS:500}
-    read-timeout-ms: ${SEARCH_AI_READ_TIMEOUT_MS:1500}
   elasticsearch:
     connect-timeout-ms: ${SEARCH_ES_CONNECT_TIMEOUT_MS:1000}
     socket-timeout-ms: ${SEARCH_ES_SOCKET_TIMEOUT_MS:3000}
