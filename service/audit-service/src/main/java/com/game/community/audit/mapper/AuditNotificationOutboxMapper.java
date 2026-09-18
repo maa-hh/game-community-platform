@@ -29,7 +29,9 @@ public interface AuditNotificationOutboxMapper extends BaseMapper<AuditNotificat
             + "WHERE id = #{id} AND status = 1 AND lock_token = #{token}")
     int markFailed(@Param("id") Long id, @Param("token") String token, @Param("error") String error);
 
-    @Update("UPDATE t_audit_notification_outbox SET status = 3, lock_token = NULL, lock_time = NULL, "
-            + "next_retry_time = NOW(), update_time = NOW() WHERE status = 1 AND lock_time < #{staleBefore}")
+    @Update("UPDATE t_audit_notification_outbox SET status = CASE WHEN retry_count + 1 >= 10 THEN 4 ELSE 3 END, "
+            + "retry_count = retry_count + 1, next_retry_time = NOW(), lock_token = NULL, lock_time = NULL, "
+            + "last_error = '发布实例租约过期，自动重试', update_time = NOW() "
+            + "WHERE status = 1 AND lock_time < #{staleBefore}")
     int releaseStale(@Param("staleBefore") LocalDateTime staleBefore);
 }

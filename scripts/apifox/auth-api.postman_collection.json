@@ -16,11 +16,11 @@
     },
     {
       "key": "existingEmail",
-      "value": "3100672662@qq.com"
+      "value": "existing-user@example.com"
     },
     {
       "key": "newEmail",
-      "value": "test-register@qq.com"
+      "value": "new-user@example.com"
     },
     {
       "key": "password",
@@ -323,7 +323,7 @@
             "description": "预期: code=404, message=该邮箱未注册",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"nobody-not-exist@qq.com\",\n  \"bizType\": \"RESET_PASSWORD\"\n}",
+              "raw": "{\n  \"email\": \"unknown-user@example.com\",\n  \"bizType\": \"RESET_PASSWORD\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -535,7 +535,7 @@
             "description": "预期: code=400, message=验证码已过期，请重新获取",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"fresh-never-sent@qq.com\",\n  \"password\": \"{{password}}\",\n  \"code\": \"123456\"\n}",
+              "raw": "{\n  \"email\": \"fresh-user@example.com\",\n  \"password\": \"{{password}}\",\n  \"code\": \"123456\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -751,7 +751,7 @@
             "description": "预期: code=404, message=该邮箱未注册",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"notexist-test@qq.com\",\n  \"password\": \"{{password}}\"\n}",
+              "raw": "{\n  \"email\": \"missing-user@example.com\",\n  \"password\": \"{{password}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"

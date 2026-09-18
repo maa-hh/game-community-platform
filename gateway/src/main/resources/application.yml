@@ -85,13 +85,7 @@ spring:
       globalcors:
         cors-configurations:
           '[/**]':
-            allowed-origin-patterns:
-              - 'http://localhost:*'
-              - 'http://127.0.0.1:*'
-              - 'http://game1.3q.hair'
-              - 'https://game1.3q.hair'
-              - 'https://game.viphk.nnhk.cc'
-              - 'https://game.3s.tunnelfrp.com'
+            allowed-origin-patterns: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://127.0.0.1:3000}
             allowed-methods: '*'
             allowed-headers: '*'
             allow-credentials: true
@@ -128,6 +122,8 @@ gateway:
     user-service-qps: 50
     steam-service-qps: 100
     shop-service-qps: 200
+    # 模型审核属于高成本外部调用，先在网关入口设置独立限流。
+    ai-agent-service-qps: ${AI_AGENT_SERVICE_QPS:20}
     user-service-degrade-exception-ratio: 0.5
     user-service-degrade-slow-rt-ms: 3000
     user-service-degrade-slow-ratio: 0.6

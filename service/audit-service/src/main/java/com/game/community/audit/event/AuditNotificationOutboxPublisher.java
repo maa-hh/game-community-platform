@@ -28,9 +28,13 @@ public class AuditNotificationOutboxPublisher {
     @Value("${audit.notification-outbox.batch-size:100}")
     private int batchSize;
 
+    @Value("${audit.notification-outbox.lock-timeout-ms:600000}")
+    private long lockTimeoutMs;
+
     @Scheduled(fixedDelayString = "${audit.notification-outbox.poll-interval-ms:500}")
     public void publishPending() {
-        mapper.releaseStale(LocalDateTime.now().minusMinutes(2));
+        mapper.releaseStale(LocalDateTime.now().minusNanos(
+                Math.max(60_000L, lockTimeoutMs) * 1_000_000L));
         List<AuditNotificationOutbox> events = mapper.selectPending(Math.max(1, Math.min(batchSize, 500)));
         for (AuditNotificationOutbox event : events) {
             String token = UUID.randomUUID().toString().replace("-", "");

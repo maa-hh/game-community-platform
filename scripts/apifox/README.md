@@ -22,7 +22,7 @@
 
 `application-prod` 会 **关闭 mock、强制真实 SMTP**。发码时：
 
-- `newEmail` 必须是 **真实存在、能收信** 的邮箱（不要用 `test-register@qq.com` 这类虚构 QQ 邮箱）
+- `newEmail` 必须是 **真实存在、能收信** 的邮箱；真实地址只在本地私有环境变量中填写
 - 若收件人无效，QQ SMTP 返回 550，接口应返回 `400` + `收件邮箱不存在或无法接收邮件...`（而非 500）
 - 确保服务器 `.env` 已配置 `SMTP_*`、`JWT_*`
 
@@ -31,7 +31,7 @@
 - **Cookie**：Apifox 默认自动管理 Cookie，登录后 refresh/logout 可直接测
 - **验证码**：执行「1.1 注册发码」后，从邮件或 Redis 读取：
   ```bash
-  docker exec redis redis-cli GET "email:code:REGISTER:test-register@qq.com"
+  docker exec redis redis-cli GET "email:code:REGISTER:<your-email>"
   ```
   将结果填入环境变量 `code`
 - **Mock 模式**：`.env` 设 `EMAIL_MOCK_ENABLED=true` 时 `code` 固定 `123456`

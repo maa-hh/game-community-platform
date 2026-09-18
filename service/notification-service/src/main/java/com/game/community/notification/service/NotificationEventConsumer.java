@@ -16,7 +16,8 @@ public class NotificationEventConsumer {
 
     private final NotificationService notificationService;
 
-    @KafkaListener(topics = KafkaTopicConstants.NOTIFICATION_EVENT_TOPIC, groupId = "notification-service-group")
+    @KafkaListener(topics = KafkaTopicConstants.NOTIFICATION_EVENT_TOPIC,
+            groupId = "${spring.kafka.consumer.group-id:notification-service-group}")
     public void consume(NotificationEventMessage event) {
         if (event == null || event.getRecipientUserId() == null || event.getEventType() == null) {
             log.warn("忽略无效通知事件: {}", event);
@@ -31,7 +32,7 @@ public class NotificationEventConsumer {
     /** 弹幕可靠事件使用独立消费组，避免影响通知主链路；事件 ID 仍由通知落库层统一幂等。 */
     @KafkaListener(
             topics = KafkaTopicConstants.DANMAKU_TOPIC,
-            groupId = "notification-service-danmaku-group",
+            groupId = "${notification.kafka.danmaku-consumer-group:notification-service-danmaku-group}",
             properties = "spring.json.value.default.type:com.game.community.model.message.DanmakuEvent")
     public void consumeDanmaku(DanmakuEvent event) {
         if (event == null || event.getEventId() == null) {

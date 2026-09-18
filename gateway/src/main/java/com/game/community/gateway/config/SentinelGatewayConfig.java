@@ -47,6 +47,9 @@ public class SentinelGatewayConfig {
     @Value("${gateway.sentinel.shop-service-qps:200}")
     private double shopServiceQps;
 
+    @Value("${gateway.sentinel.ai-agent-service-qps:20}")
+    private double aiAgentServiceQps;
+
     @Value("${gateway.sentinel.user-service-degrade-exception-ratio:0.5}")
     private double userServiceDegradeExceptionRatio;
 
@@ -100,6 +103,11 @@ public class SentinelGatewayConfig {
                 .setResourceMode(SentinelGatewayConstants.RESOURCE_MODE_ROUTE_ID)
                 .setGrade(RuleConstant.FLOW_GRADE_QPS)
                 .setCount(shopServiceQps)
+                .setIntervalSec(1));
+        rules.add(new GatewayFlowRule("ai-agent-service")
+                .setResourceMode(SentinelGatewayConstants.RESOURCE_MODE_ROUTE_ID)
+                .setGrade(RuleConstant.FLOW_GRADE_QPS)
+                .setCount(aiAgentServiceQps)
                 .setIntervalSec(1));
         GatewayRuleManager.loadRules(rules);
         DegradeRuleManager.loadRules(buildDegradeRules());

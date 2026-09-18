@@ -5,6 +5,7 @@ import com.game.community.common.annotation.AdminCheck;
 import com.game.community.model.base.PageResult;
 import com.game.community.model.base.Result;
 import com.game.community.model.dto.audit.HandleModerationTaskDTO;
+import com.game.community.model.dto.audit.ModerationPageQueryDTO;
 import com.game.community.model.vo.audit.ModerationTaskDetailVO;
 import com.game.community.model.vo.audit.ModerationTaskClaimVO;
 import com.game.community.model.vo.audit.ModerationTaskVO;
@@ -12,12 +13,12 @@ import com.game.community.utils.ThreadLocal.UserThreadLocal;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -29,11 +30,8 @@ public class ModerationController {
 
     @AdminCheck
     @GetMapping("/page")
-    public PageResult<ModerationTaskVO> page(@RequestParam(value = "page", defaultValue = "1") Long page,
-                                               @RequestParam(value = "size", defaultValue = "20") Long size,
-                                               @RequestParam(value = "status", required = false) Integer status,
-                                               @RequestParam(value = "taskType", required = false) String taskType) {
-        return moderationService.pageTasks(page, size, status, taskType);
+    public PageResult<ModerationTaskVO> page(@Valid @ModelAttribute ModerationPageQueryDTO query) {
+        return moderationService.pageTasks(query);
     }
 
     @AdminCheck

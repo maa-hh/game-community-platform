@@ -1,8 +1,8 @@
 package com.game.community.ai.filter;
 
+import com.game.community.ai.context.AiUserContextHolder;
 import com.game.community.common.constant.gateway.GatewayConstants;
 import com.game.community.model.ThreadLocal.UserContex;
-import com.game.community.utils.ThreadLocal.UserThreadLocal;
 import jakarta.servlet.Filter;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -15,11 +15,13 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 
+/** 读取网关用户头并建立 AI 服务本地请求上下文。 */
 @Slf4j
 @Order(1)
 @Component
 public class UserFilter implements Filter {
 
+    /** 从网关请求头构造用户上下文，并在请求完成后清理线程变量。 */
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
             throws IOException, ServletException {
@@ -32,7 +34,8 @@ public class UserFilter implements Filter {
             try {
                 Long userId = Long.parseLong(userIdStr);
                 Integer userType = userTypeStr == null || userTypeStr.isBlank() ? 0 : Integer.parseInt(userTypeStr);
-                UserThreadLocal.setUser(new UserContex(userId, userType, steamAccount == null ? "" : steamAccount, sessionId));
+                AiUserContextHolder.set(new UserContex(userId, userType,
+                        steamAccount == null ? "" : steamAccount, sessionId));
             } catch (NumberFormatException e) {
                 log.warn("AI 服务用户上下文解析失败: userId={}, type={}", userIdStr, userTypeStr);
             }
@@ -40,7 +43,7 @@ public class UserFilter implements Filter {
         try {
             chain.doFilter(request, response);
         } finally {
-            UserThreadLocal.removeUser();
+            AiUserContextHolder.clear();
         }
     }
 }

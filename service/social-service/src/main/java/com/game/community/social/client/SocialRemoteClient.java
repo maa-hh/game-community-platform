@@ -24,7 +24,16 @@ public class SocialRemoteClient {
 
     private final UserFeignClient userFeignClient;
 
+    /**
+     * 读取单篇文章，并在本地服务内统一经过熔断、重试和并发隔离边界。
+     */
+    @CircuitBreaker(name = "socialRemote")
+    @Retry(name = "socialRemoteRetry")
+    @Bulkhead(name = "socialRemote", type = Bulkhead.Type.SEMAPHORE)
     public ArticleListVO getArticle(Long articleId) {
+        if (articleId == null) {
+            return null;
+        }
         List<ArticleListVO> articles = listArticlesByIds(Collections.singletonList(articleId));
         if (articles == null || articles.isEmpty()) {
             return null;
@@ -69,6 +78,9 @@ public class SocialRemoteClient {
     @Retry(name = "socialRemoteRetry")
     @Bulkhead(name = "socialRemote", type = Bulkhead.Type.SEMAPHORE)
     public List<ArticleListVO> listPublishedByAuthor(Long authorId, int size) {
+        if (authorId == null || size < 1) {
+            return Collections.emptyList();
+        }
         List<ArticleListVO> articles = unwrap(contentFeignClient.listPublishedByAuthor(authorId, size), "文章服务暂不可用");
         return articles == null ? Collections.emptyList() : articles;
     }
@@ -108,6 +120,12 @@ public class SocialRemoteClient {
         return unwrap(userFeignClient.getUserByAccountId(accountId), "用户服务暂不可用");
     }
 
+    /**
+     * 解析文章作者内部 userId；这是跨服务边界，不能因为同类内部调用而绕过韧性组件。
+     */
+    @CircuitBreaker(name = "socialRemote")
+    @Retry(name = "socialRemoteRetry")
+    @Bulkhead(name = "socialRemote", type = Bulkhead.Type.SEMAPHORE)
     public Long articleAuthorUserId(ArticleListVO article) {
         if (article == null || article.getAuthorAccountId() == null) {
             return null;

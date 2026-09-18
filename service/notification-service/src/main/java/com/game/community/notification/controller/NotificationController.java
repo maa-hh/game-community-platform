@@ -2,6 +2,7 @@ package com.game.community.notification.controller;
 
 import com.game.community.common.annotation.LoginCheck;
 import com.game.community.model.base.PageResult;
+import com.game.community.model.dto.notification.NotificationMessageQueryDTO;
 import com.game.community.model.base.Result;
 import com.game.community.model.vo.notification.NotificationCategorySummaryVO;
 import com.game.community.model.vo.notification.NotificationMessageVO;
@@ -10,6 +11,7 @@ import com.game.community.notification.service.NotificationService;
 import com.game.community.utils.ThreadLocal.UserThreadLocal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -39,15 +41,13 @@ public class NotificationController {
     @LoginCheck
     @GetMapping("/messages")
     public PageResult<NotificationMessageVO> listMessages(
-            @RequestParam(name = "page", defaultValue = "1") Long page,
-            @RequestParam(name = "size", defaultValue = "20") Long size,
-            @RequestParam(name = "eventType", required = false) Integer eventType,
-            @RequestParam(name = "category", required = false) String category) {
+            @ModelAttribute NotificationMessageQueryDTO query) {
         Long userId = UserThreadLocal.getUserId();
-        if (category != null && !category.isBlank()) {
-            return notificationService.listMessagesByCategory(userId, page, size, category);
+        if (query.getCategory() != null && !query.getCategory().isBlank()) {
+            return notificationService.listMessagesByCategory(
+                    userId, query.getPage(), query.getSize(), query.getCategory());
         }
-        return notificationService.listMessages(userId, page, size, eventType);
+        return notificationService.listMessages(userId, query.getPage(), query.getSize(), query.getEventType());
     }
 
     @LoginCheck

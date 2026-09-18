@@ -89,6 +89,37 @@ public final class NotificationConstants {
         }
     }
 
+    /** 跨 notification-service 实例的 Redis 发布订阅协议。 */
+    public static final class RedisChannel {
+        public static final String SSE_BROADCAST = "notification:sse:broadcast";
+
+        private RedisChannel() {
+        }
+    }
+
+    /** 通知表与跨服务消息协议的字段上限。 */
+    public static final class FieldLimit {
+        public static final int EVENT_ID = 96;
+        public static final int ACTOR_USERNAME = 64;
+        public static final int ACTOR_AVATAR = 512;
+        public static final int VIDEO_PUBLIC_ID = 128;
+        public static final int GAME_REVIEW_ID = 64;
+        public static final int PREVIEW_TEXT = 255;
+
+        private FieldLimit() {
+        }
+    }
+
+    /** 通知分页与断线补发的统一边界。 */
+    public static final class Pagination {
+        public static final long DEFAULT_SIZE = 20L;
+        public static final long MAX_SIZE = 100L;
+        public static final int MAX_REPLAY_SIZE = 100;
+
+        private Pagination() {
+        }
+    }
+
     public static final class ProfileDataDomain {
         public static final String BASE = "profile.base";
         public static final String STATS = "profile.stats";

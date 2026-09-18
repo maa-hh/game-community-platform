@@ -89,7 +89,7 @@ class NotificationServiceImplTest {
         event.setOccurredAt(LocalDateTime.now());
 
         when(notificationUserStateMapper.selectByUserIdForUpdate(any())).thenReturn(buildState(9L, 2L, 0));
-        when(notificationMessageMapper.insertIgnore(any())).thenReturn(1);
+        when(notificationMessageMapper.insertIfAbsent(any())).thenReturn(1);
 
         NotificationMessageVO result = notificationService.consumeNotificationEvent(event);
 
@@ -98,7 +98,7 @@ class NotificationServiceImplTest {
         assertThat(result.getPreviewText()).isEqualTo("alice 评论了你的帖子");
 
         ArgumentCaptor<NotificationMessage> messageCaptor = ArgumentCaptor.forClass(NotificationMessage.class);
-        verify(notificationMessageMapper).insertIgnore(messageCaptor.capture());
+        verify(notificationMessageMapper).insertIfAbsent(messageCaptor.capture());
         NotificationMessage inserted = messageCaptor.getValue();
         assertThat(inserted.getUserId()).isEqualTo(9L);
         assertThat(inserted.getActorUsername()).isEqualTo("alice");
@@ -120,12 +120,12 @@ class NotificationServiceImplTest {
         event.setOccurredAt(LocalDateTime.now());
 
         when(notificationUserStateMapper.selectByUserIdForUpdate(any())).thenReturn(buildState(6L, 2L, 1));
-        when(notificationFeedEventMapper.insertIgnore(any(NotificationFeedEvent.class))).thenReturn(1);
+        when(notificationFeedEventMapper.insertIfAbsent(any(NotificationFeedEvent.class))).thenReturn(1);
 
         NotificationMessageVO result = notificationService.consumeNotificationEvent(event);
 
         assertThat(result).isNull();
-        verify(notificationMessageMapper, never()).insertIgnore(any(NotificationMessage.class));
+        verify(notificationMessageMapper, never()).insertIfAbsent(any(NotificationMessage.class));
         verify(notificationUserStateMapper).update(eq(null), any(LambdaUpdateWrapper.class));
         verify(sseService).sendFeedUnread(6L, new NotificationSummaryVO(2L, true, 1L));
         verify(sseService, never()).sendNotification(eq(6L), any(), any());
@@ -152,12 +152,12 @@ class NotificationServiceImplTest {
         when(contentFeignClient.getArticleDetail(100L)).thenReturn(Result.success(article));
         when(userFeignClient.getUserByAccountId(9001L)).thenReturn(Result.success(recipient));
         when(notificationUserStateMapper.selectByUserIdForUpdate(any())).thenReturn(buildState(9L, 0L, 0));
-        when(notificationMessageMapper.insertIgnore(any())).thenReturn(1);
+        when(notificationMessageMapper.insertIfAbsent(any())).thenReturn(1);
 
         notificationService.consumeDanmakuEvent(event);
 
         ArgumentCaptor<NotificationMessage> messageCaptor = ArgumentCaptor.forClass(NotificationMessage.class);
-        verify(notificationMessageMapper).insertIgnore(messageCaptor.capture());
+        verify(notificationMessageMapper).insertIfAbsent(messageCaptor.capture());
         NotificationMessage inserted = messageCaptor.getValue();
         assertThat(inserted.getEventType()).isEqualTo(NotificationConstants.EventType.DANMAKU_COMMENT);
         assertThat(inserted.getDanmakuId()).isEqualTo(77L);

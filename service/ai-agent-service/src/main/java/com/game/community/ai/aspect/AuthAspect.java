@@ -2,10 +2,10 @@ package com.game.community.ai.aspect;
 
 import com.game.community.common.annotation.AdminCheck;
 import com.game.community.common.annotation.LoginCheck;
+import com.game.community.ai.context.AiUserContextHolder;
 import com.game.community.model.enums.user.AccountType;
 import com.game.community.model.base.PageResult;
 import com.game.community.model.base.Result;
-import com.game.community.utils.ThreadLocal.UserThreadLocal;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
@@ -18,18 +18,20 @@ import org.springframework.stereotype.Component;
 @Component
 public class AuthAspect {
 
+    /** 校验接口是否存在网关注入的登录用户。 */
     @Around("@annotation(loginCheck)")
     public Object aroundLoginCheck(ProceedingJoinPoint joinPoint, LoginCheck loginCheck) throws Throwable {
-        if (UserThreadLocal.getUserId() == null) {
+        if (AiUserContextHolder.getUserId() == null) {
             return errorForReturnType(joinPoint, "请先登录");
         }
         return joinPoint.proceed();
     }
 
+    /** 校验接口调用者是否为管理员。 */
     @Around("@annotation(adminCheck)")
     public Object aroundAdminCheck(ProceedingJoinPoint joinPoint, AdminCheck adminCheck) throws Throwable {
-        Long userId = UserThreadLocal.getUserId();
-        Integer type = UserThreadLocal.getType();
+        Long userId = AiUserContextHolder.getUserId();
+        Integer type = AiUserContextHolder.getType();
         if (userId == null) {
             return errorForReturnType(joinPoint, "请先登录");
         }
@@ -40,6 +42,7 @@ public class AuthAspect {
         return joinPoint.proceed();
     }
 
+    /** 按目标方法返回类型构造统一的鉴权失败响应。 */
     private Object errorForReturnType(ProceedingJoinPoint joinPoint, String message) {
         MethodSignature signature = (MethodSignature) joinPoint.getSignature();
         if (PageResult.class.isAssignableFrom(signature.getReturnType())) {

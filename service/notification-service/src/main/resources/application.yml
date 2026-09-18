@@ -1,6 +1,12 @@
 server:
   port: 8092
 
+notification:
+  kafka:
+    danmaku-consumer-group: ${NOTIFICATION_DANMAKU_CONSUMER_GROUP:notification-service-danmaku-group}
+  sse:
+    heartbeat-interval-ms: ${NOTIFICATION_SSE_HEARTBEAT_INTERVAL_MS:10000}
+
 spring:
   application:
     name: notification-service

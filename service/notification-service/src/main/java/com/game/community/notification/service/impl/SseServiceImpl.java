@@ -1,18 +1,15 @@
 package com.game.community.notification.service.impl;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.game.community.common.constant.notification.NotificationConstants;
 import com.game.community.model.vo.notification.NotificationMessageVO;
 import com.game.community.model.vo.notification.NotificationSseEventVO;
 import com.game.community.model.vo.notification.NotificationSummaryVO;
-import com.game.community.notification.config.NotificationRedisConfig;
 import com.game.community.notification.service.SseService;
 import com.game.community.notification.sse.NotificationSseBroadcast;
+import com.game.community.notification.sse.NotificationSseRedisPublisher;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
@@ -31,13 +28,10 @@ public class SseServiceImpl implements SseService {
     private final Map<Long, Set<SseEmitter>> emitters = new ConcurrentHashMap<>();
     private final Map<SseEmitter, EmitterState> emitterStates = new ConcurrentHashMap<>();
 
-    private final StringRedisTemplate redisTemplate;
+    private final NotificationSseRedisPublisher redisPublisher;
 
-    private final ObjectMapper objectMapper;
-
-    public SseServiceImpl(StringRedisTemplate redisTemplate, ObjectMapper objectMapper) {
-        this.redisTemplate = redisTemplate;
-        this.objectMapper = objectMapper;
+    public SseServiceImpl(NotificationSseRedisPublisher redisPublisher) {
+        this.redisPublisher = redisPublisher;
     }
 
     @Override
@@ -144,7 +138,7 @@ public class SseServiceImpl implements SseService {
                 NotificationConstants.SseEventType.PROFILE_INVALIDATED, payload));
     }
 
-    @Scheduled(fixedDelay = 10000L)
+    @Scheduled(fixedDelayString = "${notification.sse.heartbeat-interval-ms:10000}")
     public void heartbeat() {
         NotificationSseEventVO payload = new NotificationSseEventVO(
                 NotificationConstants.SseEventType.HEARTBEAT,
@@ -196,10 +190,8 @@ public class SseServiceImpl implements SseService {
 
     private void publish(NotificationSseBroadcast broadcast) {
         try {
-            redisTemplate.convertAndSend(
-                    NotificationRedisConfig.SSE_CHANNEL,
-                    objectMapper.writeValueAsString(broadcast));
-        } catch (JsonProcessingException | RuntimeException e) {
+            redisPublisher.publish(broadcast);
+        } catch (Exception e) {
             log.warn("通知 SSE Redis 广播失败，回退本机推送: userId={}, event={}",
                     broadcast.getUserId(), broadcast.getEventName(), e);
             sendLocal(broadcast);
@@ -215,7 +207,7 @@ public class SseServiceImpl implements SseService {
         if (connections != null) {
             connections.remove(emitter);
             if (connections.isEmpty()) {
-                emitters.remove(userId);
+                emitters.remove(userId, connections);
             }
         }
     }

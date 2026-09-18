@@ -3,7 +3,7 @@
 > **通用规范（必读）**：[`../CODING_STANDARDS.md`](../CODING_STANDARDS.md) — 适用于 `service/` 下所有微服务。  
 > 本文仅补充 **user-service 领域**约定；包结构、分层、API 前缀、Feign、测试等以母规范为准。
 
-产品设计：`docs/v2/user-service.md`、`docs/user-service-backend-prd.md`
+产品设计：`docs/v2/user-service.md`
 
 ---
 

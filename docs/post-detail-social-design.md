@@ -2,7 +2,7 @@
 
 > 状态：**P0 已完成（前端 mock + 后端 API）**；下一阶段 P1 联调  
 > 产品参考：[小黑盒帖子页](https://xiaoheihe.cn/app/bbs/link/184600162)  
-> 关联：`docs/content-posting-design.md`（发帖三模式）、`docs/social-service-api.md`（现有互动）、前端 `DESIGN.md` §5.1（列表 ContentCard）
+> 关联：`docs/content-posting-design.md`（发帖三模式）、`docs/v2/social-service.md`（现有互动）、前端 `DESIGN.md` §5.1（列表 ContentCard）
 
 ### 落地进度
 
@@ -109,7 +109,7 @@
 ### 3.1 已有（直接复用）
 
 - 评论 / 回复 CRUD、点赞、浏览历史、文章统计、关注、黑名单、举报、关注 Feed  
-- 见 `docs/social-service-api.md`
+- 见 `docs/v2/social-service.md`
 
 ### 3.2 统计表扩展 `t_social_article_stats`
 
@@ -297,7 +297,7 @@ mock/                    # post detail + social
 |----|------|
 | 本设计 | `docs/post-detail-social-design.md` |
 | 发帖 | `docs/content-posting-design.md` |
-| Social API | `docs/social-service-api.md` |
+| Social API | `docs/v2/social-service.md` |
 | 前端设计 | `game-community/DESIGN.md` |
 | 前端播放器 | `game-community/docs/dplayer-capability.md` |
 | ContentCard | `game-community/src/base-ui/ContentCard/README.md` |
