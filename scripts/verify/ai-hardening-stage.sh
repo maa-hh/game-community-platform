@@ -172,7 +172,9 @@ case "$STAGE" in
   stage5)
     build_content
     start_content
-    echo "stage5 PASS: content-service 真实启动，AI Feign CircuitBreaker 配置已加载。"
+    grep -q "ai-task-request-events" "$ROOT_DIR/common/src/main/java/com/game/community/common/constant/KafkaTopicConstants.java"
+    grep -q "AiModerationResultListener" "$ROOT_DIR/service/content-service/src/main/java/com/game/community/content/event/AiModerationResultListener.java"
+    echo "stage5 PASS: content-service 真实启动，Kafka AI 审核投递与结果回写链路已加载。"
     ;;
   stage4)
     start_stub

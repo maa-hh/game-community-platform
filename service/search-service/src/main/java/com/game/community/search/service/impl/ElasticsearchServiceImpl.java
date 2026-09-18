@@ -25,6 +25,7 @@ import javax.sql.DataSource;
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -53,6 +54,23 @@ public class ElasticsearchServiceImpl implements ElasticsearchService {
             log.info("文章索引同步成功: articleId={}", document.getId());
         } catch (IOException e) {
             throw new IllegalStateException("文章索引同步失败", e);
+        }
+    }
+
+    @Override
+    public void updateArticleEmbedding(Long articleId, List<Float> vector) {
+        if (articleId == null || vector == null || vector.isEmpty()) {
+            return;
+        }
+        try {
+            elasticsearchClient.update(request -> request
+                            .index(SearchConstants.ARTICLE_INDEX)
+                            .id(String.valueOf(articleId))
+                            .doc(Map.of("embedding", vector)),
+                    ArticleDocument.class);
+            log.info("文章 embedding 异步回写成功: articleId={}", articleId);
+        } catch (IOException e) {
+            throw new IllegalStateException("文章 embedding 回写失败", e);
         }
     }
 

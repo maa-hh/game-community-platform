@@ -4,5 +4,5 @@ import com.game.community.model.elasticsearch.ArticleDocument;
 
 public interface ArticleEmbeddingService {
 
-    void enrichEmbedding(ArticleDocument document);
+    void dispatchEmbedding(ArticleDocument document);
 }

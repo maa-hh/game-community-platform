@@ -32,7 +32,7 @@ public class AsyncConfig {
         return executor;
     }
 
-    /** 外部服务调用隔离线程池，避免 AI/Feign 阻塞任务 worker。 */
+    /** 远程服务调用隔离线程池，避免慢调用阻塞任务 worker。 */
     @Bean(name = "contentRemoteExecutor")
     public Executor contentRemoteExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();

@@ -9,24 +9,27 @@ import co.elastic.clients.elasticsearch._types.query_dsl.TextQueryType;
 import co.elastic.clients.elasticsearch.core.SearchRequest;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.game.community.common.constant.content.ContentConstants;
 import com.game.community.common.constant.search.SearchConstants;
-import com.game.community.feign.AiAgentFeignClient;
-import com.game.community.model.base.Result;
 import com.game.community.model.dto.aiagent.AiEmbeddingRequest;
 import com.game.community.model.dto.search.SearchPageDTO;
 import com.game.community.model.dto.search.SearchResult;
 import com.game.community.model.elasticsearch.ArticleDocument;
-import com.game.community.model.vo.aiagent.AiEmbeddingResponseVO;
+import com.game.community.model.message.AiTaskRequestMessage;
+import com.game.community.model.message.SearchAiContext;
 import com.game.community.model.vo.article.ArticleSearchItemVO;
 import com.game.community.search.ai.ArticleHybridScoreMerger;
 import com.game.community.search.ai.ArticleHybridScoreMerger.ArticleHybridHit;
 import com.game.community.search.config.SearchAiProperties;
+import com.game.community.search.event.AiTaskProducer;
 import com.game.community.search.service.ArticleSearchService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -37,8 +40,10 @@ import java.util.List;
 public class ArticleSearchServiceImpl implements ArticleSearchService {
 
     private final ElasticsearchClient elasticsearchClient;
-    private final AiAgentFeignClient aiAgentFeignClient;
     private final SearchAiProperties searchAiProperties;
+    private final AiTaskProducer aiTaskProducer;
+    private final StringRedisTemplate stringRedisTemplate;
+    private final ObjectMapper objectMapper;
 
     @Override
     public SearchResult search(SearchPageDTO searchDTO) {
@@ -216,15 +221,44 @@ public class ArticleSearchServiceImpl implements ArticleSearchService {
     }
 
     private List<Float> embedding(String text) {
+        String cacheKey = queryEmbeddingKey(text);
+        String cached = stringRedisTemplate.opsForValue().get(cacheKey);
+        if (StringUtils.hasText(cached)) {
+            try {
+                return objectMapper.readValue(cached, new TypeReference<List<Float>>() { });
+            } catch (Exception e) {
+                log.debug("查询向量缓存解析失败: keyword={}", text, e);
+            }
+        }
         AiEmbeddingRequest request = new AiEmbeddingRequest();
         request.setText(text);
         request.setProvider(searchAiProperties.getEmbeddingProvider());
-        Result<AiEmbeddingResponseVO> result = aiAgentFeignClient.embedding(request);
-        if (result == null || !Integer.valueOf(200).equals(result.getCode()) || result.getData() == null
-                || result.getData().getVector() == null) {
-            return List.of();
+        if (Boolean.TRUE.equals(stringRedisTemplate.opsForValue().setIfAbsent(
+                "search:ai:embedding:pending:" + hash(text), "1", java.time.Duration.ofSeconds(30)))) {
+            SearchAiContext context = new SearchAiContext();
+            context.setOperation(SearchAiContext.QUERY_EMBEDDING);
+            context.setQuery(text);
+            aiTaskProducer.send(AiTaskRequestMessage.EMBEDDING, 0L, request, context);
         }
-        return result.getData().getVector();
+        return List.of();
+    }
+
+    private String queryEmbeddingKey(String text) {
+        return "search:ai:embedding:" + hash(text);
+    }
+
+    private String hash(String text) {
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder result = new StringBuilder();
+            for (byte value : digest) {
+                result.append(String.format("%02x", value));
+            }
+            return result.toString();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 不可用", e);
+        }
     }
 
     private SearchResult searchBm25Only(int page, int size, String keyword, Long categoryId, boolean latestSort) {

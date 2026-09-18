@@ -21,6 +21,12 @@ public final class KafkaTopicConstants {
 
     public static final String NOTIFICATION_EVENT_TOPIC = "notification-events";
 
+    /** AI 异步任务请求；所有调用方只投递任务，不在业务线程等待模型响应。 */
+    public static final String AI_TASK_REQUEST_TOPIC = "ai-task-request-events";
+
+    /** AI 异步任务结果；各业务服务使用独立 consumer group 消费自己关心的结果。 */
+    public static final String AI_TASK_RESULT_TOPIC = "ai-task-result-events";
+
     private KafkaTopicConstants() {
     }
 }
