@@ -11,6 +11,8 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
+import java.util.List;
+
 @Mapper
 public interface UserCosmeticMapper extends BaseMapper<UserCosmetic> {
 
@@ -28,6 +30,18 @@ public interface UserCosmeticMapper extends BaseMapper<UserCosmetic> {
     @Select("SELECT * FROM t_user_cosmetic WHERE user_id = #{userId} AND cosmetic_code = #{code} LIMIT 1")
     /** 查询用户指定装扮的库存记录。 */
     UserCosmetic selectByUserAndCode(@Param("userId") Long userId, @Param("code") String code);
+
+    /** 批量查询用户装扮库存，避免商品页逐个查询。 */
+    @Select({
+            "<script>",
+            "SELECT * FROM t_user_cosmetic WHERE user_id = #{userId} AND cosmetic_code IN",
+            "<foreach collection='codes' item='code' open='(' separator=',' close=')'>",
+            "#{code}",
+            "</foreach>",
+            "</script>"
+    })
+    List<UserCosmetic> selectByUserAndCodes(@Param("userId") Long userId,
+                                            @Param("codes") List<String> codes);
 
     /** 幂等增加用户装扮库存。 */
     @Insert("INSERT INTO t_user_cosmetic "

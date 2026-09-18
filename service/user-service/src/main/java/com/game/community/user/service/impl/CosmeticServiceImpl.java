@@ -320,6 +320,37 @@ public class CosmeticServiceImpl implements CosmeticService {
         return vo;
     }
 
+    /** 批量读取库存、定义和装备槽位，保证商城列表只产生一次用户服务调用。 */
+    @Override
+    public Map<String, CosmeticItemStateVO> getItemStates(Long userId, List<String> cosmeticCodes) {
+        if (userId == null || cosmeticCodes == null || cosmeticCodes.isEmpty()) {
+            return Map.of();
+        }
+        List<String> codes = cosmeticCodes.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .distinct()
+                .toList();
+        if (codes.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, UserCosmetic> ownedByCode = userCosmeticMapper.selectByUserAndCodes(userId, codes).stream()
+                .collect(Collectors.toMap(UserCosmetic::getCosmeticCode, Function.identity(), (a, b) -> a));
+        Map<String, CosmeticDef> defs = loadDefs(codes);
+        UserCosmeticLoadout loadout = loadoutMapper.selectById(userId);
+        Map<String, CosmeticItemStateVO> result = new LinkedHashMap<>();
+        for (String code : codes) {
+            UserCosmetic owned = ownedByCode.get(code);
+            boolean hasOwned = owned != null && owned.getQuantity() != null && owned.getQuantity() > 0;
+            CosmeticItemStateVO state = new CosmeticItemStateVO();
+            state.setOwned(hasOwned);
+            CosmeticDef def = defs.get(code);
+            state.setEquipped(hasOwned && def != null && isEquipped(loadout, def));
+            result.put(code, state);
+        }
+        return result;
+    }
+
     /** 批量完成 accountId 映射，并一次查询所有用户装扮数据。 */
     @Override
     public Map<Long, UserDecorationVO> batchDecorationsByAccountIds(List<Long> accountIds) {

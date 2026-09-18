@@ -11,7 +11,7 @@ public class ShopOrderExpireWorker {
 
     private final ShopOrderService orderService;
 
-    @Scheduled(fixedDelay = 5000)
+    @Scheduled(fixedDelayString = "${shop.order.expire-poll-ms:5000}")
     public void cancelExpiredOrders() {
         orderService.cancelExpiredOrders();
     }

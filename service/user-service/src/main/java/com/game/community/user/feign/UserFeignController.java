@@ -3,6 +3,7 @@ package com.game.community.user.feign;
 import com.game.community.common.constant.user.UserConstants;
 import com.game.community.model.base.Result;
 import com.game.community.model.dto.cosmetic.BatchUserIdsDTO;
+import com.game.community.model.dto.cosmetic.BatchCosmeticStateDTO;
 import com.game.community.model.dto.cosmetic.GrantCosmeticDTO;
 import com.game.community.model.vo.cosmetic.CosmeticGrantResultVO;
 import com.game.community.model.vo.cosmetic.CosmeticItemStateVO;
@@ -118,6 +119,13 @@ public class UserFeignController {
     public Result<CosmeticItemStateVO> getCosmeticItemState(@RequestParam("userId") Long userId,
                                                             @RequestParam("cosmeticCode") String cosmeticCode) {
         return Result.success(cosmeticService.getItemState(userId, cosmeticCode));
+    }
+
+    /** 批量查询用户对多个装扮的拥有和装备状态。 */
+    @PostMapping("/cosmetic/state/batch")
+    public Result<Map<String, CosmeticItemStateVO>> getCosmeticItemStates(
+            @Valid @RequestBody BatchCosmeticStateDTO dto) {
+        return Result.success(cosmeticService.getItemStates(dto.getUserId(), dto.getCosmeticCodes()));
     }
 
     /** 批量查询多个 accountId 的装扮展示数据。 */

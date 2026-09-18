@@ -22,8 +22,9 @@ spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3307}/${MYSQL_DB:game_community}?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
-    username: ${MYSQL_USER:root}
-    password: ${MYSQL_PASSWORD:root123}
+    # 不提供开发环境之外的默认账号密码，避免误把 root/root123 带入部署环境。
+    username: ${MYSQL_USER}
+    password: ${MYSQL_PASSWORD}
     hikari:
       maximum-pool-size: ${SHOP_DB_MAX_POOL_SIZE:30}
       minimum-idle: ${SHOP_DB_MIN_IDLE:5}
@@ -38,9 +39,23 @@ spring:
       timeout: 5000ms
   kafka:
     bootstrap-servers: ${KAFKA_SERVERS:localhost:9093}
+    consumer:
+      group-id: ${SHOP_KAFKA_CONSUMER_GROUP:shop-delivery-recovery}
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: com.game.community.model.message
+        spring.json.value.default.type: com.game.community.model.message.ShopOrderPaidMessage
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 10
+      properties:
+        enable.idempotence: true
+        delivery.timeout.ms: 120000
   # Nacos 配置
   cloud:
     nacos:
@@ -54,6 +69,13 @@ spring:
       transport:
         dashboard: ${SENTINEL_DASHBOARD:localhost:8859}
       eager: true
+    openfeign:
+      client:
+        config:
+          user-service:
+            connectTimeout: ${SHOP_USER_FEIGN_CONNECT_TIMEOUT_MS:1000}
+            readTimeout: ${SHOP_USER_FEIGN_READ_TIMEOUT_MS:3000}
+            loggerLevel: basic
 # MyBatis-Plus 配置
 mybatis-plus:
   mapper-locations: classpath*:mapper/*.xml
@@ -82,6 +104,7 @@ management:
 shop:
   order:
     create-poll-ms: ${SHOP_ORDER_CREATE_POLL_MS:500}
+    expire-poll-ms: ${SHOP_ORDER_EXPIRE_POLL_MS:5000}
   delivery:
     poll-ms: ${SHOP_DELIVERY_POLL_MS:500}
   kafka:

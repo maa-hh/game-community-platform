@@ -8,10 +8,10 @@ import com.game.community.common.exception.BusinessException;
 import com.game.community.feign.UserFeignClient;
 import com.game.community.model.base.PageResult;
 import com.game.community.model.base.Result;
+import com.game.community.model.dto.cosmetic.BatchCosmeticStateDTO;
 import com.game.community.model.dto.shop.SaveShopItemDTO;
 import com.game.community.model.entity.shop.ShopItem;
 import com.game.community.model.vo.cosmetic.CosmeticItemStateVO;
-import com.game.community.model.vo.cosmetic.CosmeticPurchaseCheckVO;
 import com.game.community.model.vo.shop.ShopItemVO;
 import com.game.community.shop.mapper.ShopItemMapper;
 import com.game.community.shop.service.ShopItemService;
@@ -25,6 +25,9 @@ import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.Map;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -45,7 +48,9 @@ public class ShopItemServiceImpl implements ShopItemService {
                 new LambdaQueryWrapper<ShopItem>().eq(status != null, ShopItem::getStatus, status)
                         .orderByDesc(ShopItem::getStatus).orderByDesc(ShopItem::getCreateTime)
                         .orderByDesc(ShopItem::getId));
-        return PageResult.of(result.getRecords().stream().map(item -> enrichItem(toVO(item), userId)).toList(),
+        Map<String, CosmeticItemStateVO> states = loadCosmeticStates(userId, result.getRecords());
+        return PageResult.of(result.getRecords().stream()
+                        .map(item -> enrichItem(toVO(item), states)).toList(),
                 current, pageSize, result.getTotal());
     }
 
@@ -53,7 +58,7 @@ public class ShopItemServiceImpl implements ShopItemService {
     public ShopItemVO getItem(Long userId, Long itemId) {
         ShopItem item = requireItem(itemId);
         syncStockToRedis(itemId);
-        return enrichItem(toVO(item), userId);
+        return enrichItem(toVO(item), loadCosmeticStates(userId, java.util.List.of(item)));
     }
 
     @Override
@@ -70,19 +75,32 @@ public class ShopItemServiceImpl implements ShopItemService {
         if (newStock >= 0 && newStock < creatingReserved) {
             throw new BusinessException("新库存不能小于已预占库存");
         }
+        String repurchasePolicy = StringUtils.hasText(dto.getRepurchasePolicy())
+                ? dto.getRepurchasePolicy() : ShopConstants.RepurchasePolicy.ONCE_FOREVER;
+        int grantQuantity = dto.getGrantQuantity() == null ? 1 : dto.getGrantQuantity();
+        int limitCount = dto.getLimitCount() == null ? ShopConstants.LIMIT_UNLIMITED : dto.getLimitCount();
+        int limitWindowSeconds = dto.getLimitWindowSeconds() == null
+                ? ShopConstants.LIMIT_WINDOW_DISABLED : dto.getLimitWindowSeconds();
+        if (item.getId() != null && itemMapper.countOrderHistory(item.getId()) > 0
+                && (!Objects.equals(item.getCosmeticCode(), dto.getCosmeticCode().trim())
+                || !Objects.equals(item.getGrantQuantity(), grantQuantity)
+                || !Objects.equals(item.getRepurchasePolicy(), repurchasePolicy)
+                || !Objects.equals(item.getLimitCount(), limitCount)
+                || !Objects.equals(item.getLimitWindowSeconds(), limitWindowSeconds))) {
+            throw new BusinessException("商品已有订单，装扮编码、发放数量和限购规则不可修改");
+        }
         LocalDateTime now = LocalDateTime.now();
         item.setName(dto.getName().trim());
         item.setDescription(defaultText(dto.getDescription()));
         item.setCosmeticCode(dto.getCosmeticCode().trim());
         item.setPricePoints(dto.getPricePoints());
-        item.setGrantQuantity(dto.getGrantQuantity() == null ? 1 : dto.getGrantQuantity());
+        item.setGrantQuantity(grantQuantity);
         item.setStock(newStock);
         item.setIcon(defaultText(dto.getIcon()));
         item.setStatus(dto.getStatus() == null ? ShopConstants.ITEM_ON_SHELF : dto.getStatus());
-        item.setRepurchasePolicy(StringUtils.hasText(dto.getRepurchasePolicy())
-                ? dto.getRepurchasePolicy() : ShopConstants.RepurchasePolicy.ONCE_FOREVER);
-        item.setLimitCount(dto.getLimitCount() == null ? ShopConstants.LIMIT_UNLIMITED : dto.getLimitCount());
-        item.setLimitWindowSeconds(dto.getLimitWindowSeconds() == null ? ShopConstants.LIMIT_WINDOW_DISABLED : dto.getLimitWindowSeconds());
+        item.setRepurchasePolicy(repurchasePolicy);
+        item.setLimitCount(limitCount);
+        item.setLimitWindowSeconds(limitWindowSeconds);
         item.setBeginTime(dto.getBeginTime() == null ? DEFAULT_BEGIN_TIME : dto.getBeginTime());
         item.setEndTime(dto.getEndTime() == null ? DEFAULT_END_TIME : dto.getEndTime());
         item.setUpdateTime(now);
@@ -120,15 +138,22 @@ public class ShopItemServiceImpl implements ShopItemService {
 
     @Override
     public void syncStockToRedis(Long itemId) {
-        if (itemId == null) return;
+        syncStockToRedisInternal(itemId);
+    }
+
+    /** 仅在库存缓存不存在时按数据库重建，并返回本次是否完成了初始化。 */
+    private boolean syncStockToRedisInternal(Long itemId) {
+        if (itemId == null) return false;
         ShopItem item = itemMapper.selectById(itemId);
-        if (item == null) return;
+        if (item == null) return false;
         int available = item.getStock();
         if (available >= 0) {
             available = Math.max(0, available - itemMapper.countCreatingQuantity(itemId));
         }
-        stringRedisTemplate.opsForValue().setIfAbsent(ShopRedisConstants.stockKey(itemId),
-                String.valueOf(available), Duration.ofSeconds(ShopRedisConstants.STOCK_TTL_SECONDS));
+        Boolean initialized = stringRedisTemplate.opsForValue().setIfAbsent(
+                ShopRedisConstants.stockKey(itemId), String.valueOf(available),
+                Duration.ofSeconds(ShopRedisConstants.STOCK_TTL_SECONDS));
+        return Boolean.TRUE.equals(initialized);
     }
 
     private void adjustStockCache(Long itemId, Integer oldStock, int newStock) {
@@ -136,14 +161,14 @@ public class ShopItemServiceImpl implements ShopItemService {
             syncStockToRedis(itemId);
             return;
         }
-        syncStockToRedis(itemId);
+        boolean initialized = syncStockToRedisInternal(itemId);
         long delta = (long) newStock - oldStock;
-        if (delta != 0) {
+        if (!initialized && delta != 0) {
             stringRedisTemplate.opsForValue().increment(ShopRedisConstants.stockKey(itemId), delta);
         }
     }
 
-    private ShopItemVO enrichItem(ShopItemVO vo, Long userId) {
+    private ShopItemVO enrichItem(ShopItemVO vo, Map<String, CosmeticItemStateVO> states) {
         vo.setCanBuy(true);
         LocalDateTime now = LocalDateTime.now();
         if (vo.getStatus() == null || vo.getStatus() != ShopConstants.ITEM_ON_SHELF) {
@@ -162,28 +187,34 @@ public class ShopItemServiceImpl implements ShopItemService {
             vo.setCannotBuyReason("库存不足");
             return vo;
         }
-        if (userId == null) return vo;
-        Result<CosmeticItemStateVO> state = userFeignClient.getCosmeticItemState(userId, vo.getCosmeticCode());
-        if (state == null || state.getData() == null) {
+        CosmeticItemStateVO state = states.get(vo.getCosmeticCode());
+        if (state == null) {
             vo.setCanBuy(false);
             vo.setCannotBuyReason("装扮状态服务暂不可用");
             return vo;
         }
-        vo.setOwned(Boolean.TRUE.equals(state.getData().getOwned()));
-        vo.setEquipped(Boolean.TRUE.equals(state.getData().getEquipped()));
+        vo.setOwned(Boolean.TRUE.equals(state.getOwned()));
+        vo.setEquipped(Boolean.TRUE.equals(state.getEquipped()));
         if (ShopConstants.RepurchasePolicy.ONCE_FOREVER.equals(vo.getRepurchasePolicy()) && vo.getOwned()) {
             vo.setCanBuy(false);
             vo.setCannotBuyReason("已拥有该装扮");
         }
-        if (ShopConstants.RepurchasePolicy.ONCE_FOREVER.equals(vo.getRepurchasePolicy())) {
-            Result<CosmeticPurchaseCheckVO> check = userFeignClient.checkCosmeticOwnership(userId, vo.getCosmeticCode());
-            if (check != null && check.getData() != null) {
-                vo.setCanBuy(check.getData().getCanBuy());
-                vo.setCannotBuyReason(check.getData().getReason());
-                vo.setNextBuyAt(check.getData().getNextBuyAt());
-            }
-        }
         return vo;
+    }
+
+    private Map<String, CosmeticItemStateVO> loadCosmeticStates(Long userId, java.util.List<ShopItem> items) {
+        if (userId == null || items == null || items.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        BatchCosmeticStateDTO dto = new BatchCosmeticStateDTO();
+        dto.setUserId(userId);
+        dto.setCosmeticCodes(items.stream().map(ShopItem::getCosmeticCode)
+                .filter(StringUtils::hasText).distinct().toList());
+        if (dto.getCosmeticCodes().isEmpty()) {
+            return Collections.emptyMap();
+        }
+        Result<Map<String, CosmeticItemStateVO>> result = userFeignClient.getCosmeticItemStates(dto);
+        return result == null || result.getData() == null ? Collections.emptyMap() : result.getData();
     }
 
     private void validateDto(SaveShopItemDTO dto) {

@@ -45,6 +45,9 @@ public interface CosmeticService {
     /** 查询用户对指定装扮的拥有状态。 */
     CosmeticItemStateVO getItemState(Long userId, String cosmeticCode);
 
+    /** 批量查询用户对多个装扮的拥有和装备状态。 */
+    Map<String, CosmeticItemStateVO> getItemStates(Long userId, List<String> cosmeticCodes);
+
     /** 按对外 accountId 批量查询装扮，内部完成 accountId -> userId 映射。 */
     Map<Long, UserDecorationVO> batchDecorationsByAccountIds(List<Long> accountIds);
 
