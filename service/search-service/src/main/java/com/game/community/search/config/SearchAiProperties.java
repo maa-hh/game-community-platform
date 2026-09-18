@@ -12,9 +12,6 @@ public class SearchAiProperties {
     /** AI provider 总开关，默认关闭，避免未配置密钥时请求链路产生额外延迟。 */
     private boolean enabled = false;
 
-    /** 外部 AI 服务密钥，统一由 search.ai 配置持有。 */
-    private String apiKey = "";
-
     /** 语义向量召回开关；可通过配置中心或环境变量动态控制。 */
     private boolean semanticEnabled = false;
 
@@ -22,19 +19,14 @@ public class SearchAiProperties {
 
     private boolean aiSuggestEnabled = false;
 
-    private String embeddingEndpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings";
+    /** 内部 AI 能力服务使用的 embedding provider。 */
+    private String embeddingProvider = "dashscope";
 
-    private String chatEndpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
-
-    private String embeddingModel = "text-embedding-v4";
-
-    private String chatModel = "qwen-plus";
+    /** 内部 AI 能力服务使用的搜索词扩展 provider。 */
+    private String searchTermsProvider = "dashscope";
 
     private int hybridCandidateK = 50;
 
     private int hybridNumCandidates = 100;
 
-    private int connectTimeoutMs = 500;
-
-    private int readTimeoutMs = 1500;
 }

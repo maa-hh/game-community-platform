@@ -4,73 +4,63 @@ server:
 spring:
   application:
     name: ai-agent-service
-  # 数据源配置
-  datasource:
-    driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3307}/${MYSQL_DB:game_community}?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
-    username: ${MYSQL_USER:root}
-    password: ${MYSQL_PASSWORD:root123}
-  # Redis 配置
   data:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6380}
-      database: 0
-      timeout: 5000ms
-  # Elasticsearch 配置
-  elasticsearch:
-    uris: ${ELASTICSEARCH_URIS:http://localhost:9201}
+      timeout: ${REDIS_COMMAND_TIMEOUT:2000ms}
   # Nacos 配置
   cloud:
     nacos:
       discovery:
         server-addr: ${NACOS_ADDR:localhost:8848}
-        ip: ${NACOS_DISCOVERY_IP:127.0.0.1}
       config:
         server-addr: ${NACOS_ADDR:localhost:8848}
         file-extension: yml
-    sentinel:
-      transport:
-        dashboard: ${SENTINEL_DASHBOARD:localhost:8859}
-      eager: true
-
-# MyBatis-Plus 配置
-mybatis-plus:
-  mapper-locations: classpath*:mapper/*.xml
-  type-aliases-package: com.game.community.model.entity
-  configuration:
-    map-underscore-to-camel-case: true
-  global-config:
-    db-config:
-      id-type: auto
-
 # AI Agent 配置
 ai-agent:
-  api-key: ${DASHSCOPE_API_KEY:}
-  embedding-endpoint: https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings
-  # 兼容旧配置字段；实际 ChatClient 由 models.default-provider=deepseek 管理。
-  chat-endpoint: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}/chat/completions
-  embedding-model: ${DASHSCOPE_EMBEDDING_MODEL:text-embedding-v4}
-  chat-model: ${DEEPSEEK_CHAT_MODEL:deepseek-flash}
-  knowledge-index: ai_knowledge_segment
-  retrieval-top-k: 6
-  retrieval-candidate-k: 12
-  segment-target-length: 420
-  segment-overlap: 60
-  memory-ttl-hours: 72
-  max-rounds: 10
   models:
     default-provider: ${AI_DEFAULT_PROVIDER:deepseek}
+    default-embedding-provider: ${AI_DEFAULT_EMBEDDING_PROVIDER:dashscope}
     providers:
       deepseek:
         enabled: true
+        protocol: openai-compatible
         base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
-        completions-path: /chat/completions
+        completions-path: ${DEEPSEEK_COMPLETIONS_PATH:/chat/completions}
         api-key: ${DEEPSEEK_API_KEY:}
         chat-model: ${DEEPSEEK_CHAT_MODEL:deepseek-flash}
         text-moderation-model: ${DEEPSEEK_TEXT_MODEL:deepseek-flash}
         image-moderation-model: ${DEEPSEEK_IMAGE_MODEL:deepseek-flash}
         temperature: 0.1
+        requests-per-second: ${DEEPSEEK_REQUESTS_PER_SECOND:20}
+        max-concurrent-calls: ${DEEPSEEK_MAX_CONCURRENT_CALLS:8}
+        circuit-failure-rate-threshold: ${DEEPSEEK_CIRCUIT_FAILURE_RATE:50}
+        circuit-minimum-number-of-calls: ${DEEPSEEK_CIRCUIT_MIN_CALLS:10}
+        circuit-sliding-window-size: ${DEEPSEEK_CIRCUIT_WINDOW_SIZE:20}
+        circuit-open-seconds: ${DEEPSEEK_CIRCUIT_OPEN_SECONDS:30}
+        connect-timeout-ms: ${DEEPSEEK_CONNECT_TIMEOUT_MS:2000}
+        read-timeout-ms: ${DEEPSEEK_READ_TIMEOUT_MS:10000}
+      dashscope:
+        enabled: true
+        protocol: openai-compatible
+        base-url: ${DASHSCOPE_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}
+        completions-path: ${DASHSCOPE_COMPLETIONS_PATH:/v1/chat/completions}
+        embeddings-path: ${DASHSCOPE_EMBEDDINGS_PATH:/v1/embeddings}
+        api-key: ${DASHSCOPE_API_KEY:}
+        chat-model: ${DASHSCOPE_CHAT_MODEL:qwen-plus}
+        embedding-model: ${DASHSCOPE_EMBEDDING_MODEL:text-embedding-v4}
+        text-moderation-model: ${DASHSCOPE_TEXT_MODEL:qwen-plus}
+        image-moderation-model: ${DASHSCOPE_IMAGE_MODEL:qwen-plus}
+        temperature: 0.1
+        requests-per-second: ${DASHSCOPE_REQUESTS_PER_SECOND:20}
+        max-concurrent-calls: ${DASHSCOPE_MAX_CONCURRENT_CALLS:8}
+        circuit-failure-rate-threshold: ${DASHSCOPE_CIRCUIT_FAILURE_RATE:50}
+        circuit-minimum-number-of-calls: ${DASHSCOPE_CIRCUIT_MIN_CALLS:10}
+        circuit-sliding-window-size: ${DASHSCOPE_CIRCUIT_WINDOW_SIZE:20}
+        circuit-open-seconds: ${DASHSCOPE_CIRCUIT_OPEN_SECONDS:30}
+        connect-timeout-ms: ${DASHSCOPE_CONNECT_TIMEOUT_MS:2000}
+        read-timeout-ms: ${DASHSCOPE_READ_TIMEOUT_MS:10000}
       # 可按相同结构增加任意 OpenAI 兼容供应商，并通过 provider 字段选择。
   moderation:
     reject-max-score: ${AUDIT_REJECT_MAX_SCORE:3}
@@ -83,19 +73,25 @@ ai-agent:
     article-prompt-path: ${AUDIT_ARTICLE_PROMPT_PATH:classpath:prompts/moderation-article-user.st}
     max-text-chars: ${AUDIT_MAX_TEXT_CHARS:12000}
     max-concurrent-model-calls: ${AUDIT_MAX_CONCURRENT_MODEL_CALLS:8}
+    global-max-concurrent-model-calls: ${AUDIT_GLOBAL_MAX_CONCURRENT_MODEL_CALLS:32}
+    global-permit-lease-seconds: ${AUDIT_GLOBAL_PERMIT_LEASE_SECONDS:120}
+    max-image-bytes: ${AUDIT_MAX_IMAGE_BYTES:5242880}
+    max-article-images: ${AUDIT_MAX_ARTICLE_IMAGES:9}
+    allow-remote-image-urls: ${AUDIT_ALLOW_REMOTE_IMAGE_URLS:false}
+    allowed-image-hosts: ${AUDIT_ALLOWED_IMAGE_HOSTS:}
 
 # 日志配置
 logging:
   level:
-    com.game.community: debug
+    com.game.community: ${AI_LOG_LEVEL:INFO}
 
 # API 文档
 springdoc:
   api-docs:
-    enabled: true
+    enabled: ${AI_SPRINGDOC_ENABLED:false}
     path: /v3/api-docs
   swagger-ui:
-    enabled: true
+    enabled: ${AI_SPRINGDOC_ENABLED:false}
     path: /swagger-ui.html
 
 # 管理端点
@@ -103,7 +99,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: '*'
+        include: ${AI_MANAGEMENT_EXPOSURE:health,info,metrics,prometheus}
   endpoint:
     health:
-      show-details: always
+      show-details: ${AI_HEALTH_DETAILS:never}
