@@ -3,16 +3,13 @@ package com.game.community.search.service.impl;
 import com.game.community.feign.SteamFeignClient;
 import com.game.community.model.vo.game.GameListItemVO;
 import com.game.community.search.service.ElasticsearchService;
-import com.game.community.search.service.SuggestTermService;
-import com.game.community.search.service.SuggestTermService.TermSeed;
-import com.game.community.common.constant.search.SearchConstants;
-import org.springframework.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Objects;
 
 @Slf4j
 @Service
@@ -21,17 +18,17 @@ public class GameIndexAsyncService {
 
     private final ElasticsearchService elasticsearchService;
     private final SteamFeignClient steamFeignClient;
-    private final SuggestTermService suggestTermService;
+    private final GameSuggestionTermSyncService gameSuggestionTermSyncService;
 
     @Async("gameIndexExecutor")
     public void indexCandidates(List<GameListItemVO> candidates) {
         if (candidates == null) {
             return;
         }
-        candidates.forEach(item -> {
+        candidates.stream().filter(Objects::nonNull).forEach(item -> {
             try {
                 elasticsearchService.indexGame(item);
-                syncGameSuggestionTerms(item);
+                gameSuggestionTermSyncService.sync(item);
             } catch (Exception e) {
                 log.warn("Steam fallback 游戏写入 ES 失败: appId={}", item.getAppId(), e);
             }
@@ -59,26 +56,4 @@ public class GameIndexAsyncService {
         }
     }
 
-    /** 为搜索回源发现的游戏补充建议词来源，保证下一次输入即可命中候选。 */
-    private void syncGameSuggestionTerms(GameListItemVO game) {
-        if (game == null || game.getAppId() == null) {
-            return;
-        }
-        List<TermSeed> seeds = new java.util.ArrayList<>();
-        addGameTerm(seeds, game.getName(), game.getAppId());
-        addGameTerm(seeds, game.getNameZh(), game.getAppId());
-        addGameTerm(seeds, game.getNameEn(), game.getAppId());
-        if (game.getAliases() != null) {
-            game.getAliases().forEach(alias -> addGameTerm(seeds, alias, game.getAppId()));
-        }
-        suggestTermService.replaceGameTerms(game.getAppId(), seeds);
-    }
-
-    /** 添加非空游戏名称作为建议词候选。 */
-    private void addGameTerm(List<TermSeed> seeds, String value, Long appId) {
-        if (StringUtils.hasText(value)) {
-            seeds.add(new TermSeed(value, SearchConstants.SUGGEST_SOURCE_GAME, appId,
-                    SearchConstants.WEIGHT_GAME, false));
-        }
-    }
 }

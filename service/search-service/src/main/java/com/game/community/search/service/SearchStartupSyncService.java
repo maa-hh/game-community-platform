@@ -2,7 +2,9 @@ package com.game.community.search.service;
 
 public interface SearchStartupSyncService {
 
-    void syncOnStartupIfEnabled();
+    boolean syncOnStartupIfEnabled();
+
+    boolean rebuildAsync();
 
     void rebuildNow();
 }

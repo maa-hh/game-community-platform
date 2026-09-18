@@ -159,6 +159,7 @@ public class InitElasticsearchIndex {
                 .settings(s -> s.numberOfShards(String.valueOf(indexProperties.getGameShards()))
                         .numberOfReplicas(String.valueOf(indexProperties.getGameReplicas())))
                 .mappings(m -> m
+                        .dynamic(co.elastic.clients.elasticsearch._types.mapping.DynamicMapping.Strict)
                         .properties("appId", p -> p.long_(l -> l))
                         .properties("name", p -> p.text(t -> t.analyzer("ik_max_word")
                                 .searchAnalyzer("ik_smart")
@@ -182,7 +183,14 @@ public class InitElasticsearchIndex {
                         .properties("avgScore", p -> p.double_(d -> d))
                         .properties("reviewCount", p -> p.integer(i -> i))
                         .properties("discussCount", p -> p.integer(i -> i))
-                        .properties("price", p -> p.object(o -> o))
+                        .properties("price", p -> p.object(o -> o
+                                .properties("free", price -> price.boolean_(b -> b))
+                                .properties("currency", price -> price.text(t -> t.fields("keyword", f -> f.keyword(k -> k))))
+                                .properties("initial", price -> price.long_(l -> l))
+                                .properties("finalPrice", price -> price.long_(l -> l))
+                                .properties("discountPercent", price -> price.long_(l -> l))
+                                .properties("discountEndAt", price -> price.long_(l -> l))
+                                .properties("formatted", price -> price.text(t -> t.fields("keyword", f -> f.keyword(k -> k))))))
                         .properties("status", p -> p.integer(i -> i))
                         .properties("detailReady", p -> p.boolean_(b -> b))
                         .properties("updatedAt", p -> p.date(d -> d)))
@@ -237,10 +245,19 @@ public class InitElasticsearchIndex {
             }
             elasticsearchClient.indices().putMapping(m -> m
                     .index(SearchConstants.GAME_INDEX)
+                    .dynamic(co.elastic.clients.elasticsearch._types.mapping.DynamicMapping.Strict)
                     .properties("genreText", p -> p.text(t -> t
                             .analyzer("ik_max_word")
-                            .searchAnalyzer("ik_smart"))));
-            log.info("ES游戏索引 genreText mapping 已确认: {}", SearchConstants.GAME_INDEX);
+                            .searchAnalyzer("ik_smart")))
+                    .properties("price", p -> p.object(o -> o
+                            .properties("free", price -> price.boolean_(b -> b))
+                            .properties("currency", price -> price.text(t -> t.fields("keyword", f -> f.keyword(k -> k))))
+                            .properties("initial", price -> price.long_(l -> l))
+                            .properties("finalPrice", price -> price.long_(l -> l))
+                            .properties("discountPercent", price -> price.long_(l -> l))
+                            .properties("discountEndAt", price -> price.long_(l -> l))
+                            .properties("formatted", price -> price.text(t -> t.fields("keyword", f -> f.keyword(k -> k)))))));
+            log.info("ES游戏索引 genreText/price mapping 已确认: {}", SearchConstants.GAME_INDEX);
         } catch (ElasticsearchException e) {
             log.warn("ES游戏索引 genreText mapping 更新跳过: {}", e.getMessage());
         } catch (IOException e) {

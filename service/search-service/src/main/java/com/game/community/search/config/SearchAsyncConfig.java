@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ThreadPoolExecutor;
 
 @Configuration
@@ -26,7 +27,7 @@ public class SearchAsyncConfig {
 
     @Bean("searchSyncExecutor")
     public Executor searchSyncExecutor() {
-        return executor("search-sync-", 1, 1, 1);
+        return executor("search-sync-", 1, 1, 1, new ThreadPoolExecutor.AbortPolicy());
     }
 
     @Bean("gameIndexExecutor")
@@ -35,6 +36,14 @@ public class SearchAsyncConfig {
     }
 
     private ThreadPoolTaskExecutor executor(String prefix, int core, int max, int queueCapacity) {
+        return executor(prefix, core, max, queueCapacity, new ThreadPoolExecutor.CallerRunsPolicy());
+    }
+
+    private ThreadPoolTaskExecutor executor(String prefix,
+                                            int core,
+                                            int max,
+                                            int queueCapacity,
+                                            RejectedExecutionHandler rejectedExecutionHandler) {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setCorePoolSize(core);
         executor.setMaxPoolSize(max);
@@ -42,7 +51,7 @@ public class SearchAsyncConfig {
         executor.setThreadNamePrefix(prefix);
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(30);
-        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+        executor.setRejectedExecutionHandler(rejectedExecutionHandler);
         executor.initialize();
         return executor;
     }

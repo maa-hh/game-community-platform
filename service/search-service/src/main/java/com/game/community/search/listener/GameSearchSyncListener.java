@@ -26,7 +26,7 @@ public class GameSearchSyncListener {
             if (GameSearchSyncMessage.DELETE.equals(message.getAction())) {
                 gameSearchService.delete(message.getAppId());
             } else if (message.getGame() != null) {
-                gameSearchService.index(message.getGame());
+                gameSearchService.index(message.getGame(), message.getEventTime());
             }
         } catch (Exception e) {
             log.error("游戏搜索索引同步失败: appId={}, action={}",

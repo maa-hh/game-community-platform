@@ -1,6 +1,5 @@
 package com.game.community.search.ai;
 
-import com.game.community.common.constant.aiagent.AiAgentConstants;
 import com.game.community.common.constant.search.SearchConstants;
 import com.game.community.model.elasticsearch.ArticleDocument;
 import lombok.Data;
@@ -42,9 +41,9 @@ public final class ArticleHybridScoreMerger {
         for (ArticleHybridHit hit : merged.values()) {
             float bm25 = hit.getBm25Score() == null ? 0F : hit.getBm25Score();
             float semantic = hit.getSemanticScore() == null ? 0F : hit.getSemanticScore();
-            float bonus = bm25 > 0F && semantic > 0F ? AiAgentConstants.DUAL_HIT_BONUS : 0F;
-            hit.setFinalScore(AiAgentConstants.BM25_WEIGHT * bm25
-                    + AiAgentConstants.VECTOR_WEIGHT * semantic
+            float bonus = bm25 > 0F && semantic > 0F ? SearchConstants.HYBRID_DUAL_HIT_BONUS : 0F;
+            hit.setFinalScore(SearchConstants.HYBRID_BM25_WEIGHT * bm25
+                    + SearchConstants.HYBRID_VECTOR_WEIGHT * semantic
                     + bonus);
         }
         return merged.values().stream()

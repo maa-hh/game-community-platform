@@ -18,18 +18,20 @@ import com.game.community.common.constant.search.SearchConstants;
 import com.game.community.search.service.ElasticsearchService;
 import com.game.community.search.service.GameSearchService;
 import com.game.community.search.service.SuggestTermService;
-import com.game.community.search.service.SuggestTermService.TermSeed;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -40,6 +42,7 @@ public class GameSearchServiceImpl implements GameSearchService {
     private final ElasticsearchService elasticsearchService;
     private final SteamFeignClient steamFeignClient;
     private final GameIndexAsyncService gameIndexAsyncService;
+    private final GameSuggestionTermSyncService gameSuggestionTermSyncService;
     private final SuggestTermService suggestTermService;
 
     @Override
@@ -231,8 +234,13 @@ public class GameSearchServiceImpl implements GameSearchService {
 
     @Override
     public void index(GameListItemVO game) {
-        elasticsearchService.indexGame(game);
-        syncGameSuggestionTerms(game);
+        index(game, LocalDateTime.now());
+    }
+
+    @Override
+    public void index(GameListItemVO game, LocalDateTime eventTime) {
+        elasticsearchService.indexGame(game, eventTime == null ? LocalDateTime.now() : eventTime);
+        gameSuggestionTermSyncService.sync(game);
     }
 
     @Override
@@ -244,17 +252,29 @@ public class GameSearchServiceImpl implements GameSearchService {
     @Override
     public void rebuildFromSteam() {
         int page = 1;
+        Set<Long> activeAppIds = new HashSet<>();
         while (true) {
             PageResult<GameListItemVO> result = steamFeignClient.listGameIndexPage(page, SearchConstants.GAME_REBUILD_PAGE_SIZE);
-            if (result == null || result.getData() == null || result.getData().isEmpty()) {
+            if (result == null) {
+                log.warn("游戏索引重建中止：Steam 服务未返回有效分页，跳过陈旧文档清理");
                 return;
             }
-            result.getData().forEach(this::index);
+            if (result.getData() == null || result.getData().isEmpty()) {
+                break;
+            }
+            result.getData().forEach(game -> {
+                if (game.getAppId() != null) {
+                    activeAppIds.add(game.getAppId());
+                }
+                index(game);
+            });
             if ((long) page * SearchConstants.GAME_REBUILD_PAGE_SIZE >= (result.getTotal() == null ? 0 : result.getTotal())) {
-                return;
+                break;
             }
             page++;
         }
+        elasticsearchService.deleteGamesNotIn(activeAppIds);
+        log.info("游戏索引重建完成: activeCount={}", activeAppIds.size());
     }
 
     private List<GameListItemVO> searchSteam(String keyword, int start, int size) {
@@ -267,37 +287,14 @@ public class GameSearchServiceImpl implements GameSearchService {
         }
     }
 
-    /** 将游戏名称及中英文名称同步为游戏来源建议词。 */
-    private void syncGameSuggestionTerms(GameListItemVO game) {
-        if (game == null || game.getAppId() == null) {
-            return;
-        }
-        List<TermSeed> seeds = new ArrayList<>();
-        addGameTerm(seeds, game.getName(), game.getAppId());
-        addGameTerm(seeds, game.getNameZh(), game.getAppId());
-        addGameTerm(seeds, game.getNameEn(), game.getAppId());
-        if (game.getAliases() != null) {
-            game.getAliases().forEach(alias -> addGameTerm(seeds, alias, game.getAppId()));
-        }
-        suggestTermService.replaceGameTerms(game.getAppId(), seeds);
-    }
-
-    /** 添加一个去空的游戏名称候选，归一化和去重由建议词服务统一处理。 */
-    private void addGameTerm(List<TermSeed> seeds, String value, Long appId) {
-        if (StringUtils.hasText(value)) {
-            seeds.add(new TermSeed(value, SearchConstants.SUGGEST_SOURCE_GAME, appId,
-                    SearchConstants.WEIGHT_GAME, false));
-        }
-    }
-
     /**
-     * 游戏搜索只匹配游戏标题和类型标签，标题优先，类型标签作为补充召回。
+     * 游戏搜索优先匹配名称与别名，同时覆盖简介和类型文本，避免别名命中后又被回源过滤掉。
      */
     private Query buildGameKeywordQuery(String keyword) {
         return Query.of(q -> q.bool(b -> b
                 .should(s -> s.multiMatch(m -> m
                         .query(keyword)
-                        .fields("name^10", "nameZh^9", "nameEn^9")
+                        .fields("name^10", "nameZh^9", "nameEn^9", "aliases^8", "shortDescription^2")
                         .type(TextQueryType.Phrase)))
                 .should(s -> s.match(m -> m
                         .field("name")
@@ -309,16 +306,33 @@ public class GameSearchServiceImpl implements GameSearchService {
                         .query(keyword)
                         .operator(Operator.And)
                         .boost(3.0F)))
+                .should(s -> s.match(m -> m
+                        .field("shortDescription")
+                        .query(keyword)
+                        .operator(Operator.And)
+                        .boost(2.0F)))
                 .minimumShouldMatch("1")));
     }
 
     private boolean matchesGameKeyword(GameListItemVO game, String keyword) {
-        if (game == null || !StringUtils.hasText(game.getName())) {
+        if (game == null || !StringUtils.hasText(keyword)) {
             return false;
         }
-        String normalizedName = normalizeSearchText(game.getName());
         String normalizedKeyword = normalizeSearchText(keyword);
-        return StringUtils.hasText(normalizedKeyword) && normalizedName.contains(normalizedKeyword);
+        if (!StringUtils.hasText(normalizedKeyword)) {
+            return false;
+        }
+        List<String> candidates = new ArrayList<>();
+        candidates.add(game.getName());
+        candidates.add(game.getNameZh());
+        candidates.add(game.getNameEn());
+        candidates.add(game.getDeveloper());
+        candidates.add(game.getPublisher());
+        candidates.addAll(game.getAliases() == null ? List.of() : game.getAliases());
+        candidates.addAll(game.getGenres() == null ? List.of() : game.getGenres());
+        return candidates.stream()
+                .map(this::normalizeSearchText)
+                .anyMatch(value -> value.contains(normalizedKeyword));
     }
 
     private String normalizeSearchText(String value) {
