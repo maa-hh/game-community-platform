@@ -2317,6 +2317,10 @@ export async function fetchProfileSocialStatsByAccountApi(
     return MOCK_STATS;
   }
 
+  if (!hasUsableAuthSession()) {
+    return { following: 0, followers: 0, likes: 0, favorites: 0 };
+  }
+
   const { following, followers } = await fetchFollowCountsByAccount(accountId);
 
   const [likes, favorites] = await Promise.all([

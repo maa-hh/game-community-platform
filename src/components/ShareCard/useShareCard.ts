@@ -10,6 +10,7 @@ import {
   buildPostDetailNavigationState,
   mapPostRefToLatestPost,
 } from '@/utils/detailNavigation';
+import { preloadGameDetail } from '@/router/preload';
 
 export function useShareCard({
   data,
@@ -45,6 +46,7 @@ export function useShareCard({
       }
       const gameAppId = resolveGameRefAppId(data.id);
       if (gameAppId) {
+        void preloadGameDetail();
         navigate(`/game/${gameAppId}`, {
           state: buildGameDetailNavigationState(location, {
             appId: gameAppId,

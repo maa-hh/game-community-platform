@@ -15,6 +15,7 @@ import type { ISteamSectionProps } from './types';
 import { useSteamSection } from './useSteamSection';
 import { buildGameDetailNavigationState } from '@/utils/detailNavigation';
 import type { IGameListItem } from '@/types/game';
+import { preloadGameDetail } from '@/router/preload';
 
 import './style.less';
 
@@ -112,6 +113,8 @@ const SteamSection: FC<ISteamSectionProps> = ({
                     key={game.appId}
                     type="button"
                     className="steam-section__game"
+                    onMouseEnter={() => void preloadGameDetail()}
+                    onPointerDown={() => void preloadGameDetail()}
                     onClick={() =>
                       navigate(`/game/${game.appId}`, {
                         state: buildGameDetailNavigationState(location, {
@@ -145,6 +148,8 @@ const SteamSection: FC<ISteamSectionProps> = ({
                         <button
                           type="button"
                           className="steam-section__achievement-link"
+                          onMouseEnter={() => void preloadGameDetail()}
+                          onPointerDown={() => void preloadGameDetail()}
                           onClick={(event) => {
                             event.stopPropagation();
                             navigate(`/game/${game.appId}?tab=stats`, {

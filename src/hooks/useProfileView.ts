@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
-import { getUserSimpleByAccountIdApi } from '@/service/account';
+import { getUsersByAccountIdsApi } from '@/service/account';
 import { getPageDataCache, setPageDataCache } from '@/hooks/pageDataCache';
 import { useAppSelector } from '@/store';
 
@@ -47,14 +47,15 @@ export function useProfileView() {
 
     const load = async () => {
       try {
-        const res = await getUserSimpleByAccountIdApi(accountIdParam);
+        // /user/simple/{accountId} 仍是登录接口；头像进入的他人主页必须走公开名片批量接口。
+        const res = await getUsersByAccountIdsApi([accountIdParam]);
         if (!cancelled) {
-          const nextUser = res.data
+          const nextUser = res.data?.[0]
             ? {
-                accountId: res.data.accountId,
-                username: res.data.username,
-                avatar: res.data.avatar,
-                signature: res.data.signature,
+                accountId: res.data[0].accountId,
+                username: res.data[0].username,
+                avatar: res.data[0].avatar,
+                signature: res.data[0].signature,
               }
             : null;
           setViewUser(nextUser);

@@ -8,6 +8,7 @@ import NotificationSystemItem from '@/components/notifications/parts/Notificatio
 import type { INotificationMessage } from '@/types/notification';
 import { buildNotificationLink } from '@/utils/notificationRoute';
 import { resolveNotificationItemVariant } from '@/utils/notificationDisplay';
+import { preloadGameDetail } from '@/router/preload';
 
 import './style.less';
 
@@ -56,6 +57,7 @@ const NotificationItemCard: FC<NotificationItemCardProps> = ({
   };
 
   const isClickable = Boolean(link) && variant !== 'follow';
+  const isGameLink = link?.startsWith('/game/') ?? false;
 
   return (
     <article
@@ -70,6 +72,8 @@ const NotificationItemCard: FC<NotificationItemCardProps> = ({
             }
           : undefined
       }
+      onMouseEnter={isGameLink ? () => void preloadGameDetail() : undefined}
+      onPointerDown={isGameLink ? () => void preloadGameDetail() : undefined}
       role={isClickable ? 'button' : undefined}
       tabIndex={isClickable ? 0 : undefined}
     >

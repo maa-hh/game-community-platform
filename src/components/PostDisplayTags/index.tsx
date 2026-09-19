@@ -7,6 +7,7 @@ import type { OverflowTagRowItem } from '@/base-ui/OverflowTagRow';
 import type { ContentCardPostType, ContentCardTag } from '@/types/content';
 import type { IGameTag } from '@/types/game';
 import { resolvePostDisplayTags } from '@/utils/categoryTag';
+import { preloadGameDetail } from '@/router/preload';
 
 import './style.less';
 
@@ -58,6 +59,7 @@ const PostDisplayTags: FC<PostDisplayTagsProps> = ({
         icon: tag.iconUrl,
         variant: 'game',
         to: `/game/${tag.appId}`,
+        onIntent: () => void preloadGameDetail(),
       });
     });
 

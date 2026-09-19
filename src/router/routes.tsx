@@ -57,12 +57,13 @@ const router = createBrowserRouter([
           },
           { path: 'recommend', element: <Recommend /> },
           { path: 'games', element: <Games /> },
+          // 他人主页通过帖子/头像公开访问；页面内的关注、举报、拉黑等写操作再单独鉴权。
+          { path: 'profile', element: <Profile /> },
           { path: 'about', element: <Navigate to="/games" replace /> },
           {
             element: <AuthGuard />,
             children: [
               { path: 'feed', element: <Feed /> },
-              { path: 'profile', element: <Profile /> },
               { path: 'search', element: <Search /> },
               { path: 'shop', element: <Shop /> },
               { path: 'notifications', element: <Notifications /> },

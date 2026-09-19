@@ -15,6 +15,7 @@ import type { OverflowTagRowItem } from '@/base-ui/OverflowTagRow';
 import GameCardPriceOverlay from '@/base-ui/GameCardPriceOverlay';
 import StatAction from '@/base-ui/StatAction';
 import SteamCoverImage from '@/base-ui/SteamCoverImage';
+import { preloadGameDetail } from '@/router/preload';
 
 import GameCoverPoster from './GameCoverPoster';
 
@@ -37,6 +38,9 @@ const GameCard: FC<IGameCardProps> = ({
   onClick,
   onFollow,
 }) => {
+  const preloadDetail = () => {
+    void preloadGameDetail();
+  };
   const displayName = game.name?.trim() || `游戏 ${game.appId}`;
   const genreItems = useMemo<OverflowTagRowItem[]>(
     () =>
@@ -53,7 +57,13 @@ const GameCard: FC<IGameCardProps> = ({
   const siteScoreText = formatSiteScore(game.avgScore, game.reviewCount);
 
   return (
-    <article className="game-card" onClick={onClick} role="presentation">
+    <article
+      className="game-card"
+      onClick={onClick}
+      onMouseEnter={preloadDetail}
+      onPointerDown={preloadDetail}
+      role="presentation"
+    >
       <div className="game-card__media">
         <SteamCoverImage
           appId={game.appId}

@@ -19,22 +19,22 @@ RootLayout
 
 ## 当前路由表
 
-| 路径                | 页面                     | 加载           | 守卫                       |
-| ------------------- | ------------------------ | -------------- | -------------------------- |
-| `/`                 | `views/Home`             | 同步           | 无                         |
-| `/community`        | `views/Community`        | 同步           | 无                         |
-| `/post/:id`         | `views/PostDetail`       | lazy + preload | 无                         |
-| `/game/:appId`      | `views/GameDetail`       | lazy + preload | 无                         |
-| `/recommend`        | `views/Recommend`        | 同步           | 无                         |
-| `/games`            | `views/Games`            | 同步           | 无                         |
-| `/feed`             | `views/Feed`             | 同步           | `AuthGuard`                |
-| `/profile`          | `views/Profile`          | 同步           | `AuthGuard`                |
-| `/search`           | `views/Search`           | 同步           | `AuthGuard`                |
-| `/shop`             | `views/Shop`             | 同步           | `AuthGuard`                |
-| `/notifications`    | `views/Notifications`    | 同步           | `AuthGuard`                |
-| `/post/editor`      | `views/PostEditor`       | 同步           | `AuthGuard`                |
-| `/admin/moderation` | `views/Admin/Moderation` | lazy           | `AuthGuard` + `AdminGuard` |
-| `*`                 | `views/NotFound`         | lazy           | 无                         |
+| 路径                  | 页面                     | 加载           | 守卫                                     |
+| --------------------- | ------------------------ | -------------- | ---------------------------------------- |
+| `/`                   | `views/Home`             | 同步           | 无                                       |
+| `/community`          | `views/Community`        | 同步           | 无                                       |
+| `/post/:id`           | `views/PostDetail`       | lazy + preload | 无                                       |
+| `/game/:appId`        | `views/GameDetail`       | lazy + preload | 无                                       |
+| `/recommend`          | `views/Recommend`        | 同步           | 无                                       |
+| `/games`              | `views/Games`            | 同步           | 无                                       |
+| `/feed`               | `views/Feed`             | 同步           | `AuthGuard`                              |
+| `/profile?accountId=` | `views/Profile`          | 同步           | 无（他人主页公开；本人私有操作单独鉴权） |
+| `/search`             | `views/Search`           | 同步           | `AuthGuard`                              |
+| `/shop`               | `views/Shop`             | 同步           | `AuthGuard`                              |
+| `/notifications`      | `views/Notifications`    | 同步           | `AuthGuard`                              |
+| `/post/editor`        | `views/PostEditor`       | 同步           | `AuthGuard`                              |
+| `/admin/moderation`   | `views/Admin/Moderation` | lazy           | `AuthGuard` + `AdminGuard`               |
+| `*`                   | `views/NotFound`         | lazy           | 无                                       |
 
 `/about` 重定向到 `/games`。详情页和编辑页标记 `disableKeepAlive`，避免播放器、上传任务或大表单在切换路由后继续占用资源。
 
@@ -49,7 +49,8 @@ RootLayout
 
 ## 鉴权和刷新
 
-- 页面级鉴权由 `guards.tsx` 判断本地会话并打开全局登录弹窗。
+- 页面级鉴权由 `guards.tsx` 判断本地会话并打开全局登录弹窗；公开的他人主页通过
+  `/profile?accountId=` 进入，不应被整体登录守卫拦截，本人私有 Tab 和写操作再单独鉴权。
 - 单次按钮/写操作使用 `useRequireLogin`，不在组件复制 token 判断。
 - 刷新、返回和实时失效分别复用 `usePageRefresh`、导航工具、RTK Query invalidation 和 `profileRealtime`。
 - 认证状态失效由 service 发事件，不在路由层直接显示 Toast。

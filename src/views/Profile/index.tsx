@@ -54,6 +54,7 @@ import AccountSecurityModal from '@/components/profile/AccountSecurityModal';
 import SteamSection from '@/components/profile/SteamSection';
 import { useProfileView } from '@/hooks/useProfileView';
 import { useDecorationRegistry } from '@/hooks/useDecorationRegistry';
+import { isAuthenticated } from '@/utils/storage';
 import { resolveAvatarFrameAsset } from '@/constants/avatarFrameCatalog';
 import { profileBgTextTheme } from '@/utils/cosmeticAsset';
 import { resolveProfileBgAsset } from '@/constants/profileBgCatalog';
@@ -158,6 +159,7 @@ function Profile() {
   const userListRefreshRef = useRef<(() => Promise<void>) | null>(null);
   const [feedTransitionHeight, setFeedTransitionHeight] = useState(0);
   const { isSelf, isOther, viewUser, loading: viewLoading } = useProfileView();
+  const hasTargetAccount = Boolean(searchParams.get('accountId'));
   const profileAccountId = isOther ? viewUser?.accountId : user?.accountId;
   const profileDirtyDomains = useAppSelector((state) =>
     profileAccountId
@@ -165,7 +167,7 @@ function Profile() {
         EMPTY_PROFILE_DATA_DOMAINS)
       : EMPTY_PROFILE_DATA_DOMAINS,
   );
-  const { requireLogin } = useRequireLogin();
+  const { requireLogin, isLoggedIn, openAuth } = useRequireLogin();
   const { reportOpen, reportTarget, openReport, closeReport } =
     useReportModal();
   const [followed, setFollowed] = useState(false);
@@ -174,9 +176,16 @@ function Profile() {
   const syncProfileFollowing = useProfileFollowingSync();
 
   useEffect(() => {
-    if (user?.accountId) return;
+    if (user?.accountId || hasTargetAccount || !isAuthenticated()) return;
     void dispatch(fetchCurrentUserAction());
-  }, [dispatch, user?.accountId]);
+  }, [dispatch, hasTargetAccount, user?.accountId]);
+
+  useEffect(() => {
+    if (hasTargetAccount || user?.accountId || isAuthenticated()) {
+      return;
+    }
+    openAuth('login');
+  }, [hasTargetAccount, openAuth, user?.accountId]);
 
   useEffect(() => {
     if (
@@ -201,7 +210,7 @@ function Profile() {
 
   useEffect(() => {
     const targetAccountId = profileAccountId;
-    if (!targetAccountId) return;
+    if (!targetAccountId || !isLoggedIn) return;
     const cacheKey = `profile-stats:${targetAccountId}`;
     const cachedStats = getPageDataCache<ProfileStats>(cacheKey);
     const statsDirty = profileDirtyDomains.includes(PROFILE_DATA_DOMAIN.STATS);
@@ -233,6 +242,7 @@ function Profile() {
     };
   }, [
     dispatch,
+    isLoggedIn,
     isOther,
     profileAccountId,
     profileDirtyDomains,
@@ -269,7 +279,7 @@ function Profile() {
         tasks.push(userListRefreshRef.current());
       }
     }
-    if (targetAccountId) {
+    if (targetAccountId && isLoggedIn) {
       tasks.push(
         fetchProfileSocialStatsByAccountApi(Number(targetAccountId)).then(
           (nextStats) => {
@@ -292,7 +302,14 @@ function Profile() {
     } finally {
       setProfileRefreshing(false);
     }
-  }, [dispatch, isOther, user?.accountId, userListOpen, viewUser?.accountId]);
+  }, [
+    dispatch,
+    isLoggedIn,
+    isOther,
+    user?.accountId,
+    userListOpen,
+    viewUser?.accountId,
+  ]);
 
   const handleUserListRefreshReady = useCallback(
     (refresh: (() => Promise<void>) | null) => {
@@ -525,6 +542,11 @@ function Profile() {
       setOtherTab('posts');
       return;
     }
+    if (!isLoggedIn) {
+      setFollowed(false);
+      setBlocked(false);
+      return;
+    }
     let cancelled = false;
     void Promise.all([
       checkFollowByAccountApi(viewUser.accountId),
@@ -538,7 +560,7 @@ function Profile() {
     return () => {
       cancelled = true;
     };
-  }, [isOther, viewUser?.accountId]);
+  }, [isLoggedIn, isOther, viewUser?.accountId]);
 
   const handleFollowOther = async () => {
     if (!requireLogin() || !viewUser?.accountId) return;
