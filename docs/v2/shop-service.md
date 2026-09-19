@@ -15,7 +15,7 @@
 
 | 方法 | 路径 | 权限 | 说明 |
 |---|---|---|---|
-| GET | `/shop/item/page` | 登录 | 商品分页 |
+| GET | `/shop/item/page` | 公开 | 商品分页；游客仅查看公开商品信息，用户拥有/装备状态按空值处理 |
 | GET | `/shop/item/{itemId}` | 登录 | 商品详情 |
 | POST | `/shop/item` | 管理员 | 新建或更新商品 |
 | PUT | `/shop/item/{itemId}/status` | 管理员 | 商品上下架 |

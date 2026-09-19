@@ -57,6 +57,7 @@ public class GatewayConstants {
             "/user/cosmetic/decorations/batch",
             "/hot-article/",
             "/game/",
+            "/shop/item/page",
             "/danmaku/history/",
             "/danmaku/ws/"
     );

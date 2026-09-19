@@ -28,7 +28,6 @@ public class ShopItemController {
 
     private final ShopItemService itemService;
 
-    @LoginCheck
     @SentinelResource(value = "shop.item.page", blockHandlerClass = ShopSentinelBlockHandler.class,
             blockHandler = "handle")
     @GetMapping("/page")
