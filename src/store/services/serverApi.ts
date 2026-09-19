@@ -100,6 +100,15 @@ export const serverApi = createApi({
           lastPage.hasMore ? lastPage.nextCursor : undefined,
       },
       queryFn: async ({ queryArg, pageParam }) => {
+        // 关注流是登录后数据；游客保留页面和分区 Tab，但不触发受保护请求。
+        if (queryArg.accountId == null) {
+          return {
+            data: {
+              items: [],
+              hasMore: false,
+            },
+          };
+        }
         try {
           const response = await fetchFollowFeedApi({
             before: pageParam,

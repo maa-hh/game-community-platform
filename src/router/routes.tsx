@@ -57,15 +57,16 @@ const router = createBrowserRouter([
           },
           { path: 'recommend', element: <Recommend /> },
           { path: 'games', element: <Games /> },
+          // 动态和商城允许游客浏览页面；动态为空态、商城兑换动作再单独鉴权。
+          { path: 'feed', element: <Feed /> },
+          { path: 'shop', element: <Shop /> },
           // 他人主页通过帖子/头像公开访问；页面内的关注、举报、拉黑等写操作再单独鉴权。
           { path: 'profile', element: <Profile /> },
           { path: 'about', element: <Navigate to="/games" replace /> },
           {
             element: <AuthGuard />,
             children: [
-              { path: 'feed', element: <Feed /> },
               { path: 'search', element: <Search /> },
-              { path: 'shop', element: <Shop /> },
               { path: 'notifications', element: <Notifications /> },
               {
                 path: 'post/editor',

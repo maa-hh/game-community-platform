@@ -1,8 +1,9 @@
 import React, { useCallback } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { Segmented } from 'antd';
+import { Button, Empty, Segmented } from 'antd';
 
 import PostFeedList from '@/components/PostFeedList';
+import { useRequireLogin } from '@/hooks/useRequireLogin';
 import type { LatestPostItem } from '@/types/post';
 
 import { feedEmptyText, feedTypeTabs, type FeedTypeFilter } from './config';
@@ -15,6 +16,7 @@ function Feed() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { isLoggedIn, openAuth } = useRequireLogin();
   const tabParam = searchParams.get('tab') as FeedTypeFilter | null;
   const activeType =
     tabParam && feedTypeTabs.some((tab) => tab.value === tabParam)
@@ -57,23 +59,33 @@ function Feed() {
           });
         }}
       />
-      <PostFeedList
-        items={items}
-        loading={loading}
-        refreshing={refreshing}
-        emptyText={feedEmptyText[activeType]}
-        layout="masonry"
-        onRefresh={loadFeed}
-        onItemClick={handleItemClick}
-        onLikeClick={handleLike}
-        onFavoriteClick={handleFavorite}
-        infinite={{
-          sentinelRef,
-          loadingMore,
-          hasMore,
-          itemCount: items.length,
-        }}
-      />
+      {isLoggedIn ? (
+        <PostFeedList
+          items={items}
+          loading={loading}
+          refreshing={refreshing}
+          emptyText={feedEmptyText[activeType]}
+          layout="masonry"
+          onRefresh={loadFeed}
+          onItemClick={handleItemClick}
+          onLikeClick={handleLike}
+          onFavoriteClick={handleFavorite}
+          infinite={{
+            sentinelRef,
+            loadingMore,
+            hasMore,
+            itemCount: items.length,
+          }}
+        />
+      ) : (
+        <div className="feed-page__guest-empty">
+          <Empty description="登录后查看动态，关注更多感兴趣的人">
+            <Button type="primary" onClick={() => openAuth('login')}>
+              去登录
+            </Button>
+          </Empty>
+        </div>
+      )}
     </div>
   );
 }

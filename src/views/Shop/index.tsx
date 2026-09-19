@@ -39,6 +39,7 @@ import type { CosmeticSlot, IUserCosmeticItem } from '@/types/cosmetic';
 import { formatApiError } from '@/utils/apiError';
 import { notifyCosmeticUpdated } from '@/utils/cosmeticRefresh';
 import { getPageDataCache, setPageDataCache } from '@/hooks/pageDataCache';
+import { useRequireLogin } from '@/hooks/useRequireLogin';
 
 import { useAppSelector } from '@/store';
 
@@ -97,6 +98,7 @@ function buildBackpackCacheKey(
 function ShopPage() {
   const { message } = App.useApp();
   const { user } = useAppSelector((state) => state.auth);
+  const { isLoggedIn, openAuth } = useRequireLogin();
   const accountId = String(user?.accountId ?? 'anonymous');
   const pointsCacheKey = `shop:points:${accountId}`;
   const storeCacheKey = `shop:store:${accountId}`;
@@ -146,9 +148,16 @@ function ShopPage() {
   const storeRequestIdRef = useRef(0);
   const backpackRequestIdRef = useRef(0);
 
-  const changeTab = useCallback((next: string) => {
-    setTab(next === 'backpack' ? 'backpack' : 'store');
-  }, []);
+  const changeTab = useCallback(
+    (next: string) => {
+      if (next === 'backpack' && !isLoggedIn) {
+        openAuth('login');
+        return;
+      }
+      setTab(next === 'backpack' ? 'backpack' : 'store');
+    },
+    [isLoggedIn, openAuth],
+  );
 
   const shopFilters = useMemo<ShopItemFilterState>(
     () => ({ owned: ownedFilter, priceSort }),
@@ -173,7 +182,11 @@ function ShopPage() {
       const requestId = ++storeRequestIdRef.current;
       setLoadingStore(true);
       try {
-        const res = await fetchShopItemsApi({ page: 1, size: 100 });
+        const res = await fetchShopItemsApi({
+          page: 1,
+          size: 100,
+          skipAuth: !isLoggedIn,
+        });
         if (res.code !== 200) throw new Error(res.message || '加载失败');
         const nextItems = res.data || [];
         if (requestId !== storeRequestIdRef.current) return;
@@ -187,7 +200,7 @@ function ShopPage() {
         if (requestId === storeRequestIdRef.current) setLoadingStore(false);
       }
     },
-    [message, storeCacheKey],
+    [isLoggedIn, message, storeCacheKey],
   );
 
   const loadBackpack = useCallback(
@@ -293,13 +306,17 @@ function ShopPage() {
   );
 
   useEffect(() => {
+    if (!isLoggedIn) {
+      setPoints(0);
+      return;
+    }
     const cachedPoints = getPageDataCache<number>(pointsCacheKey);
     if (cachedPoints === undefined) {
       void loadPoints();
     } else {
       setPoints(cachedPoints);
     }
-  }, [loadPoints, pointsCacheKey]);
+  }, [isLoggedIn, loadPoints, pointsCacheKey]);
 
   useEffect(() => {
     const cachedStore = getPageDataCache<IShopItem[]>(storeCacheKey);
@@ -312,6 +329,12 @@ function ShopPage() {
   }, [loadStore, storeCacheKey]);
 
   useEffect(() => {
+    if (!isLoggedIn) {
+      setBackpack([]);
+      setBackpackTotal(0);
+      setLoadingBackpack(false);
+      return;
+    }
     const cachedBackpack = getPageDataCache<BackpackCache>(backpackCacheKey);
     if (cachedBackpack) {
       setBackpack(cachedBackpack.items);
@@ -320,7 +343,11 @@ function ShopPage() {
       return;
     }
     void loadBackpack();
-  }, [backpackCacheKey, loadBackpack]);
+  }, [backpackCacheKey, isLoggedIn, loadBackpack]);
+
+  useEffect(() => {
+    if (!isLoggedIn) setTab('store');
+  }, [isLoggedIn]);
 
   const categoryStoreItems = useMemo(
     () => filterByShopCategory(items, storeCategory),
@@ -492,8 +519,15 @@ function ShopPage() {
       previewName={previewName}
       previewAvatar={previewAvatar}
       loading={exchangingId === item.id || actingCode === item.cosmeticCode}
-      actionDisabled={item.owned ? item.equipped : item.canBuy === false}
+      actionLabel={!isLoggedIn ? '登录后兑换' : undefined}
+      actionDisabled={
+        isLoggedIn && (item.owned ? item.equipped : item.canBuy === false)
+      }
       onAction={() => {
+        if (!isLoggedIn) {
+          openAuth('login');
+          return;
+        }
         if (item.owned) {
           void handleEquipFromStore(item);
           return;
@@ -672,11 +706,17 @@ function ShopPage() {
         onChange={changeTab}
         className="shop-page__tabs"
         tabBarExtraContent={
-          <Tag color="orange" className="shop-page__points">
-            积分 {points}
-          </Tag>
+          isLoggedIn ? (
+            <Tag color="orange" className="shop-page__points">
+              积分 {points}
+            </Tag>
+          ) : (
+            <Button type="link" onClick={() => openAuth('login')}>
+              登录查看积分
+            </Button>
+          )
         }
-        items={SHOP_TABS}
+        items={isLoggedIn ? SHOP_TABS : SHOP_TABS.slice(0, 1)}
       />
 
       <section className="shop-page__panel">

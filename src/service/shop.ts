@@ -55,10 +55,14 @@ export function fetchShopItemsApi(params: {
   page?: number;
   size?: number;
   status?: number;
+  /** 游客浏览时跳过旧会话 refresh；登录用户保留个性化拥有状态。 */
+  skipAuth?: boolean;
 }) {
+  const { skipAuth, ...query } = params;
   return hyRequest.get<IPageResult<IShopItem>>({
     url: '/shop/item/page',
-    params: { ...params, status: params.status ?? 1 },
+    params: { ...query, status: query.status ?? 1 },
+    skipAuth,
   });
 }
 

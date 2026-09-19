@@ -27,10 +27,10 @@ RootLayout
 | `/game/:appId`        | `views/GameDetail`       | lazy + preload | 无                                       |
 | `/recommend`          | `views/Recommend`        | 同步           | 无                                       |
 | `/games`              | `views/Games`            | 同步           | 无                                       |
-| `/feed`               | `views/Feed`             | 同步           | `AuthGuard`                              |
+| `/feed`               | `views/Feed`             | 同步           | 游客可进入，内容需登录                   |
 | `/profile?accountId=` | `views/Profile`          | 同步           | 无（他人主页公开；本人私有操作单独鉴权） |
 | `/search`             | `views/Search`           | 同步           | `AuthGuard`                              |
-| `/shop`               | `views/Shop`             | 同步           | `AuthGuard`                              |
+| `/shop`               | `views/Shop`             | 同步           | 游客可浏览商品，兑换需登录               |
 | `/notifications`      | `views/Notifications`    | 同步           | `AuthGuard`                              |
 | `/post/editor`        | `views/PostEditor`       | 同步           | `AuthGuard`                              |
 | `/admin/moderation`   | `views/Admin/Moderation` | lazy           | `AuthGuard` + `AdminGuard`               |
@@ -43,7 +43,7 @@ RootLayout
 1. 在 `views/<Page>/index.tsx` 创建页面，页面不要负责布局壳。
 2. 判断页面属于 Home（全幅）还是 Main（960px 内容盒）。
 3. 在 `routes.tsx` 对应 children 注册，决定同步 import 或 `lazy()`。
-4. 需要登录的页面放入 `AuthGuard`；管理员页面再嵌套 `AdminGuard`。
+4. 需要整页登录的页面放入 `AuthGuard`；允许游客进入但操作需登录的页面，在操作边界使用 `useRequireLogin`。
 5. 详情卡片如有预览数据，只通过 navigation state 作为首屏提示，页面必须请求服务端最终数据。
 6. 运行 lint/typecheck/build，并验证直接刷新目标历史 URL。
 

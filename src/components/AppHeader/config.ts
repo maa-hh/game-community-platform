@@ -16,9 +16,9 @@ export const headerBrand: HeaderBrandConfig = {
 
 export const headerNavItems: HeaderNavItem[] = [
   { to: '/community', label: '社区', end: true },
-  { to: '/feed', label: '动态', requireAuth: true },
+  { to: '/feed', label: '动态' },
   { to: '/recommend', label: '推荐' },
-  { to: '/shop', label: '商城', requireAuth: true },
+  { to: '/shop', label: '商城' },
   { to: '/games', label: '游戏' },
 ];
 
