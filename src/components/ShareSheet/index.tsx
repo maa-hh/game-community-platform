@@ -16,6 +16,7 @@ const ShareSheet: FC<IShareSheetProps> = (props) => {
   const {
     shareCard,
     copyText,
+    manualCopyText,
     repostOpen,
     repostTitle,
     repostContent,
@@ -40,7 +41,11 @@ const ShareSheet: FC<IShareSheetProps> = (props) => {
         className="share-sheet"
         destroyOnHidden
       >
-        <ShareLinkPreview card={shareCard} copyText={copyText} />
+        <ShareLinkPreview
+          card={shareCard}
+          copyText={copyText}
+          manualCopyText={manualCopyText}
+        />
         <ShareActions onCopy={handleCopy} onRepost={openRepost} />
       </Modal>
 

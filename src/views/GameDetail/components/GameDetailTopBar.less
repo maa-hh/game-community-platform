@@ -56,6 +56,7 @@
 
 @media (max-width: 640px) {
   .game-detail-top-bar {
+    flex-wrap: wrap;
     gap: 8px;
 
     &__name {
@@ -71,6 +72,12 @@
       span:not(.anticon) {
         display: none;
       }
+    }
+
+    &__actions {
+      flex: 1 0 100%;
+      justify-content: flex-end;
+      margin-left: 36px;
     }
   }
 }

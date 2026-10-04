@@ -32,6 +32,7 @@ const PageSubTopBar: FC<PageSubTopBarProps> = ({
         className="page-sub-top-bar__back"
         icon={<ArrowLeftOutlined />}
         aria-label="返回"
+        onMouseDown={(event) => event.preventDefault()}
         onClick={onBack}
       />
 

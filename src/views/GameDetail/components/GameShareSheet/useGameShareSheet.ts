@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { App } from 'antd';
 
 import { createGameSharePostApi } from '@/service/game';
@@ -18,13 +18,14 @@ import { communityFeedCacheKey } from '@/hooks/usePostInteraction';
 import { invalidatePageDataCache } from '@/hooks/pageDataCache';
 import { invalidateProfileDataCaches } from '@/utils/profileDataCache';
 import { PROFILE_DATA_DOMAIN } from '@/types/profileRealtime';
+import { copyTextToClipboard } from '@/utils/clipboard';
 
 import type { IGameShareSheetProps } from './types';
 
 export function useGameShareSheet({
+  open,
   detail,
   onClose,
-  onReposted,
 }: IGameShareSheetProps) {
   const { message } = App.useApp();
   const { requireLogin, user } = useRequireLogin();
@@ -32,16 +33,27 @@ export function useGameShareSheet({
   const [shareTitle, setShareTitle] = useState('');
   const [shareContent, setShareContent] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [manualCopyText, setManualCopyText] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) setManualCopyText(null);
+  }, [open]);
 
   const copyText = async (text: string, successMessage: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
+    const result = await copyTextToClipboard(text);
+    if (result.reliable) {
+      setManualCopyText(null);
       message.success(successMessage);
       return true;
-    } catch {
-      message.error('复制失败，请手动复制');
-      return false;
     }
+
+    setManualCopyText(text);
+    message.warning(
+      result.copied
+        ? '浏览器无法确认复制结果，请长按下方内容复制'
+        : '自动复制失败，请长按下方内容手动复制',
+    );
+    return false;
   };
 
   const defaultShareTitle = useMemo(
@@ -87,7 +99,7 @@ export function useGameShareSheet({
   const submitRepost = async () => {
     setSubmitting(true);
     try {
-      const newId = await createGameSharePostApi({
+      await createGameSharePostApi({
         appId: detail.appId,
         gameName: detail.name,
         gameSummary: detail.shortDescription || detail.description,
@@ -98,7 +110,6 @@ export function useGameShareSheet({
       message.success('已分享为动态');
       invalidatePageDataCache(communityFeedCacheKey(user?.accountId));
       invalidateProfileDataCaches(user?.accountId, [PROFILE_DATA_DOMAIN.POSTS]);
-      onReposted?.(newId);
       setShareTitle('');
       setShareContent('');
       setRepostOpen(false);
@@ -113,6 +124,7 @@ export function useGameShareSheet({
   return {
     detailUrl,
     copyTextPreview,
+    manualCopyText,
     repostOpen,
     shareTitle,
     shareContent,

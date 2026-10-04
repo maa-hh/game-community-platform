@@ -71,6 +71,14 @@
     flex: 0 1 280px;
   }
 
+  &__discover-boards {
+    min-width: 0;
+
+    .ant-segmented-group {
+      min-width: 100%;
+    }
+  }
+
   .game-discover-filters {
     margin-bottom: 12px;
   }
@@ -131,9 +139,31 @@
       flex-direction: column;
     }
 
+    .games-page__toolbar:not(.games-page__toolbar--discover) {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
     &__discover-search {
       width: 100%;
       flex-basis: auto;
+    }
+
+    &__discover-boards {
+      width: 100%;
+      max-width: 100%;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scrollbar-width: thin;
+
+      .ant-segmented-group {
+        width: max-content;
+        min-width: 100%;
+      }
+
+      .ant-segmented-item {
+        flex: 0 0 auto;
+      }
     }
 
     &__toolbar-left {

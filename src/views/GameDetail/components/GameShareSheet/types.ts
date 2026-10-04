@@ -6,7 +6,6 @@ export interface IGameShareSheetProps {
   detail: IGameDetail;
   priceText?: string | null;
   onClose: () => void;
-  onReposted?: (newPostId: string) => void;
 }
 
 export interface GameShareActionItem {

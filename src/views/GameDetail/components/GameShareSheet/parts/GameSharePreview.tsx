@@ -2,17 +2,20 @@ import React, { memo } from 'react';
 import type { FC } from 'react';
 
 import type { IGameDetail } from '@/types/game';
+import ManualCopyField from '@/base-ui/ManualCopyField';
 
 interface GameSharePreviewProps {
   detail: IGameDetail;
   priceText?: string | null;
   copyText: string;
+  manualCopyText?: string | null;
 }
 
 const GameSharePreview: FC<GameSharePreviewProps> = ({
   detail,
   priceText,
   copyText,
+  manualCopyText,
 }) => (
   <div className="share-sheet__preview game-share-sheet__preview">
     <article className="game-share-sheet__card">
@@ -41,6 +44,7 @@ const GameSharePreview: FC<GameSharePreviewProps> = ({
     <p className="share-sheet__preview-tip">
       复制后粘贴分享，对方点击链接进入游戏详情
     </p>
+    {manualCopyText ? <ManualCopyField text={manualCopyText} /> : null}
   </div>
 );
 

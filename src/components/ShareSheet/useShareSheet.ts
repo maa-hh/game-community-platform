@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { App } from 'antd';
 
 import { createRepostApi, recordShareApi } from '@/service/social';
@@ -15,11 +15,12 @@ import { communityFeedCacheKey } from '@/hooks/usePostInteraction';
 import { invalidatePageDataCache } from '@/hooks/pageDataCache';
 import { invalidateProfileDataCaches } from '@/utils/profileDataCache';
 import { PROFILE_DATA_DOMAIN } from '@/types/profileRealtime';
+import { copyTextToClipboard } from '@/utils/clipboard';
 
 import type { IShareSheetProps } from './types';
 
 export function useShareSheet({
-  open: _open,
+  open,
   articleId,
   articleTitle,
   articleSummary,
@@ -32,7 +33,6 @@ export function useShareSheet({
   likeCount = 0,
   onClose,
   onShared,
-  onReposted,
 }: IShareSheetProps) {
   const { message } = App.useApp();
   const { user, requireLogin } = useRequireLogin();
@@ -40,6 +40,11 @@ export function useShareSheet({
   const [repostTitle, setRepostTitle] = useState('');
   const [repostContent, setRepostContent] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [manualCopyText, setManualCopyText] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) setManualCopyText(null);
+  }, [open]);
 
   const defaultRepostTitle = useMemo(
     () => buildDefaultRepostTitle(articleTitle),
@@ -105,13 +110,20 @@ export function useShareSheet({
   };
 
   const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(copyText);
+    const result = await copyTextToClipboard(copyText);
+    if (result.reliable) {
+      setManualCopyText(null);
       message.success('已复制标题、引导语与链接');
-      if (user?.accountId) await bumpShare();
+      // 复制是用户的主操作；分享计数属于附加写入，不阻塞关闭面板。
+      if (user?.accountId) void bumpShare();
       onClose();
-    } catch {
-      message.error('复制失败，请手动复制');
+    } else {
+      setManualCopyText(copyText);
+      message.warning(
+        result.copied
+          ? '浏览器无法确认复制结果，请长按下方内容复制'
+          : '自动复制失败，请长按下方内容手动复制',
+      );
     }
   };
 
@@ -137,8 +149,9 @@ export function useShareSheet({
       message.success('已转发为动态');
       invalidatePageDataCache(communityFeedCacheKey(user.accountId));
       invalidateProfileDataCaches(user.accountId, [PROFILE_DATA_DOMAIN.POSTS]);
-      onShared?.(res.data.refShareCount);
-      onReposted?.(res.data.post.id);
+      if (typeof res.data.refShareCount === 'number') {
+        onShared?.(res.data.refShareCount);
+      }
       setRepostTitle('');
       setRepostContent('');
       setRepostOpen(false);
@@ -153,6 +166,7 @@ export function useShareSheet({
   return {
     shareCard,
     copyText,
+    manualCopyText,
     repostOpen,
     repostTitle,
     repostContent,

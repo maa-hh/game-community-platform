@@ -27,10 +27,35 @@
       pointer-events: auto;
     }
   }
+
+  &__top-status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 32px;
+  }
 }
 
 @media (max-width: 640px) {
   .notifications-page {
-    --page-sub-top-bar: 48px;
+    --page-sub-top-bar: 52px;
+
+    &__sub-top-bar {
+      grid-template-columns: 40px minmax(0, 1fr) 40px;
+
+      .page-sub-top-bar__meta {
+        grid-row: 1;
+        grid-column: 2;
+        justify-content: center;
+      }
+
+      .page-sub-top-bar__extra {
+        grid-row: 1;
+        grid-column: 3;
+        justify-content: center;
+        width: 40px;
+      }
+    }
   }
 }

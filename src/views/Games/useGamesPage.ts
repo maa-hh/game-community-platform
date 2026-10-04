@@ -7,7 +7,10 @@ import {
   fetchMyFollowedGamesApi,
   importSteamGamesToFollowsApi,
 } from '@/service/userGame';
-import { fetchSteamProfileApi } from '@/service/steam';
+import {
+  fetchSteamProfileApi,
+  waitForSteamProfileAvatarApi,
+} from '@/service/steam';
 import type {
   GameDiscoverBoard,
   GameDiscoverOrder,
@@ -211,7 +214,9 @@ export function useGamesPage() {
     setMyLoading(true);
     try {
       const [profileRes, gamesRes] = await Promise.all([
-        fetchSteamProfileApi().catch(() => ({ data: null })),
+        waitForSteamProfileAvatarApi(fetchSteamProfileApi).catch(() => ({
+          data: null,
+        })),
         fetchMyFollowedGamesApi(),
       ]);
       const profile = profileRes.data;

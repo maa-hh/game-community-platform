@@ -84,6 +84,7 @@ const PostDetailTopBar: FC<PostDetailTopBarProps> = ({
           followed={followed}
           disabled={followDisabled}
           onClick={onFollow}
+          className="post-detail-top-bar__follow"
         />
       ) : null}
 

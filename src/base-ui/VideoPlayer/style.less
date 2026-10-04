@@ -32,10 +32,10 @@
 
 .video-player__overlay-host {
   position: absolute;
-  inset: 0;
   z-index: 2;
   overflow: hidden;
   pointer-events: none;
+  container-type: inline-size;
 }
 
 .video-player__dplayer.dplayer {
@@ -46,6 +46,115 @@
 
 .video-player__dplayer.dplayer .dplayer-setting {
   display: none !important;
+}
+
+/* DPlayer 默认在移动端隐藏音量；恢复紧凑按钮，并用浮层滑杆避免挤占控制栏。 */
+.video-player__dplayer.dplayer.dplayer-mobile
+  .dplayer-controller
+  .dplayer-icons
+  .dplayer-volume {
+  display: inline-flex !important;
+  align-items: center;
+  width: 34px;
+  height: 38px;
+  box-sizing: border-box !important;
+  overflow: visible;
+}
+
+.video-player__dplayer.dplayer.dplayer-mobile .dplayer-volume-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px !important;
+  height: 38px !important;
+  margin: 0 !important;
+  padding: 10px 8px !important;
+  box-sizing: border-box !important;
+  touch-action: manipulation;
+
+  svg {
+    width: 18px !important;
+    height: 18px !important;
+  }
+}
+
+.video-player__dplayer.dplayer.dplayer-mobile .dplayer-volume-bar-wrap {
+  display: none !important;
+}
+
+.video-player__mobile-volume-panel {
+  position: absolute;
+  bottom: 44px;
+  left: 0;
+  z-index: 100002;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 136px;
+  height: 42px;
+  padding: 0 10px;
+  box-sizing: border-box !important;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  background: rgba(20, 20, 20, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+
+  input[type='range'] {
+    width: 88px;
+    height: 28px;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box !important;
+    appearance: none;
+    -webkit-appearance: none;
+    background: transparent;
+    cursor: pointer;
+    touch-action: none;
+
+    &::-webkit-slider-runnable-track {
+      height: 4px;
+      background: rgba(255, 255, 255, 0.36);
+      border-radius: 999px;
+    }
+
+    &::-webkit-slider-thumb {
+      width: 16px;
+      height: 16px;
+      margin-top: -6px;
+      appearance: none;
+      -webkit-appearance: none;
+      background: #ff6600;
+      border: 2px solid #fff;
+      border-radius: 50%;
+    }
+
+    &::-moz-range-track {
+      height: 4px;
+      background: rgba(255, 255, 255, 0.36);
+      border-radius: 999px;
+    }
+
+    &::-moz-range-thumb {
+      width: 12px;
+      height: 12px;
+      background: #ff6600;
+      border: 2px solid #fff;
+      border-radius: 50%;
+    }
+  }
+
+  span {
+    width: 28px;
+    text-align: right;
+  }
+}
+
+.video-player__dplayer.dplayer .dplayer-video {
+  object-fit: contain;
+  object-position: center center;
 }
 
 /* 只保留 DPlayer 原生浏览器全屏按钮，避免 web 全屏图标悬浮到按钮上方。 */
@@ -68,6 +177,7 @@
   height: 38px !important;
   margin: 0 !important;
   padding: 8px !important;
+  box-sizing: border-box !important;
 }
 
 .video-player__dplayer.dplayer .dplayer-full-in-icon {
@@ -85,7 +195,8 @@
   display: none !important;
 }
 
-.video-player__dplayer.dplayer.video-player__dplayer--paused .dplayer-mobile-play {
+.video-player__dplayer.dplayer.video-player__dplayer--paused
+  .dplayer-mobile-play {
   display: block !important;
   z-index: 2;
 }
@@ -118,6 +229,8 @@
   pointer-events: auto;
 }
 
+.video-player__dplayer.dplayer.video-player__dplayer--fullscreen
+  .dplayer-controller,
 .video-player__dplayer.dplayer.dplayer-fulled .dplayer-controller {
   z-index: 100001;
 }
@@ -410,6 +523,27 @@
 @media (max-width: 640px) {
   .video-player--floating {
     width: calc(100vw - 16px);
+  }
+}
+
+/*
+ * 移动端竖屏进入浏览器全屏时，优先由 Screen Orientation API 切横屏；
+ * WebView 不支持方向锁定时，把完整播放器（视频、弹幕、控制栏）一起旋转。
+ */
+@media (max-width: 900px) and (orientation: portrait) {
+  .video-player__dplayer.dplayer.dplayer-mobile.video-player__dplayer--fullscreen {
+    position: fixed !important;
+    inset: auto !important;
+    top: 50% !important;
+    left: 50% !important;
+    width: 100vh !important;
+    width: 100dvh !important;
+    height: 100vw !important;
+    height: 100dvw !important;
+    max-width: none !important;
+    max-height: none !important;
+    transform: translate(-50%, -50%) rotate(90deg);
+    transform-origin: center center;
   }
 }
 

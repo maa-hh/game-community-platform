@@ -27,9 +27,17 @@ function Notifications() {
       <div className="notifications-page__top-dock">
         <div className="notifications-page__align-track">
           <PageSubTopBar
+            className="notifications-page__sub-top-bar"
             title="消息通知"
             onBack={goBack}
-            extra={summaryLoading ? <Spin size="small" /> : undefined}
+            extra={
+              <span
+                className="notifications-page__top-status"
+                aria-live="polite"
+              >
+                {summaryLoading ? <Spin size="small" /> : null}
+              </span>
+            }
           />
         </div>
       </div>

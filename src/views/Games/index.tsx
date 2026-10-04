@@ -381,6 +381,7 @@ function Games() {
     <>
       <div className="games-page__toolbar games-page__toolbar--discover">
         <Segmented
+          className="games-page__discover-boards"
           options={BOARD_OPTIONS.map((item) => ({
             label: item.label,
             value: item.value,

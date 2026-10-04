@@ -4,11 +4,15 @@
   --page-sub-top-bar: 52px;
 
   box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   padding-bottom: 32px;
   background: var(--color-bg-secondary);
 
   &__align-track {
     width: 100%;
+    min-width: 0;
     // Profile 页面已经位于 MainLayout 的统一内容盒内，这里不能再次叠加
     // max-width 和 gutter，否则顶部栏会比横幅/内容区窄一层。
     max-width: none;
@@ -27,18 +31,48 @@
     align-items: center;
     flex-wrap: wrap;
     gap: 8px;
+    min-width: 0;
+    max-width: 100%;
   }
-
 }
 
 @media (max-width: 640px) {
   .profile-page {
-    --page-sub-top-bar: 48px;
+    --page-sub-top-bar: 96px;
+
+    &__top-extra {
+      flex-wrap: nowrap;
+      justify-content: stretch;
+      width: 100%;
+
+      > .ant-btn {
+        flex: 1 1 0;
+        min-width: 0;
+        max-width: 100%;
+        padding-inline: 8px;
+        overflow: hidden;
+      }
+
+      > .ant-btn .ant-btn-content {
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+
+      > .ant-spin {
+        flex: 0 0 auto;
+      }
+    }
   }
 }
 
 .profile-hero {
   position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   // 与顶部栏、资料背景及下方内容共用 MainLayout 内容盒宽度。
   margin: 0;
@@ -424,11 +458,18 @@
 }
 
 .profile-body {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   margin: 0 auto;
   padding: 8px 0 48px;
   overflow-anchor: none;
 
   &__feed-anchor {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
     scroll-margin-top: calc(
       var(--app-header-height) + 12px
     );
@@ -440,8 +481,18 @@
 }
 
 .profile-main-tabs {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+
   .ant-tabs-nav {
+    width: 100%;
+    min-width: 0;
     margin-bottom: 0;
+  }
+
+  .ant-tabs-nav-wrap {
+    min-width: 0;
   }
 
   .ant-tabs-tab {
@@ -455,6 +506,9 @@
 }
 
 .profile-sub-tabs {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   margin-top: 4px;
 
   .ant-tabs-nav {
@@ -466,10 +520,35 @@
     padding: 10px 2px;
     color: var(--color-text-secondary);
   }
+
+  &--placeholder {
+    visibility: hidden;
+    pointer-events: none;
+  }
+}
+
+.profile-feed-shell,
+.profile-feed {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .profile-feed {
   margin-top: var(--card-stack-gap);
+
+  .feed-panel__list,
+  &__item,
+  .content-card,
+  .profile-activity-card,
+  .profile-activity-card__post,
+  .share-card {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
 
   .feed-panel__empty {
     box-sizing: border-box;
@@ -529,6 +608,36 @@
 }
 
 @media (max-width: 768px) {
+  .profile-main-tabs {
+    overflow: hidden;
+
+    .ant-tabs-nav-list {
+      width: 100%;
+      min-width: 0;
+    }
+
+    .ant-tabs-tab {
+      flex: 1 1 0;
+      justify-content: center;
+      min-width: 0;
+      margin: 0 !important;
+      padding-right: 2px;
+      padding-left: 2px;
+      font-size: 13px;
+    }
+
+    .ant-tabs-tab-btn {
+      max-width: 100%;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    .ant-tabs-nav-operations {
+      display: none;
+    }
+  }
+
   .profile-toolbar {
     &__inner {
       padding: 8px 16px;

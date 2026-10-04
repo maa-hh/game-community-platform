@@ -58,3 +58,11 @@ REACT_APP_UPLOAD_CONCURRENCY=4
 - 上传、SSE 和分页接口要保留后端返回的 `page`、`size`、`total`、游标等元数据，不能只返回数组。
 - 新增接口前先对照后端 `docs/architecture/README.md` 和对应 `docs/v2/*`；修改路径、业务码或字段时同步更新类型、mock、页面和联调文档。
 - service 不显示 Toast、不读 React context；错误交给调用方或统一 auth event，避免网络层依赖 UI。
+- 写操作成功后的计数、详情等回读属于附加同步：回读失败不得把已经成功的写操作误报为失败，也不得阻塞关闭面板或页面跳转。
+
+## Steam 与游戏详情的异步约定
+
+- `GET /game/{appId}` 只读取后端本地快照。`detailReady === false` 表示后台仍在补全，详情 hook 可做有界轮询；字段为 `true` 时不得再用前端字段数量猜测“是否完整”。
+- 兼容未返回 `detailReady` 的旧接口时，才允许使用介绍、截图、视频、成就等字段作降级判断。
+- Steam 资料只有在已绑定、头像为空时才短轮询；未绑定用户必须立即结束，避免无意义等待。
+- Steam 头像 URL 在服务边界统一为 HTTPS，业务组件不再各自修正协议。

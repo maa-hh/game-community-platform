@@ -16,7 +16,6 @@ export interface IShareSheetProps {
   likeCount?: number;
   onClose: () => void;
   onShared?: (shareCount: number) => void;
-  onReposted?: (newPostId: string) => void;
 }
 
 export interface ShareActionItem {

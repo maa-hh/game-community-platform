@@ -1,34 +1,27 @@
 import { BRAND_NAME } from '@/constants/brand';
 import { BASE_URL } from '@/service/config';
 
-/** OG 分享落地页根地址（网关），默认同 REACT_APP_BASE_URL */
-function shareBaseUrl(): string {
+/** 用户可直接打开的前端站点根地址。 */
+function frontendBaseUrl(): string {
   const currentOrigin =
     typeof window !== 'undefined' && window.location.origin
       ? window.location.origin
       : '';
-  const raw =
-    process.env.REACT_APP_SHARE_BASE_URL?.trim() ||
-    BASE_URL.trim() ||
-    currentOrigin;
+  const raw = currentOrigin || BASE_URL.trim();
   return raw.replace(/\/$/, '');
 }
 
 /**
- * 外链分享地址：微信 / QQ 爬虫抓取 OG meta 后展示卡片，用户点击再进详情
- * 必须指向网关 `/share/post/{id}`，不能是前端 `/post/{id}` SPA 路由
+ * 帖子分享地址必须指向已注册的前端路由。
+ * `/share/post/{id}` 只有反向代理显式转发到后端时才可用，不能作为默认地址。
  */
 export function buildSharePostUrl(articleId: string | number): string {
-  return `${shareBaseUrl()}/share/post/${articleId}`;
+  return `${frontendBaseUrl()}/post/${articleId}`;
 }
 
 /** 游戏详情页 SPA 地址（复制分享用） */
 export function buildGameDetailPageUrl(appId: string | number): string {
-  const origin =
-    typeof window !== 'undefined' && window.location.origin
-      ? window.location.origin
-      : shareBaseUrl();
-  return `${origin.replace(/\/$/, '')}/game/${appId}`;
+  return `${frontendBaseUrl()}/game/${appId}`;
 }
 
 /** 复制游戏详情链接时的分享文案 */

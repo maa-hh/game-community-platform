@@ -19,6 +19,7 @@
 | `CoverGallery`     | 横向滑动多图                                           |
 | `ImageLightbox`    | 大图预览框                                             |
 | `ImageZoomControl` | 图片裁剪缩放控制（滑块 + 倍率输入）                    |
+| `ManualCopyField`  | 自动复制受限时可长按选择的原生文本区                   |
 | `ClampText`        | 两行截断 +「全文」                                     |
 | `VideoPlayer`      | DPlayer 16:9                                           |
 

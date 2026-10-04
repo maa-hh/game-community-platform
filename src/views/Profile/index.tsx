@@ -868,15 +868,16 @@ function Profile() {
                 size="large"
               />
 
-              {mainTab === 'posts' && (
-                <Tabs
-                  activeKey={postSubTab}
-                  onChange={handlePostSubTabChange}
-                  items={postSubItems}
-                  className="profile-sub-tabs"
-                  size="small"
-                />
-              )}
+              <Tabs
+                activeKey={postSubTab}
+                onChange={handlePostSubTabChange}
+                items={postSubItems}
+                className={`profile-sub-tabs${
+                  mainTab === 'posts' ? '' : ' profile-sub-tabs--placeholder'
+                }`}
+                size="small"
+                aria-hidden={mainTab === 'posts' ? undefined : true}
+              />
 
               <ProfileFeed
                 mainTab={mainTab}

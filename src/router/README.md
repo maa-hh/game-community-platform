@@ -43,9 +43,10 @@ RootLayout
 1. 在 `views/<Page>/index.tsx` 创建页面，页面不要负责布局壳。
 2. 判断页面属于 Home（全幅）还是 Main（960px 内容盒）。
 3. 在 `routes.tsx` 对应 children 注册，决定同步 import 或 `lazy()`。
-4. 需要整页登录的页面放入 `AuthGuard`；允许游客进入但操作需登录的页面，在操作边界使用 `useRequireLogin`。
-5. 详情卡片如有预览数据，只通过 navigation state 作为首屏提示，页面必须请求服务端最终数据。
-6. 运行 lint/typecheck/build，并验证直接刷新目标历史 URL。
+4. 新增懒加载页面必须通过 `importWithChunkReload`；发布后旧 chunk 只自动刷新一次，第二次失败交给 `RouteErrorFallback`，禁止页面无限刷新或暴露框架堆栈。
+5. 需要整页登录的页面放入 `AuthGuard`；允许游客进入但操作需登录的页面，在操作边界使用 `useRequireLogin`。
+6. 详情卡片如有预览数据，只通过 navigation state 作为首屏提示，页面必须请求服务端最终数据。
+7. 运行 lint/typecheck/build，并验证直接刷新目标历史 URL。
 
 ## 鉴权和刷新
 

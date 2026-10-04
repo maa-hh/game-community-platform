@@ -17,38 +17,38 @@ DPlayer 是 HTML5 **弹幕向**播放器，本社区一期够用：**MP4/WebM �
 
 ## 2. 功能总表（按扩展优先级）
 
-| 能力                       | 官方支持         | 一期（帖子视频）      | 二期/以后            | 扩展时看哪里                                                                               |
-| -------------------------- | ---------------- | --------------------- | -------------------- | ------------------------------------------------------------------------------------------ |
-| MP4 / WebM / Ogg 点播      | ✅               | ✅ 必做               | —                    | `video.url` + `type: 'auto'/'normal'`                                                      |
-| 封面海报                   | ✅               | ✅                    | —                    | `video.pic` ← 帖子封面                                                                     |
-| 自动播放                   | ✅               | ❌（移动端限制多）    | 可选静音自动播       | `autoplay`                                                                                 |
-| 循环                       | ✅               | ❌                    | 可选                 | `loop`                                                                                     |
-| 主题色                     | ✅               | ✅ 用品牌橙 `#ff6600` | —                    | `theme`                                                                                    |
-| 中文 UI                    | ✅               | ✅                    | —                    | `lang: 'zh-cn'`                                                                            |
-| 默认音量 / 记忆音量        | ✅               | ✅                    | —                    | `volume`                                                                                   |
-| 倍速                       | ✅               | ✅                    | 可改档位列表         | `playbackSpeed` / `dp.speed()`                                                             |
-| 快捷键（进退、音量、空格） | ✅               | ✅                    | —                    | `hotkey`                                                                                   |
-| 截图                       | ✅               | 可选                  | —                    | `screenshot`（需 CORS）                                                                    |
-| AirPlay / Chromecast       | ✅               | ❌                    | 可选                 | `airplay` / `chromecast`                                                                   |
-| Logo 水印                  | ✅               | ❌                    | 品牌角标             | `logo` + CSS                                                                               |
-| 进度条时间点标记           | ✅               | ❌                    | 章节/高光            | `highlight[]`                                                                              |
-| 右键菜单自定义             | ✅               | ❌                    | 「举报」「复制链接」 | `contextmenu[]`                                                                            |
-| 互斥播放（同时只播一个）   | ✅               | ✅ 推荐               | —                    | `mutex: true`                                                                              |
-| 禁止点击切换播放           | ✅               | 看交互                | —                    | `preventClickToggle`                                                                       |
-| 清晰度切换                 | ✅               | ❌                    | 多码率上线后         | `video.quality` + `dp.switchQuality`                                                       |
-| 进度条缩略图               | ✅               | ❌                    | 体验增强             | `video.thumbnails` + [DPlayer-thumbnails](https://github.com/MoePlayer/DPlayer-thumbnails) |
-| 外挂字幕 WebVTT            | ✅               | ❌                    | 字幕社区             | `subtitle`                                                                                 |
-| 弹幕（点播 API）           | ✅               | ❌                    | 社区弹幕             | `danmaku` + 自建 API                                                                       |
-| 弹幕（B 站 addition）      | ✅               | ❌                    | 一般不用             | `danmaku.addition`                                                                         |
-| 直播 + 实时弹幕            | ✅               | ❌                    | 直播业务             | `live` + `apiBackend` + WS                                                                 |
-| HLS (m3u8)                 | ✅ 需 hls.js     | ❌                    | 大文件转码分发       | `type: 'hls'`                                                                              |
-| FLV                        | ✅ 需 flv.js     | ❌                    | 特殊源               | `type: 'flv'`                                                                              |
-| MPEG-DASH                  | ✅ 需 dash.js    | ❌                    | CDN 自适应           | `type: 'dash'`                                                                             |
-| WebTorrent                 | ✅ 需 webtorrent | ❌                    | 不计划               | `type: 'webtorrent'`                                                                       |
-| 任意 MSE / P2P             | ✅ `customType`  | ❌                    | CDNBye 等            | `video.customType`                                                                         |
-| 切换视频源（不销毁实例）   | ✅               | ✅ Feed 点下一条      | —                    | `dp.switchVideo()`                                                                         |
-| 播放 / 暂停 / 跳转 / 销毁  | ✅               | ✅                    | —                    | API 见 §4                                                                                  |
-| 原生 video 句柄            | ✅               | 统计进度用            | 完播率               | `dp.video`                                                                                 |
+| 能力                       | 官方支持         | 一期（帖子视频）               | 二期/以后            | 扩展时看哪里                                                                               |
+| -------------------------- | ---------------- | ------------------------------ | -------------------- | ------------------------------------------------------------------------------------------ |
+| MP4 / WebM / Ogg 点播      | ✅               | ✅ 必做                        | —                    | `video.url` + `type: 'auto'/'normal'`                                                      |
+| 封面海报                   | ✅               | ✅                             | —                    | `video.pic` ← 帖子封面                                                                     |
+| 自动播放                   | ✅               | ❌（移动端限制多）             | 可选静音自动播       | `autoplay`                                                                                 |
+| 循环                       | ✅               | ❌                             | 可选                 | `loop`                                                                                     |
+| 主题色                     | ✅               | ✅ 用品牌橙 `#ff6600`          | —                    | `theme`                                                                                    |
+| 中文 UI                    | ✅               | ✅                             | —                    | `lang: 'zh-cn'`                                                                            |
+| 默认音量 / 记忆音量        | ✅               | ✅（桌面滑杆；移动端静音切换） | —                    | `volume`                                                                                   |
+| 倍速                       | ✅               | ✅                             | 可改档位列表         | `playbackSpeed` / `dp.speed()`                                                             |
+| 快捷键（进退、音量、空格） | ✅               | ✅                             | —                    | `hotkey`                                                                                   |
+| 截图                       | ✅               | 可选                           | —                    | `screenshot`（需 CORS）                                                                    |
+| AirPlay / Chromecast       | ✅               | ❌                             | 可选                 | `airplay` / `chromecast`                                                                   |
+| Logo 水印                  | ✅               | ❌                             | 品牌角标             | `logo` + CSS                                                                               |
+| 进度条时间点标记           | ✅               | ❌                             | 章节/高光            | `highlight[]`                                                                              |
+| 右键菜单自定义             | ✅               | ❌                             | 「举报」「复制链接」 | `contextmenu[]`                                                                            |
+| 互斥播放（同时只播一个）   | ✅               | ✅ 推荐                        | —                    | `mutex: true`                                                                              |
+| 禁止点击切换播放           | ✅               | 看交互                         | —                    | `preventClickToggle`                                                                       |
+| 清晰度切换                 | ✅               | ❌                             | 多码率上线后         | `video.quality` + `dp.switchQuality`                                                       |
+| 进度条缩略图               | ✅               | ❌                             | 体验增强             | `video.thumbnails` + [DPlayer-thumbnails](https://github.com/MoePlayer/DPlayer-thumbnails) |
+| 外挂字幕 WebVTT            | ✅               | ❌                             | 字幕社区             | `subtitle`                                                                                 |
+| 弹幕（点播 API）           | ✅               | ❌                             | 社区弹幕             | `danmaku` + 自建 API                                                                       |
+| 弹幕（B 站 addition）      | ✅               | ❌                             | 一般不用             | `danmaku.addition`                                                                         |
+| 直播 + 实时弹幕            | ✅               | ❌                             | 直播业务             | `live` + `apiBackend` + WS                                                                 |
+| HLS (m3u8)                 | ✅ 需 hls.js     | ❌                             | 大文件转码分发       | `type: 'hls'`                                                                              |
+| FLV                        | ✅ 需 flv.js     | ❌                             | 特殊源               | `type: 'flv'`                                                                              |
+| MPEG-DASH                  | ✅ 需 dash.js    | ❌                             | CDN 自适应           | `type: 'dash'`                                                                             |
+| WebTorrent                 | ✅ 需 webtorrent | ❌                             | 不计划               | `type: 'webtorrent'`                                                                       |
+| 任意 MSE / P2P             | ✅ `customType`  | ❌                             | CDNBye 等            | `video.customType`                                                                         |
+| 切换视频源（不销毁实例）   | ✅               | ✅ Feed 点下一条               | —                    | `dp.switchVideo()`                                                                         |
+| 播放 / 暂停 / 跳转 / 销毁  | ✅               | ✅                             | —                    | API 见 §4                                                                                  |
+| 原生 video 句柄            | ✅               | 统计进度用                     | 完播率               | `dp.video`                                                                                 |
 
 ---
 
@@ -161,6 +161,9 @@ dp.on('error', () => {
 | CORS            | 截图、跨域视频需 MinIO/CDN 配 CORS                                                                                                        |
 | 依赖体积        | HLS/FLV **按需**再装 `hls.js` / `flv.js`，一期不要打进首包                                                                                |
 | 参考封装        | [react-dplayer](https://github.com/hnsylitao/react-dplayer)、[rc-dplayer](https://github.com/tianfeng98/rc-dplayer)（可参考，不必强依赖） |
+| 移动端尺寸      | 内嵌播放器始终按媒体区宽度保持 16:9；原生全屏退出后监听 fullscreen/orientation/resize 并恢复竖屏布局                                      |
+| 弹幕边界        | 弹幕层必须定位在视频容器内，不使用视口高度；竖屏全屏时视频可留黑边，但弹幕不能进入黑边区域                                                |
+| 控件策略        | 小屏不放大 DPlayer 原生音量控件；自定义紧凑音量入口，桌面才显示可拖动滑杆，避免与弹幕、倍速、全屏按钮重叠                                 |
 
 目录建议（落地时）：
 
@@ -203,3 +206,5 @@ src/components/PostVideo/    # 帖子场景：封面点击 → 播放（待接�
 3. **待审预览**要处理 Presigned 过期：播放前刷新 URL 或 `switchVideo`。
 4. **截图 / 跨域**依赖 MinIO 公共桶 CORS，未配好不要开 `screenshot`。
 5. 需要「列表很多视频」时：默认只渲染封面，点击再 `new DPlayer`，避免 DOM 爆炸。
+6. 全屏状态必须以 Fullscreen API 的实际元素为准；退出全屏后主动重新测量容器，不能仅依赖旧的横竖屏媒体查询状态。
+7. 播放器外壳使用 `aspect-ratio: 16 / 9`，不要按视频源分辨率或手机视口写固定高度。

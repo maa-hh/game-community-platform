@@ -17,6 +17,7 @@ const GameShareSheet: FC<IGameShareSheetProps> = (props) => {
   const { open, onClose, detail, priceText } = props;
   const {
     copyTextPreview,
+    manualCopyText,
     repostOpen,
     shareTitle,
     shareContent,
@@ -46,6 +47,7 @@ const GameShareSheet: FC<IGameShareSheetProps> = (props) => {
           detail={detail}
           priceText={priceText}
           copyText={copyTextPreview}
+          manualCopyText={manualCopyText}
         />
         <GameShareActions
           hasSteamUrl={Boolean(detail.steamUrl)}

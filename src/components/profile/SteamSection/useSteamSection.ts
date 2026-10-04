@@ -5,6 +5,7 @@ import {
   fetchSteamAuthUrlApi,
   fetchSteamLibraryApi,
   fetchSteamProfileApi,
+  waitForSteamProfileAvatarApi,
   fetchUserSteamLibraryByAccountApi,
   fetchUserSteamProfileByAccountApi,
   syncSteamLibraryApi,
@@ -73,9 +74,10 @@ export function useSteamSection({
     if (!loadedRef.current) setLoading(true);
     setLibraryPrivate(false);
     try {
-      const profileRes = isOtherView
-        ? await fetchUserSteamProfileByAccountApi(targetAccountId)
-        : await fetchSteamProfileApi();
+      const profileFetcher = isOtherView
+        ? () => fetchUserSteamProfileByAccountApi(targetAccountId)
+        : fetchSteamProfileApi;
+      const profileRes = await waitForSteamProfileAvatarApi(profileFetcher);
       const steamProfile = profileRes.data;
       loadedRef.current = true;
       setProfile(steamProfile);

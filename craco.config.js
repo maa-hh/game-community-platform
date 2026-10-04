@@ -69,6 +69,15 @@ module.exports = {
     // },
   },
 
+  // 与 webpack/tsconfig 保持一致，测试文件也可解析 @/ 路径别名。
+  jest: {
+    configure: {
+      moduleNameMapper: {
+        '^@/(.*)$': '<rootDir>/src/$1',
+      },
+    },
+  },
+
   // 插件列表：每个插件对应一个 CRA 内置 webpack 规则的覆盖
   plugins: [
     {

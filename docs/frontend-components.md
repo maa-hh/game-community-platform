@@ -31,6 +31,7 @@ views 页面
 | `ImageZoomControl`      | 裁剪缩放滑块/数字输入                              | 头像和封面裁剪                                   |
 | `LazyImage`             | 图片加载态、失败态和懒加载                         | Steam HTML、媒体                                 |
 | `ListEndHint`           | 列表加载/到底/重试提示                             | 无限列表                                         |
+| `ManualCopyField`       | 自动复制受限时展示可长按选择的原生文本区           | 帖子/游戏分享                                    |
 | `MasonryGrid`           | Masonic 瀑布流布局适配                             | Games                                            |
 | `MediaCover`            | 图片/视频封面和播放标识                            | ContentCard 媒体区                               |
 | `OverflowTagRow`        | 标签水平溢出处理                                   | 游戏卡片                                         |
@@ -60,29 +61,29 @@ views 页面
 
 ## 3. 全局业务组件
 
-| 组件                                         | 责任和边界                                                                      |
-| -------------------------------------------- | ------------------------------------------------------------------------------- |
-| `AppHeader`                                  | 品牌、主导航、胶囊搜索、主题、发布入口、头像/登录；头像菜单 click 触发          |
-| `AuthModal`                                  | 登录、注册、找回密码、成功后的导航；使用 AuthModal context，不让页面复制认证 UI |
-| `ArticleProgressBanner`                      | 当前用户文章审核进度轮询和状态提示                                              |
-| `CommentItem`                                | 评论、回复入口、作者/时间/点赞/删除；回复分页由内部 parts 处理                  |
-| `CommentSection`                             | 评论列表、发布框、分页/刷新、登录门禁；通过 hook 管理写操作和乐观状态           |
-| `CommentOps` / `CommentReply` / `ReplyPopup` | 评论操作菜单、回复按钮、快捷回复弹窗                                            |
-| `EmptyState`                                 | 统一空数据、说明和操作按钮                                                      |
-| `FeedPanel`                                  | Feed 内容壳、加载/刷新/错误、列表和空状态；数据由 hook/RTK Query 提供           |
-| `FeedbackModal`                              | 用户反馈提交；不负责通用举报流程                                                |
-| `FollowButton`                               | 关注/取消关注状态和登录门禁                                                     |
-| `PageTools`                                  | MainLayout 的刷新/回顶辅助工具                                                  |
-| `PostActionBar`                              | 帖子详情作者下方的点赞、收藏、分享、评论等互动                                  |
-| `PostBottomBar`                              | 详情页底部固定互动/评论输入；拆为 actions 和 composer                           |
-| `PostDisplayTags`                            | 帖子分类、游戏和内容类型标签                                                    |
-| `PostFeedList`                               | 将 LatestPostItem 映射到 ContentCard、热榜卡或空/加载态                         |
-| `PostOwnerLinks`                             | 作者操作链接，如编辑、审核进度、删除                                            |
-| `ProfileUserLink`                            | 带头像/昵称的用户链接；统一导航到用户资料                                       |
-| `ReportModal`                                | 举报目标、分类、补充说明和提交反馈                                              |
-| `RepostBlock`                                | 转发帖子中的原帖引用块                                                          |
-| `ShareCard`                                  | 生成分享预览卡/复制信息；负责展示，不负责领域写操作                             |
-| `ShareSheet`                                 | 帖子分享、复制链接和转发弹窗；转发形态由 `ShareRepostModal` 统一处理            |
+| 组件                                         | 责任和边界                                                                       |
+| -------------------------------------------- | -------------------------------------------------------------------------------- |
+| `AppHeader`                                  | 品牌、主导航、胶囊搜索、主题、发布入口、头像/登录；头像菜单 click 触发           |
+| `AuthModal`                                  | 登录、注册、找回密码、成功后的导航；使用 AuthModal context，不让页面复制认证 UI  |
+| `ArticleProgressBanner`                      | 当前用户文章审核进度轮询和状态提示                                               |
+| `CommentItem`                                | 评论、回复入口、作者/时间/点赞/删除；回复分页由内部 parts 处理                   |
+| `CommentSection`                             | 评论列表、发布框、分页/刷新、登录门禁；通过 hook 管理写操作和乐观状态            |
+| `CommentOps` / `CommentReply` / `ReplyPopup` | 评论操作菜单、回复按钮、快捷回复弹窗                                             |
+| `EmptyState`                                 | 统一空数据、说明和操作按钮                                                       |
+| `FeedPanel`                                  | Feed 内容壳、加载/刷新/错误、列表和空状态；数据由 hook/RTK Query 提供            |
+| `FeedbackModal`                              | 用户反馈提交；不负责通用举报流程                                                 |
+| `FollowButton`                               | 关注/取消关注状态和登录门禁                                                      |
+| `PageTools`                                  | MainLayout 的刷新/回顶辅助工具                                                   |
+| `PostActionBar`                              | 帖子详情作者下方的点赞、收藏、分享、评论等互动                                   |
+| `PostBottomBar`                              | 详情页底部固定互动/评论输入；拆为 actions 和 composer                            |
+| `PostDisplayTags`                            | 帖子分类、游戏和内容类型标签                                                     |
+| `PostFeedList`                               | 将 LatestPostItem 映射到 ContentCard、热榜卡或空/加载态                          |
+| `PostOwnerLinks`                             | 作者操作链接，如编辑、审核进度、删除                                             |
+| `ProfileUserLink`                            | 带头像/昵称的用户链接；统一导航到用户资料                                        |
+| `ReportModal`                                | 举报目标、分类、补充说明和提交反馈                                               |
+| `RepostBlock`                                | 转发帖子中的原帖引用块                                                           |
+| `ShareCard`                                  | 生成分享预览卡/复制信息；负责展示，不负责领域写操作                              |
+| `ShareSheet`                                 | 帖子分享、复制链接和转发弹窗；自动复制失败时提供手动复制，转发成功不补查待审详情 |
 
 ## 4. 认证组件
 

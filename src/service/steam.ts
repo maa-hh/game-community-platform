@@ -7,6 +7,9 @@ import type {
   ISteamProfile,
 } from '@/types/game';
 
+const STEAM_AVATAR_RETRY_COUNT = 4;
+const STEAM_AVATAR_RETRY_DELAY_MS = 700;
+
 export interface ISteamAuthUrlResult {
   url: string;
 }
@@ -23,6 +26,21 @@ export function fetchSteamProfileApi() {
   return hyRequest.get<IDataType<ISteamProfile | null>>({
     url: '/steam/profile',
   });
+}
+
+/** 旧绑定记录可能没有头像，后端会后台补齐；仅在头像缺失时短暂重取。 */
+export async function waitForSteamProfileAvatarApi(
+  fetcher: () => ReturnType<typeof fetchSteamProfileApi> = fetchSteamProfileApi,
+) {
+  let result = await fetcher();
+  for (let attempt = 0; attempt < STEAM_AVATAR_RETRY_COUNT; attempt += 1) {
+    if (!result.data?.steamId || result.data.avatarUrl) return result;
+    await new Promise((resolve) =>
+      window.setTimeout(resolve, STEAM_AVATAR_RETRY_DELAY_MS),
+    );
+    result = await fetcher();
+  }
+  return result;
 }
 
 /** 当前用户 Steam 游戏库 */

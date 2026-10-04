@@ -7,6 +7,8 @@ import HomeLayout from '@/layouts/Home';
 import AuthGuard from '@/router/guards';
 import AdminGuard from '@/router/AdminGuard';
 import { preloadGameDetail, preloadPostDetail } from '@/router/preload';
+import { importWithChunkReload } from '@/router/lazyImport';
+import RouteErrorFallback from '@/router/RouteErrorFallback';
 
 // 同步引入首屏页面，保证首屏直出、无 loading 闪烁
 import Home from '@/views/Home';
@@ -21,15 +23,23 @@ import Notifications from '@/views/Notifications';
 import Shop from '@/views/Shop';
 
 // 次要页面懒加载，减小首屏 bundle 体积
-const NotFound = lazy(() => import('@/views/NotFound'));
+const NotFound = lazy(() =>
+  importWithChunkReload('not-found', () => import('@/views/NotFound')),
+);
 const PostDetail = lazy(preloadPostDetail);
 const GameDetail = lazy(preloadGameDetail);
-const AdminModeration = lazy(() => import('@/views/Admin/Moderation'));
+const AdminModeration = lazy(() =>
+  importWithChunkReload(
+    'admin-moderation',
+    () => import('@/views/Admin/Moderation'),
+  ),
+);
 
 // 用路由表创建 BrowserRouter 实例（数据路由 API）
 const router = createBrowserRouter([
   {
     element: <RootLayout />,
+    errorElement: <RouteErrorFallback />,
     children: [
       // 官网首页：有顶栏，但无内容限宽盒，视频可全屏铺开
       {

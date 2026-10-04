@@ -341,13 +341,13 @@ export async function createGameSharePostApi(payload: {
   coverUrl?: string;
   title: string;
   content: string;
-}): Promise<string> {
+}): Promise<void> {
   const cats = await listCategoriesApi(1, 20);
   const categoryId = cats.data?.[0]?.id;
   if (!categoryId) throw new Error('缺少分区，无法分享');
 
   const markedContent = appendGameShareMarker(payload.content, payload.appId);
-  const saveRes = await saveArticleApi({
+  await saveArticleApi({
     title: payload.title.slice(0, 80),
     summary: markedContent.slice(0, 200),
     content: markedContent,
@@ -357,7 +357,6 @@ export async function createGameSharePostApi(payload: {
     gameAppIds: [payload.appId],
     status: ARTICLE_STATUS.PENDING,
   });
-  return saveRes.data;
 }
 
 /** 游戏讨论区帖子（页码分页，与后端 PageResult 对齐） */

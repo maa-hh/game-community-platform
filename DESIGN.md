@@ -23,7 +23,7 @@
 | `RootLayout` | `layouts/Root` | 挂全局 `AuthModal`（必须在 Router 内）      |
 | `MainLayout` | `layouts/Main` | 站内页：顶栏 + **统一内容盒**               |
 | `HomeLayout` | `layouts/Home` | 官网首页：顶栏 + **无限宽盒**，方便全屏视频 |
-| `RootLayout` | `layouts/Root` | 全局 Provider、KeepAlive 与 AuthModal 容器       |
+| `RootLayout` | `layouts/Root` | 全局 Provider、KeepAlive 与 AuthModal 容器  |
 
 ### 2.2 站内内容盒（核心）
 
@@ -76,6 +76,14 @@
   - 仅 `trigger={['click']}`，不要 hover 出菜单
   - 悬停头像：半透明蒙层
   - 箭头：关↓ / 开↑（`DownOutlined` / `UpOutlined`）
+
+### 4.1 移动端顶栏与页内导航
+
+- `<= 640px` 时品牌单独居中占一行；主题、发布、消息、头像在下一行按可用宽度**等距分布**，不要只把整组居中。
+- 顶栏、详情返回栏、个人页操作区中的可变文字必须使用 `min-width: 0`，并按语义换行或省略；禁止依赖固定宽度挤压图标。
+- 同级子 Tab 优先使用等分网格；选项较多时使用横向滚动并隐藏视觉滚动条，禁止缩小字体硬塞一行。
+- 路由切换时不要用延迟挂载/卸载制造顶栏位移；离场页的返回按钮应随路由节点同步销毁。
+- 页面 Tab 切换应保留原滚动位置；新内容不足原高度时，由浏览器将位置收敛到当前最大可滚动高度。
 
 ---
 

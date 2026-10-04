@@ -137,6 +137,8 @@
   &__images-wrap {
     position: relative;
     margin-top: 12px;
+    // 隐藏测量层仍会参与 scrollWidth；在本层裁切，避免多图卡片撑宽整页。
+    overflow: hidden;
   }
 
   &__images {

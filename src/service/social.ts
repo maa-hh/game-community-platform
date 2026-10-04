@@ -1134,8 +1134,13 @@ export async function recordShareApi(
     url: `/social/share/article/${articleId}`,
     data: { channel },
   });
-  const stats = await fetchStats(articleId);
-  return ok({ shareCount: Number(stats.shareCount || 0) });
+  try {
+    const stats = await fetchStats(articleId);
+    return ok({ shareCount: Number(stats.shareCount || 0) });
+  } catch {
+    // 分享写入已经成功，计数回读失败不能把已完成的操作误报为失败。
+    return ok({ shareCount: 0 });
+  }
 }
 
 export async function toggleFollowByAccountApi(
@@ -1510,7 +1515,11 @@ export async function createRepostApi(payload: {
   /** @deprecated 使用 content */
   quote?: string;
   user: { accountId: number; nickname: string; avatar?: string };
-}): Promise<IDataType<{ post: PostDetailData; refShareCount: number }>> {
+}): Promise<
+  IDataType<{
+    refShareCount?: number;
+  }>
+> {
   if (ENABLE_MOCK) {
     const ref = detailStore[payload.refArticleId];
     if (!ref) throw new Error('原帖不存在');
@@ -1559,7 +1568,6 @@ export async function createRepostApi(payload: {
     commentStore[id] = [];
     ref.stats.shareCount += 1;
     return delay({
-      post: structuredClone(post),
       refShareCount: ref.stats.shareCount,
     });
   }
@@ -1581,7 +1589,7 @@ export async function createRepostApi(payload: {
     payload.title,
     buildDefaultRepostTitle(ref.title),
   );
-  const saveRes = await saveArticleApi({
+  await saveArticleApi({
     title: title.slice(0, 80),
     summary: quote.slice(0, 200),
     content: quote,
@@ -1590,11 +1598,10 @@ export async function createRepostApi(payload: {
     refArticleId: payload.refArticleId,
     status: ARTICLE_STATUS.PENDING,
   });
-  const newId = saveRes.data;
-  const share = await recordShareApi(payload.refArticleId, 'repost');
-  const detail = await fetchPostDetailApi(String(newId));
-  if (!detail.data) throw new Error('转发成功但拉取详情失败');
-  return ok({ post: detail.data, refShareCount: share.data.shareCount });
+  void recordShareApi(payload.refArticleId, 'repost').catch(() => {
+    // 新动态已经创建成功，分享计数补记失败不应阻塞或误报发布结果。
+  });
+  return ok({});
 }
 
 export async function checkFollowByAccountApi(

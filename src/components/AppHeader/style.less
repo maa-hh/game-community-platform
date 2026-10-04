@@ -179,6 +179,10 @@
   }
 
   &__feed-badge {
+    font: inherit;
+    line-height: inherit;
+    color: inherit;
+
     .ant-badge-count {
       top: -10px;
       inset-inline-end: -18px;
@@ -314,6 +318,7 @@
       order: 1;
       flex: 1 0 100%;
       width: 100%;
+      justify-content: center;
     }
 
     &__name {
@@ -331,17 +336,24 @@
       margin-left: 0;
       justify-content: flex-end;
       flex-shrink: 1;
+
+      &.ant-space {
+        justify-content: space-between;
+        flex-wrap: nowrap;
+        gap: 0 !important;
+      }
     }
 
     &__nav {
       order: 3;
       width: 100%;
       flex-basis: 100%;
-      justify-content: space-between;
+      justify-content: space-around;
       gap: 0;
     }
 
     &__link {
+      flex: 1 1 0;
       padding: 6px 10px;
       white-space: normal;
       text-align: center;

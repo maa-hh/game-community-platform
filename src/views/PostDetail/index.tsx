@@ -813,10 +813,6 @@ function PostDetail() {
             );
           }
         }}
-        onReposted={(newId) => {
-          message.success('已发布转发动态');
-          navigate(`/post/${newId}`);
-        }}
       />
 
       {reportTarget ? (

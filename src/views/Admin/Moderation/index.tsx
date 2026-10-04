@@ -12,11 +12,14 @@ import {
   Button,
   Descriptions,
   Drawer,
+  Empty,
   Form,
   Input,
   Modal,
+  Pagination,
   Select,
   Space,
+  Spin,
   Table,
   Tag,
   Typography,
@@ -305,6 +308,19 @@ function ModerationPage() {
     return null;
   }, [detail, navigate]);
 
+  const renderTaskActions = (record: IModerationTask) => (
+    <Space size={4}>
+      <Button type="link" onClick={() => void openDetail(record)}>
+        详情
+      </Button>
+      {record.status !== 2 ? (
+        <Button type="link" onClick={() => void prepareHandle(record)}>
+          处理
+        </Button>
+      ) : null}
+    </Space>
+  );
+
   const columns: ColumnsType<IModerationTask> = [
     {
       title: '类型',
@@ -349,18 +365,7 @@ function ModerationPage() {
       title: '操作',
       key: 'actions',
       width: 180,
-      render: (_, record) => (
-        <Space>
-          <Button type="link" onClick={() => void openDetail(record)}>
-            详情
-          </Button>
-          {record.status !== 2 ? (
-            <Button type="link" onClick={() => void prepareHandle(record)}>
-              处理
-            </Button>
-          ) : null}
-        </Space>
-      ),
+      render: (_, record) => renderTaskActions(record),
     },
   ];
 
@@ -368,7 +373,7 @@ function ModerationPage() {
     <div className="moderation-page">
       <div className="moderation-page__toolbar">
         <Typography.Title level={3}>人工审核中心</Typography.Title>
-        <Space wrap>
+        <Space wrap className="moderation-page__filters">
           <Select
             allowClear
             placeholder="状态"
@@ -404,6 +409,7 @@ function ModerationPage() {
       </div>
 
       <Table
+        className="moderation-page__table"
         rowKey="taskKey"
         loading={loading}
         columns={columns}
@@ -417,9 +423,62 @@ function ModerationPage() {
         }}
       />
 
+      <div className="moderation-page__mobile-list">
+        <Spin spinning={loading}>
+          {items.length ? (
+            <div className="moderation-page__cards">
+              {items.map((record) => (
+                <article key={record.taskKey} className="moderation-page__card">
+                  <div className="moderation-page__card-head">
+                    <strong>
+                      {record.targetType === 6
+                        ? '问题反馈'
+                        : TASK_TYPE_LABEL[record.taskType] || record.taskType}
+                    </strong>
+                    <Tag color={STATUS_COLOR[record.status]}>
+                      {STATUS_LABEL[record.status]}
+                    </Tag>
+                  </div>
+                  <p className="moderation-page__card-summary">
+                    {record.summary || '暂无摘要'}
+                  </p>
+                  <dl className="moderation-page__card-meta">
+                    <div>
+                      <dt>提交时间</dt>
+                      <dd>{record.createTime || '—'}</dd>
+                    </div>
+                    <div>
+                      <dt>处理人</dt>
+                      <dd>{record.handlerName || '—'}</dd>
+                    </div>
+                  </dl>
+                  <div className="moderation-page__card-actions">
+                    {renderTaskActions(record)}
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : loading ? (
+            <div className="moderation-page__loading-space" />
+          ) : (
+            <Empty description="暂无审核任务" />
+          )}
+        </Spin>
+        <Pagination
+          className="moderation-page__mobile-pagination"
+          current={page}
+          pageSize={20}
+          total={total}
+          hideOnSinglePage
+          simple={{ readOnly: true }}
+          onChange={setPage}
+        />
+      </div>
+
       <Drawer
+        rootClassName="moderation-page__detail-drawer"
         title="审核详情"
-        size="large"
+        size="min(736px, 100vw)"
         open={detailOpen}
         onClose={() => setDetailOpen(false)}
         extra={

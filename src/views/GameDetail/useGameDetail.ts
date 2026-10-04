@@ -73,8 +73,62 @@ function hasRichGameDetail(detail?: IGameDetail | null): boolean {
 }
 
 function isGameDetailReady(detail?: IGameDetail | null): boolean {
-  if (!detail || detail.detailReady === false) return false;
+  if (!detail) return false;
+  // 新接口以 detailReady 为最终状态；旧接口没有该字段时再检查富详情内容。
+  if (detail.detailReady != null) return detail.detailReady;
   return hasRichGameDetail(detail);
+}
+
+function mergeGameDetail(
+  previous: GameDetailPayload | null,
+  next: GameDetailPayload,
+): GameDetailPayload {
+  if (!previous) return next;
+
+  const nextName = next.name?.trim();
+  const hasUsableNextName = Boolean(nextName && !/^游戏 \d+$/.test(nextName));
+  const merged = {
+    ...previous,
+    ...next,
+    name: hasUsableNextName ? next.name : previous.name,
+    coverUrl: next.coverUrl || previous.coverUrl,
+    shortDescription: next.shortDescription || previous.shortDescription,
+    aboutHtml: next.aboutHtml || previous.aboutHtml,
+    description: next.description || previous.description,
+    steamUrl: next.steamUrl || previous.steamUrl,
+    developer: next.developer || previous.developer,
+    publisher: next.publisher || previous.publisher,
+    releaseDate: next.releaseDate || previous.releaseDate,
+    steamReviewScore: next.steamReviewScore ?? previous.steamReviewScore,
+    steamReviewCount: next.steamReviewCount ?? previous.steamReviewCount,
+    discussCount: next.discussCount ?? previous.discussCount,
+    price: next.price ?? previous.price,
+    metacritic: next.metacritic ?? previous.metacritic,
+    achievementTotal: next.achievementTotal ?? previous.achievementTotal,
+    pcRequirementsMin: next.pcRequirementsMin || previous.pcRequirementsMin,
+    pcRequirementsRec: next.pcRequirementsRec || previous.pcRequirementsRec,
+    averageScore: next.averageScore ?? previous.averageScore,
+    reviewCount: next.reviewCount ?? previous.reviewCount,
+  };
+
+  if (!next.tags?.length && previous.tags?.length) merged.tags = previous.tags;
+  if (!next.categories?.length && previous.categories?.length) {
+    merged.categories = previous.categories;
+  }
+  if (!next.screenshots?.length && previous.screenshots?.length) {
+    merged.screenshots = previous.screenshots;
+  }
+  if (!next.movies?.length && previous.movies?.length) {
+    merged.movies = previous.movies;
+  }
+  if (
+    !next.achievementHighlights?.length &&
+    previous.achievementHighlights?.length
+  ) {
+    merged.achievementHighlights = previous.achievementHighlights;
+  }
+
+  return merged;
 }
 
 const DISCUSSION_PAGE_SIZE = 20;
@@ -143,7 +197,8 @@ export function useGameDetail(
           }
           return next;
         },
-        { replace: true },
+        // 子 tab 不是新页面：保留当前滚动位置；内容变短时由浏览器自动限制到最大滚动高度。
+        { replace: true, preventScrollReset: true },
       );
     },
     [setSearchParams],
@@ -243,7 +298,10 @@ export function useGameDetail(
       }
       try {
         const res = await fetchGameDetailApi(appId);
-        const game = res.data as GameDetailPayload;
+        const game = mergeGameDetail(
+          fallbackDetail as GameDetailPayload | null,
+          res.data as GameDetailPayload,
+        );
         setDetail(game);
         setDetailError(null);
         const ready = isGameDetailReady(game);

@@ -84,3 +84,13 @@
     }
   }
 }
+
+@media (max-width: 640px) {
+  .post-body {
+    // 手机端让 16:9 视频使用详情卡完整宽度；正文仍保留 SurfaceCard 的阅读留白。
+    &__player {
+      margin-right: -18px;
+      margin-left: -18px;
+    }
+  }
+}
