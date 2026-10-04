@@ -80,3 +80,10 @@
 
 - Steam Web API Key、DashScope Key、阿里云 AccessKey/Secret 只允许通过环境变量或密钥管理服务注入，禁止写入仓库、启动脚本默认值或 Java `-D` 命令行参数。
 - 部署前参考 `.env.example` 配置变量；轮换泄露凭证后，使用进程检查确认命令行中不存在敏感参数。
+- Steam 客户端日志不记录带 `key` 参数的完整 URL、响应正文或原始异常消息，只记录操作名、非敏感 ID 和异常类型。
+
+### 回归测试
+
+- `SteamApiClientTest` 覆盖网络错误不误判私密库、真实私密库、英文补充失败保留中文结果以及头像 HTTP→HTTPS。
+- `GameCatalogServiceImplTest` 覆盖新鲜完整缓存不触发刷新，以及待补全详情只读一次本地存储并只提交一次刷新。
+- 修改详情缓存、Steam 错误映射或头像补全逻辑后，至少执行 `mvn -pl service/steam-service -am test`；公共模块或配置变化执行全仓 `mvn test`。

@@ -188,8 +188,9 @@ SPA 爬虫拿不到 React 内容，需 **服务端返回带 meta 的 HTML**。
 
 部署建议：
 
-- 网关将 `/share/post/**` 指到 content-service 或独立 share 模块（需 Feign 拉标题/摘要/封面）  
-- 前端「复制链接」默认复制 **短链或 OG 落地链**：`https://域名/share/post/{id}`（进入后跳详情）；也可用前端路由 `/post/{id}` 并在网关对微信 UA 做 OG 分流（二选一，**推荐独立 `/share/post/{id}`**，实现简单）
+- gateway 已具备 `/share/post/**` 到 content-service 的路由，但生产反向代理也必须显式转发该前缀；未配置时直接访问会落到前端 404。
+- 前端默认复制可直接访问的 `/post/{id}` SPA 路由，静态服务器必须回退到 `index.html`。只有部署环境验证 OG 路由可达后，才可改为复制 `/share/post/{id}`。
+- Clipboard API 在 HTTPS 安全上下文才有稳定保证；HTTP/WebView 自动复制失败时必须提供普通可选文本，不得只依赖程序全选的 textarea。
 
 微信等平台卡片样式不可控；我们只保证标题/封面/摘要正确。
 
@@ -259,7 +260,7 @@ mock/                    # post detail + social
 
 | 形态 | 用户动作 | 前端 | 后端 | 计数 |
 |------|----------|------|------|------|
-| **A 链接** | 复制链接 / 系统分享 | Clipboard / `navigator.share` | `POST /social/share` channel=`link`；链接指向 `/share/post/{id}` 或 `/post/{id}` | ✅ |
+| **A 链接** | 复制链接 / 系统分享 | 默认 `/post/{id}`；自动复制失败时提供原生长按文本 | `POST /social/share` channel=`link`；已验证代理后可切换 `/share/post/{id}` | ✅ |
 | **B1 站内卡** | 转发动态（发帖） | ShareSheet 填个人评论 → `postType=4` | `POST /article` + share 计数 | ✅ |
 | **B2 外链卡** | 把链接贴到微信等 | 复制的是 OG 落地 URL | `GET /share/post/{id}` HTML meta | 用户主动点「分享」时 ✅；仅粘贴不一定回传，以 A 的点击为准 |
 

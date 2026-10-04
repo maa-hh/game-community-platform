@@ -23,7 +23,7 @@ gateway
 |---|---:|---|---|
 | gateway | 8080 | `/` | 路由、JWT、CORS、内部鉴权 |
 | user-service | 8081 | `/user/**` | 认证、资料、账号生命周期、装扮 |
-| content-service | 8082 | `/article/**`、`/category/**`、`/file/**` | 文章、分类、上传、发布审核 |
+| content-service | 8082 | `/article/**`、`/category/**`、`/file/**`、`/share/post/**` | 文章、分类、上传、发布审核、可选 OG 分享页 |
 | steam-service | 8083 | `/steam/**`、`/game/**` | Steam 游戏、评论、成就、跟随 |
 | social-service | 8084 | `/social/**`、`/report/**` | 评论、回复、点赞、收藏、关注、举报 |
 | shop-service | 8085 | `/shop/**` | 商品、库存、订单、积分和购买 |
@@ -67,6 +67,13 @@ social/audit/user
 
 跨实例竞争使用数据库 CAS、幂等键或 Redis 共享状态；不要为简单同步流程再叠加额外重试线程。
 
+### 外部依赖隔离
+
+- 面向页面的读接口优先返回本地快照，不能把 Steam 等第三方网络时延放进主请求链。游戏详情通过 `detailReady` 暴露补全状态，后台任务使用有界执行器和 Redis 锁合并。
+- stale-while-revalidate 允许先返回过期但可用的数据；完整且新鲜的快照不得在每次读取时重复刷新。
+- 第三方网络、超时、鉴权和业务空数据必须分别映射。网络故障不能伪装成“用户隐私设置”等业务结论。
+- 第三方客户端日志禁止打印完整请求 URI、响应正文或异常消息，避免 query/body 中的 Key 被日志系统收集。
+
 ## 4. 基础设施和配置
 
 本地基础设施由根目录 `docker-compose.yml` 描述。服务配置优先从环境变量读取，开发默认值仅用于本地启动；生产必须显式注入：
@@ -77,6 +84,10 @@ social/audit/user
 - `MINIO_*`、`SEARCH_ES_*`、`KAFKA_*`、`XXL_JOB_ACCESS_TOKEN`
 
 真实值只放 `.env` 或部署密钥管理系统。`.env.example` 只提供变量名和占位符。
+
+启动脚本只能通过环境变量向进程传递凭据。Nacos RAM 使用 `ALIBABA_CLOUD_ACCESS_KEY_ID`、`ALIBABA_CLOUD_ACCESS_KEY_SECRET` 注入并映射为 SDK 读取的环境变量，禁止使用 Java `-D` 携带真实值，因为系统进程列表会暴露完整命令行。Steam、DashScope、MinIO、JWT 和数据库凭据遵循同一原则。
+
+`/share/post/**` 只有在反向代理显式转发到 gateway 时才能作为 OG 落地页使用。前端默认分享 `/post/:id`；部署层还必须把该 SPA 页面路由回退到前端 `index.html`，不能将它误转发到 API。
 
 ## 5. 数据库变更
 
