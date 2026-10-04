@@ -907,6 +907,7 @@ private boolean hasBlackRelation(Long leftUserId, Long rightUserId) {
 | GET /social/follow/check/{targetUserId} | 是否已关注 |
 | GET /social/follow/black/check/{targetUserId} | 是否已拉黑 |
 | GET /social/follow/count/{userId} | 返回 `{ "following": N, "fans": M }` |
+| GET /social/follow/count/by-account/{accountId} | 按公开 accountId 返回关注/粉丝数，游客可读 |
 
 ### 3.6 Feed 流
 
@@ -1389,6 +1390,7 @@ private <T> T unwrap(Result<T> result, String defaultMessage) {
 | GET | `/social/follow/check/{targetUserId}` | @LoginCheck | 检查关注状态 |
 | GET | `/social/follow/black/check/{targetUserId}` | @LoginCheck | 检查黑名单状态 |
 | GET | `/social/follow/count/{userId}` | @LoginCheck | 关注/粉丝计数 |
+| GET | `/social/follow/count/by-account/{accountId}` | 公开 | 按 accountId 查询关注/粉丝计数，游客可读 |
 
 #### ReportController — 前缀 `/report`
 

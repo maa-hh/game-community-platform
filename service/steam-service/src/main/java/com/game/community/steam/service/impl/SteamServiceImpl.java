@@ -234,7 +234,7 @@ public class SteamServiceImpl implements SteamService {
     /** 查询目标用户的 Steam 资料，并校验查看者与目标用户的社交权限。 */
     @Override
     public SteamBindVO profileForViewer(Long targetUserId) {
-        Long viewerId = currentUserId();
+        Long viewerId = UserThreadLocal.getUserId();
         assertCanViewSteam(viewerId, targetUserId);
         return profileByUserId(targetUserId);
     }
@@ -284,7 +284,7 @@ public class SteamServiceImpl implements SteamService {
     /** 查询目标用户公开的 Steam 游戏库，并执行黑名单和公开状态校验。 */
     @Override
     public List<SteamGameVO> libraryForViewer(Long targetUserId) {
-        Long viewerId = currentUserId();
+        Long viewerId = UserThreadLocal.getUserId();
         assertCanViewSteam(viewerId, targetUserId);
         UserSteamBind bind = requireBind(targetUserId);
         if (bind.getLibraryPublic() == null || bind.getLibraryPublic() != 1) {
@@ -747,8 +747,12 @@ public class SteamServiceImpl implements SteamService {
 
     /** 校验查看者是否可以查看目标用户的 Steam 内容。 */
     private void assertCanViewSteam(Long viewerId, Long targetUserId) {
-        if (viewerId == null || targetUserId == null) {
+        if (targetUserId == null) {
             throw new BusinessException("用户不存在");
+        }
+        // Steam 资料和公开游戏库属于公开主页数据；游客没有可校验的拉黑关系。
+        if (viewerId == null) {
+            return;
         }
         if (Objects.equals(viewerId, targetUserId)) {
             return;

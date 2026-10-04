@@ -143,7 +143,6 @@ public class FollowController {
         return Result.success(followService.isBlacked(UserThreadLocal.getUserId(), targetUserId));
     }
 
-    @LoginCheck
     @GetMapping("/count/by-account/{accountId}")
     public Result<Map<String, Long>> countByAccount(@PathVariable("accountId") Long accountId) {
         return Result.success(Map.of(

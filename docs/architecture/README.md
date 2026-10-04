@@ -89,6 +89,8 @@ social/audit/user
 
 `/share/post/**` 只有在反向代理显式转发到 gateway 时才能作为 OG 落地页使用。前端默认分享 `/post/:id`；部署层还必须把该 SPA 页面路由回退到前端 `index.html`，不能将它误转发到 API。
 
+他人主页的 `/steam/users/by-account/{accountId}/profile`、公开游戏库 `.../library` 和 `/social/follow/count/by-account/{accountId}` 是游客公开读接口：控制器不加 `@LoginCheck`，同时必须登记到网关公开读白名单。Steam 私密库仍由服务层拒绝；登录用户查看时仍校验拉黑关系。关注、拉黑、举报、Steam 绑定与同步等写接口不得加入公开白名单。
+
 ## 5. 数据库变更
 
 1. 在 `sql/` 新增可重入迁移或更新对应全量表结构。

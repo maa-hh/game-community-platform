@@ -50,6 +50,7 @@ public class GatewayConstants {
             "/social/like/comment/check/",
             "/social/like/reply/check/",
             "/social/favorite/article/check/",
+            "/social/follow/count/by-account/",
             "/search/article",
             "/search/game",
             "/search/suggest",
@@ -57,6 +58,7 @@ public class GatewayConstants {
             "/user/cosmetic/decorations/batch",
             "/hot-article/",
             "/game/",
+            "/steam/users/by-account/",
             "/shop/item/page",
             "/danmaku/history/",
             "/danmaku/ws/"

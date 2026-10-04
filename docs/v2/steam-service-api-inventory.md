@@ -10,9 +10,9 @@
 | GET | `/user/steam/auth-url` | `/steam/auth-url` | 是 |
 | GET | `/user/steam/callback` | `/steam/callback` | 否 |
 | GET | `/user/steam/profile` | `/steam/profile` | 是 |
-| GET | `/user/steam/users/{userId}/profile` | `/steam/users/by-account/{accountId}/profile` | 是 |
+| GET | `/user/steam/users/{userId}/profile` | `/steam/users/by-account/{accountId}/profile` | 否（游客可读） |
 | GET | `/user/steam/library` | `/steam/library` | 是 |
-| GET | `/user/steam/users/{userId}/library` | `/steam/users/by-account/{accountId}/library` | 是 |
+| GET | `/user/steam/users/{userId}/library` | `/steam/users/by-account/{accountId}/library` | 否（仅公开库） |
 | GET | `/user/steam/games/{appId}/stats` | `/steam/games/{appId}/stats` | 是 |
 | POST | `/user/steam/sync` | `/steam/sync` | 是 |
 | DELETE | `/user/steam/unbind` | `/steam/unbind` | 是 |
@@ -73,6 +73,7 @@
 ### Steam 资料与游戏库
 
 - `/steam/profile` 对历史绑定缺失头像的记录提交后台补全任务，接口本身不等待 Steam；返回和落库的头像地址统一升级为 HTTPS。
+- `/steam/users/by-account/{accountId}/profile` 和 `/library` 是他人主页公开读接口，允许游客访问；已登录查看者仍按双方拉黑关系校验。游戏库为私密时继续拒绝读取，不能把私密库降级成空公开库。
 - `/steam/sync` 只有 Steam 正常响应且缺少 `games`/公开库标识时才提示“游戏库未公开”。网络、超时或鉴权失败统一提示稍后重试，不再误判隐私设置。
 - 中文游戏库是主结果，英文名称仅作补充；英文请求失败不会丢弃已经获取的中文游戏库。
 
@@ -85,5 +86,6 @@
 ### 回归测试
 
 - `SteamApiClientTest` 覆盖网络错误不误判私密库、真实私密库、英文补充失败保留中文结果以及头像 HTTP→HTTPS。
+- `SteamPublicReadContractTest` 覆盖游客读取公开 Steam 资料、控制器不要求登录，以及公开路径与网关白名单一致。
 - `GameCatalogServiceImplTest` 覆盖新鲜完整缓存不触发刷新，以及待补全详情只读一次本地存储并只提交一次刷新。
 - 修改详情缓存、Steam 错误映射或头像补全逻辑后，至少执行 `mvn -pl service/steam-service -am test`；公共模块或配置变化执行全仓 `mvn test`。

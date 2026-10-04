@@ -65,7 +65,6 @@ public class SteamBindController {
     }
 
     /** 按 accountId 查询其他用户的 Steam 绑定资料。 */
-    @LoginCheck
     @GetMapping("/users/by-account/{accountId}/profile")
     public Result<SteamBindVO> profileForUserByAccount(@PathVariable("accountId") Long accountId) {
         return Result.success(steamService.profileForViewerByAccount(accountId));
@@ -79,7 +78,6 @@ public class SteamBindController {
     }
 
     /** 按 accountId 查询其他用户公开的 Steam 游戏库。 */
-    @LoginCheck
     @GetMapping("/users/by-account/{accountId}/library")
     public Result<List<SteamGameVO>> libraryForUserByAccount(@PathVariable("accountId") Long accountId) {
         return Result.success(steamService.libraryForViewerByAccount(accountId));
