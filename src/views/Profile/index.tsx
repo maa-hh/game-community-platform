@@ -210,7 +210,7 @@ function Profile() {
 
   useEffect(() => {
     const targetAccountId = profileAccountId;
-    if (!targetAccountId || !isLoggedIn) return;
+    if (!targetAccountId) return;
     const cacheKey = `profile-stats:${targetAccountId}`;
     const cachedStats = getPageDataCache<ProfileStats>(cacheKey);
     const statsDirty = profileDirtyDomains.includes(PROFILE_DATA_DOMAIN.STATS);
@@ -242,7 +242,6 @@ function Profile() {
     };
   }, [
     dispatch,
-    isLoggedIn,
     isOther,
     profileAccountId,
     profileDirtyDomains,
@@ -279,7 +278,7 @@ function Profile() {
         tasks.push(userListRefreshRef.current());
       }
     }
-    if (targetAccountId && isLoggedIn) {
+    if (targetAccountId) {
       tasks.push(
         fetchProfileSocialStatsByAccountApi(Number(targetAccountId)).then(
           (nextStats) => {
@@ -302,14 +301,7 @@ function Profile() {
     } finally {
       setProfileRefreshing(false);
     }
-  }, [
-    dispatch,
-    isLoggedIn,
-    isOther,
-    user?.accountId,
-    userListOpen,
-    viewUser?.accountId,
-  ]);
+  }, [dispatch, isOther, user?.accountId, userListOpen, viewUser?.accountId]);
 
   const handleUserListRefreshReady = useCallback(
     (refresh: (() => Promise<void>) | null) => {

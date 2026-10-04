@@ -2298,6 +2298,7 @@ async function fetchFollowCountsByAccount(
   try {
     const countRes = await hyRequest.get<IDataType<FollowCountPayload>>({
       url: `/social/follow/count/by-account/${accountId}`,
+      skipAuth: !hasUsableAuthSession(),
     });
     return parseFollowCounts(countRes.data);
   } catch {
@@ -2324,11 +2325,13 @@ export async function fetchProfileSocialStatsByAccountApi(
     return MOCK_STATS;
   }
 
-  if (!hasUsableAuthSession()) {
-    return { following: 0, followers: 0, likes: 0, favorites: 0 };
-  }
-
   const { following, followers } = await fetchFollowCountsByAccount(accountId);
+
+  // 关注/粉丝是公开资料；获赞和收藏接口描述的是当前登录用户，不能拿来填他人主页。
+  const currentAccountId = Number(getUserInfo()?.accountId ?? 0);
+  if (!hasUsableAuthSession() || currentAccountId !== Number(accountId)) {
+    return { following, followers, likes: 0, favorites: 0 };
+  }
 
   const [likes, favorites] = await Promise.all([
     fetchReceivedLikesCount().catch(() => 0),

@@ -6,6 +6,7 @@ import type {
   ISteamLibrarySync,
   ISteamProfile,
 } from '@/types/game';
+import { hasUsableAuthSession } from '@/utils/storage';
 
 const STEAM_AVATAR_RETRY_COUNT = 4;
 const STEAM_AVATAR_RETRY_DELAY_MS = 700;
@@ -83,6 +84,8 @@ export function unbindSteamApi() {
 export function fetchUserSteamProfileByAccountApi(accountId: number) {
   return hyRequest.get<IDataType<ISteamProfile | null>>({
     url: `/steam/users/by-account/${accountId}/profile`,
+    // 游客公开读不应尝试 refresh，也不能因 401 触发全局登录弹窗。
+    skipAuth: !hasUsableAuthSession(),
   });
 }
 
@@ -90,5 +93,6 @@ export function fetchUserSteamProfileByAccountApi(accountId: number) {
 export function fetchUserSteamLibraryByAccountApi(accountId: number) {
   return hyRequest.get<IDataType<ISteamGameItem[]>>({
     url: `/steam/users/by-account/${accountId}/library`,
+    skipAuth: !hasUsableAuthSession(),
   });
 }

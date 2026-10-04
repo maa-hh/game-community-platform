@@ -36,7 +36,7 @@ export interface IHYInterceptors {
 
 export interface IHYRequestConfig extends AxiosRequestConfig {
   interceptors?: IHYInterceptors;
-  /** 登录/注册/刷新等接口不带 token、不走刷新逻辑 */
+  /** 登录/注册/刷新及游客公开读接口不带 token、不走刷新逻辑 */
   skipAuth?: boolean;
   /** 内部标记：已重试过，避免死循环 */
   _retry?: boolean;
@@ -233,7 +233,7 @@ const hyRequest: HYRequest = new HYRequest({
     requestInterceptor: async (config) => {
       const authConfig = config as AuthRequestConfig;
       if (authConfig.skipAuth) {
-        // 登录/注册等公开接口不带旧 token，避免网关按失效 JWT 拦截
+        // 游客公开接口不带旧 token，避免网关按失效 JWT 拦截并误触发登录提示。
         delete authConfig.headers.Authorization;
         return config;
       }

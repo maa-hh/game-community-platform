@@ -142,7 +142,7 @@ SSE 由 `createNotificationEventSource` 建立，前端需要兼容后端历史�
 | 功能            | 联调重点                                                                |
 | --------------- | ----------------------------------------------------------------------- |
 | 游戏发现/详情   | appId、价格/折扣 null、`detailReady`、有界轮询、Steam 富 HTML、评价分页 |
-| Steam 授权/同步 | 外部授权 URL、同步游标、隐私/网络错误区分、HTTPS 头像、解绑清理         |
+| Steam 授权/同步 | 外部授权 URL、同步游标、游客读他人资料、隐私/网络错误区分、HTTPS 头像   |
 | 游戏关注        | `/steam/follows` 的新增/删除/批量检查与页面乐观状态                     |
 | 热榜            | 周期/日期参数、排名顺序、行为分数和空榜 fallback                        |
 | 搜索            | 用户数字 accountId 精确搜索、昵称前缀、文章分页、建议词和历史           |
@@ -151,6 +151,8 @@ SSE 由 `createNotificationEventSource` 建立，前端需要兼容后端历史�
 | 弹幕            | videoPublicId、历史分页、WebSocket/SSE 地址和消息权限                   |
 
 `GET /game/{appId}` 不等待 Steam 外部请求：本地详情可用时立即返回；未补全时返回 `detailReady=false`，前端稍后轮询。网络、超时或鉴权错误不能转换成“游戏库未公开”；只有 Steam 正常响应且明确缺少公开游戏库数据时才使用隐私提示。中文游戏库是主结果，英文名称补充失败不能丢弃已有列表。
+
+他人主页的 `GET /steam/users/by-account/{accountId}/profile`、公开游戏库 `.../library` 和 `GET /social/follow/count/by-account/{accountId}` 允许游客读取。游客请求使用 `skipAuth`，不进入 access token 刷新或全局登录提示；已登录查看者仍携带身份，由后端执行拉黑关系校验。关注、拉黑、举报、Steam 绑定及同步仍是登录后写操作。
 
 ## 8. 联调验证矩阵
 
