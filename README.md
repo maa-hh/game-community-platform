@@ -67,6 +67,18 @@
 - AI 内容审核能力，以及人工审核协作链路。
 - 视频播放、弹幕历史、实时弹幕广播和播放器相关鉴权。
 
+## 当前可靠性与安全口径
+
+以下约定由 `frontend` 与 `backend` 分支共同实现，部署和联调不能只检查其中一侧：
+
+- **移动端布局**：全局顶栏在小屏拆分为品牌、操作、导航和搜索区域；操作项等宽分布。页面子 Tab、个人主页和审核工作台按移动端宽度重排，避免文字重叠、横向溢出和切换内容时整体尺寸跳变。
+- **视频播放**：帖子详情播放器内嵌状态固定 16:9；移动端使用紧凑音量/弹幕/全屏控件，并在全屏退出、横竖屏变化和视口变化后恢复正确尺寸。
+- **异步游戏详情**：`GET /game/{appId}` 不等待 Steam，优先返回本地快照；未补全时返回 `detailReady=false`，前端进行有界轮询。过期数据使用 stale-while-revalidate，新鲜完整缓存不重复刷新。
+- **Steam 同步**：网络、超时和鉴权错误不会再误报为“游戏库未公开”；英文名称补充失败保留中文库。历史绑定缺失头像时后台补全并统一使用 HTTPS。
+- **分享与复制**：默认分享可直接访问的 `/post/:id`；`/share/post/**` 仅在生产反向代理已经转发到 gateway 时作为 OG 页。Clipboard API 需要 HTTPS，受限环境必须保留原生可长按文本。
+- **前端发布恢复**：懒加载 chunk 因版本切换失效时，每个路由最多自动刷新一次，随后显示自定义恢复页，避免无限刷新和框架堆栈暴露。
+- **凭据安全**：Steam、DashScope、阿里云/Nacos、MinIO、JWT、SMTP 和数据库凭据只通过环境变量或密钥管理服务注入。禁止把真实值放进仓库、日志或 Java `-D` 参数；外部客户端不得记录带 Key 的完整 URI/响应正文。
+
 ## 技术栈
 
 ### 后端
@@ -183,3 +195,5 @@
     git diff --check
 
 所有密钥、JWT、SMTP、Steam API Key、数据库密码和真实账号只通过本地环境变量或部署平台注入；SQL 种子和测试脚本不得包含真实用户隐私。详细规范分别见后端 [AGENTS.md](https://github.com/maa-hh/game-community-platform/blob/backend/AGENTS.md)、[service/CODING_STANDARDS.md](https://github.com/maa-hh/game-community-platform/blob/backend/service/CODING_STANDARDS.md) 和前端 [AGENTS.md](https://github.com/maa-hh/game-community-platform/blob/frontend/AGENTS.md)。
+
+发布前还应验证：前端历史路由回退、可选 `/share/post/**` 代理、HTTPS Clipboard/Cookie、SSE 代理缓冲、旧 chunk 恢复，以及 Java 进程命令行中不存在凭据。静态构建或单元测试通过不能替代这些部署检查。
