@@ -41,6 +41,10 @@ public final class SteamRedisConstants {
     public static final long CATALOG_DAILY_SYNC_LOCK_SECONDS = 3600L;
     /** Steam 集群共享的出站请求时间槽。 */
     public static final String API_RATE_LIMIT_SLOT_KEY = "steam:api:rate-limit:slot";
+    /** Steam 绑定资料头像后台补齐锁，避免多个页面重复请求用户资料。 */
+    public static final String PROFILE_AVATAR_REFRESH_LOCK_PREFIX =
+            "steam:profile:avatar:refresh:";
+    public static final long PROFILE_AVATAR_REFRESH_LOCK_SECONDS = 300L;
 
     private SteamRedisConstants() {
     }

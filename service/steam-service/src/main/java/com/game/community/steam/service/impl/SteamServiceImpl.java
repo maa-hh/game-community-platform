@@ -31,6 +31,7 @@ import com.game.community.steam.mapper.UserSteamBindMapper;
 import com.game.community.steam.mapper.UserSteamGameMapper;
 import com.game.community.steam.service.GameCatalogService;
 import com.game.community.steam.service.SteamService;
+import com.game.community.steam.util.SteamUrlUtils;
 import com.game.community.utils.RedisUtils;
 import com.game.community.utils.ThreadLocal.UserThreadLocal;
 import jakarta.annotation.Resource;
@@ -183,7 +184,51 @@ public class SteamServiceImpl implements SteamService {
         if (bind == null) {
             return null;
         }
+        if (!StringUtils.hasText(bind.getAvatarUrl())) {
+            scheduleAvatarRefresh(bind.getUserId(), bind.getSteamId());
+        }
         return toBindVO(bind, resolveAccountId(userId));
+    }
+
+    /** 旧绑定记录缺少头像时后台补齐，不阻塞 Steam 资料接口响应。 */
+    private void scheduleAvatarRefresh(Long userId, String steamId) {
+        if (userId == null || !StringUtils.hasText(steamId)) {
+            return;
+        }
+        String lockKey = SteamRedisConstants.PROFILE_AVATAR_REFRESH_LOCK_PREFIX + userId;
+        String lockToken = UUID.randomUUID().toString();
+        if (!Boolean.TRUE.equals(redisUtils.setIfAbsent(
+                lockKey, lockToken, SteamRedisConstants.PROFILE_AVATAR_REFRESH_LOCK_SECONDS))) {
+            return;
+        }
+        try {
+            CompletableFuture.runAsync(() -> {
+                try {
+                    SteamPlayerSummaryPayload summary = steamApiClient.getPlayerSummary(steamId);
+                    UserSteamBind current = userSteamBindMapper.selectById(userId);
+                    if (current == null || !Objects.equals(current.getSteamId(), steamId)
+                            || !StringUtils.hasText(summary.getAvatarUrl())) {
+                        return;
+                    }
+                    current.setAvatarUrl(SteamUrlUtils.normalizeAvatarUrl(summary.getAvatarUrl()));
+                    if (StringUtils.hasText(summary.getPersonaName())) {
+                        current.setPersonaName(summary.getPersonaName());
+                    }
+                    if (StringUtils.hasText(summary.getProfileUrl())) {
+                        current.setProfileUrl(summary.getProfileUrl());
+                    }
+                    userSteamBindMapper.updateById(current);
+                } catch (Exception e) {
+                    log.warn("补齐 Steam 头像失败: userId={}, errorType={}",
+                            userId, e.getClass().getSimpleName());
+                } finally {
+                    redisUtils.unlock(lockKey, lockToken);
+                }
+            }, steamLibrarySyncExecutor);
+        } catch (RejectedExecutionException e) {
+            redisUtils.unlock(lockKey, lockToken);
+            log.warn("Steam 头像补齐任务未能入队: userId={}", userId);
+        }
     }
 
     /** 查询目标用户的 Steam 资料，并校验查看者与目标用户的社交权限。 */
@@ -720,7 +765,7 @@ public class SteamServiceImpl implements SteamService {
         vo.setAccountId(accountId);
         vo.setSteamId(bind.getSteamId());
         vo.setPersonaName(bind.getPersonaName());
-        vo.setAvatarUrl(bind.getAvatarUrl());
+        vo.setAvatarUrl(SteamUrlUtils.normalizeAvatarUrl(bind.getAvatarUrl()));
         vo.setProfileUrl(bind.getProfileUrl());
         vo.setSteamLevel(bind.getSteamLevel());
         vo.setGameCount(bind.getGameCount());

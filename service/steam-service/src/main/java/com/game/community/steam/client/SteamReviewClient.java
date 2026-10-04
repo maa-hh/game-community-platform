@@ -26,7 +26,7 @@ public class SteamReviewClient {
     /** 拉取 Steam 评价总数和好评率，失败时返回空结果。 */
     public SteamReviewSummaryPayload fetchReviewSummary(long appId) {
         String url = UriComponentsBuilder
-                .fromHttpUrl(SteamApiConstants.APP_REVIEWS_URL + "/" + appId)
+                .fromUriString(SteamApiConstants.APP_REVIEWS_URL + "/" + appId)
                 .queryParam("json", 1)
                 // 评分要与 Steam 商店总评价一致，不能沿用 appdetails 的中文语言过滤。
                 .queryParam("language", SteamApiConstants.REVIEW_ALL_LANGUAGE)
@@ -50,7 +50,8 @@ public class SteamReviewClient {
                     Math.max(0, Math.round(totalPositive * 100f / totalReviews)));
             return new SteamReviewSummaryPayload(positivePercent, totalReviews);
         } catch (Exception e) {
-            log.warn("Steam 评价摘要获取失败: appId={}", appId, e);
+            log.warn("Steam 评价摘要获取失败: appId={}, errorType={}",
+                    appId, e.getClass().getSimpleName());
             return null;
         }
     }

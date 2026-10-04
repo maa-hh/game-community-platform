@@ -58,8 +58,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -106,7 +104,10 @@ public class GameCatalogServiceImpl implements GameCatalogService {
                     cachedDetail.setAchievementHighlights(
                             normalizeAchievementIcons(cachedDetail.getAchievementHighlights()));
                     steamCatalogMetricsRefreshService.refreshIfStaleAsync(List.of(appId));
-                    steamGameDetailRefreshService.refresh(appId);
+                    if (!Boolean.TRUE.equals(cachedDetail.getDetailReady())
+                            || isStale(cachedDetail)) {
+                        steamGameDetailRefreshService.refresh(appId);
+                    }
                     return cachedDetail;
                 }
                 redisUtils.del(cacheKey);
@@ -116,16 +117,22 @@ public class GameCatalogServiceImpl implements GameCatalogService {
             }
         }
         GameDetailVO detail = loadDetailFromStore(appId);
+        boolean shouldRefresh = !Boolean.TRUE.equals(detail.getDetailReady()) || isStale(detail);
         try {
             var richDetail = steamGameDetailService.find(appId);
             if (richDetail != null) {
                 mergeRichDetail(detail, richDetail);
             }
             if (steamGameDetailService.needsRefresh(richDetail)) {
-                steamGameDetailRefreshService.refresh(appId);
+                shouldRefresh = true;
             }
         } catch (Exception e) {
             log.warn("读取 Steam Mongo 富详情失败，继续使用结构化索引: appId={}", appId, e);
+            shouldRefresh = true;
+        }
+        steamCatalogMetricsRefreshService.refreshIfStaleAsync(List.of(appId));
+        if (shouldRefresh) {
+            steamGameDetailRefreshService.refresh(appId);
         }
         detail.setAchievementHighlights(normalizeAchievementIcons(detail.getAchievementHighlights()));
         if (!Boolean.FALSE.equals(detail.getDetailReady())) {
@@ -144,7 +151,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         if (distinctIds.isEmpty()) {
             return List.of();
         }
-        Map<Long, GameCatalog> catalogMap = gameCatalogMapper.selectBatchIds(distinctIds).stream()
+        Map<Long, GameCatalog> catalogMap = gameCatalogMapper.selectByIds(distinctIds).stream()
                 .collect(Collectors.toMap(GameCatalog::getAppId, Function.identity(), (a, b) -> a));
         return distinctIds.stream()
                 .filter(appId -> !hasBasicInfo(catalogMap.get(appId)))
@@ -222,7 +229,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
             return List.of();
         }
         List<Long> ids = appIds.stream().filter(Objects::nonNull).distinct().limit(100).toList();
-        Map<Long, GameCatalog> catalogMap = gameCatalogMapper.selectBatchIds(ids).stream()
+        Map<Long, GameCatalog> catalogMap = gameCatalogMapper.selectByIds(ids).stream()
                 .collect(Collectors.toMap(GameCatalog::getAppId, Function.identity(), (a, b) -> a));
         return ids.stream()
                 .map(catalogMap::get)
@@ -248,7 +255,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         if (distinctGames.isEmpty()) {
             return;
         }
-        Map<Long, GameCatalog> existingMap = gameCatalogMapper.selectBatchIds(distinctGames.keySet()).stream()
+        Map<Long, GameCatalog> existingMap = gameCatalogMapper.selectByIds(distinctGames.keySet()).stream()
                 .collect(Collectors.toMap(GameCatalog::getAppId, Function.identity(), (a, b) -> a));
         LocalDateTime now = LocalDateTime.now();
         List<GameCatalog> catalogs = distinctGames.values().stream()
@@ -480,46 +487,24 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         }
     }
 
-    /** 从 MySQL 目录和 Mongo 富详情组装详情，必要时触发异步刷新。 */
+    /** 从 MySQL 目录组装基础详情；外部补全由调用方统一判定并异步触发。 */
     private GameDetailVO loadDetailFromStore(Long appId) {
         GameCatalog catalog = gameCatalogMapper.selectById(appId);
-        if (catalog != null && Boolean.TRUE.equals(catalog.getDetailReady()) && !isStale(catalog)) {
-            var richDetail = steamGameDetailService.find(appId);
-            if (steamGameDetailService.needsRefresh(richDetail)) {
-                // 外部 Steam 接口不再阻塞详情请求；先返回本地快照，后台完成后清缓存。
-                steamGameDetailRefreshService.refresh(appId);
-            }
-            steamCatalogMetricsRefreshService.refreshIfStaleAsync(List.of(appId));
+        if (catalog != null) {
+            // 不论快照是否完整或过期都立即返回本地数据，保持 stale-while-revalidate。
             return toDetailVO(catalog);
         }
-        if (catalog != null && isStale(catalog)
-                && Boolean.TRUE.equals(catalog.getDetailReady())) {
-            // stale-while-revalidate：旧快照继续返回，后台成功后再替换。
-            steamGameDetailRefreshService.refresh(appId);
-            return toDetailVO(catalog);
-        }
-        if (catalog != null && !Boolean.TRUE.equals(catalog.getDetailReady())) {
-            // 榜单/搜索已经入库的游戏先返回基础字段，避免首次进入同步等待 Steam 超时。
-            steamGameDetailRefreshService.refresh(appId);
-            steamCatalogMetricsRefreshService.refreshIfStaleAsync(List.of(appId));
-            return toDetailVO(catalog);
-        }
-        if (catalog == null) {
-            try {
-                steamGameDetailRefreshService.refresh(appId).get(
-                        SteamRedisConstants.DETAIL_REFRESH_WAIT_MILLIS, TimeUnit.MILLISECONDS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new BusinessException("获取游戏详情被中断");
-            } catch (ExecutionException | TimeoutException e) {
-                log.info("等待 Steam 游戏详情刷新超时，稍后重试: appId={}", appId);
-            }
-            catalog = gameCatalogMapper.selectById(appId);
-            if (catalog == null) {
-                throw new BusinessException("游戏详情正在更新，请稍后重试");
-            }
-        }
-        return toDetailVO(catalog);
+        // 首次访问没有本地目录时也不等待 Steam；先返回可轮询的占位响应。
+        return pendingDetail(appId);
+    }
+
+    /** 构造尚未完成 Steam 补全时的最小详情响应，避免请求线程等待外部接口。 */
+    private GameDetailVO pendingDetail(Long appId) {
+        GameDetailVO detail = new GameDetailVO();
+        detail.setAppId(appId);
+        detail.setName("游戏 " + appId);
+        detail.setDetailReady(false);
+        return detail;
     }
 
     /** 按排序方式分页查询有效游戏目录。 */
@@ -715,7 +700,7 @@ public class GameCatalogServiceImpl implements GameCatalogService {
         if (distinctIds.isEmpty()) {
             return List.of();
         }
-        Map<Long, GameCatalog> catalogMap = gameCatalogMapper.selectBatchIds(distinctIds).stream()
+        Map<Long, GameCatalog> catalogMap = gameCatalogMapper.selectByIds(distinctIds).stream()
                 .collect(Collectors.toMap(GameCatalog::getAppId, Function.identity(), (a, b) -> a));
         List<GameTagVO> tags = new ArrayList<>();
         for (Long appId : distinctIds) {
@@ -760,12 +745,13 @@ public class GameCatalogServiceImpl implements GameCatalogService {
                 ? catalog.getDisplayName() : catalog.getSteamName();
     }
 
-    /** 判断目录快照是否超过富详情保鲜时间。 */
-    private boolean isStale(GameCatalog catalog) {
-        if (catalog.getSteamSyncedAt() == null) {
+    /** 判断对外详情快照是否超过富详情保鲜时间。 */
+    private boolean isStale(GameDetailVO detail) {
+        if (detail == null || detail.getSteamSyncedAt() == null) {
             return true;
         }
-        return catalog.getSteamSyncedAt().isBefore(LocalDateTime.now().minusDays(GameCatalogConstants.STALE_DAYS));
+        return detail.getSteamSyncedAt()
+                .isBefore(LocalDateTime.now().minusDays(GameCatalogConstants.STALE_DAYS));
     }
 
     /** 将 Mongo 富详情子文档合并到对外详情 VO。 */

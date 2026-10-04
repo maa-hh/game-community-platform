@@ -46,6 +46,14 @@ load_env() {
   export MYSQL_PASSWORD="${MYSQL_PASSWORD:-root123}"
   export MYSQL_CONTAINER="${MYSQL_CONTAINER:-mysql}"
   export NACOS_DISCOVERY_IP="${NACOS_DISCOVERY_IP:-127.0.0.1}"
+
+  # Nacos RAM 鉴权从环境变量读取，禁止再拼进 Java -D 参数，避免被 ps 暴露。
+  if [[ -n "${ALIBABA_CLOUD_ACCESS_KEY_ID:-}" ]]; then
+    export spas_accessKey="${ALIBABA_CLOUD_ACCESS_KEY_ID}"
+  fi
+  if [[ -n "${ALIBABA_CLOUD_ACCESS_KEY_SECRET:-}" ]]; then
+    export spas_secretKey="${ALIBABA_CLOUD_ACCESS_KEY_SECRET}"
+  fi
 }
 
 require_command() {
@@ -84,16 +92,8 @@ kill_port() {
 
 build_java_opts() {
   load_env
-  local opts=""
-  if [[ -n "${ALIBABA_CLOUD_ACCESS_KEY_ID:-}" ]]; then
-    opts="-Dalibaba.cloud.accessKeyId=${ALIBABA_CLOUD_ACCESS_KEY_ID}"
-  fi
-  if [[ -n "${ALIBABA_CLOUD_ACCESS_KEY_SECRET:-}" ]]; then
-    opts="$opts -Dalibaba.cloud.accessKeySecret=${ALIBABA_CLOUD_ACCESS_KEY_SECRET}"
-  fi
   # 本地开发固定注册 127.0.0.1，避免网卡 IP（如 10.x）在 Gateway 侧不可达导致请求超时
-  opts="$opts -Dspring.cloud.nacos.discovery.ip=${NACOS_DISCOVERY_IP}"
-  echo "$opts"
+  echo "-Dspring.cloud.nacos.discovery.ip=${NACOS_DISCOVERY_IP}"
 }
 
 start_spring_service() {

@@ -28,7 +28,7 @@ public class SteamOpenIdService {
 
     /** 根据一次性 state 组装 Steam OpenID 授权地址。 */
     public String buildAuthUrl(String state) {
-        String returnTo = UriComponentsBuilder.fromHttpUrl(steamProperties.getOpenidReturnTo())
+        String returnTo = UriComponentsBuilder.fromUriString(steamProperties.getOpenidReturnTo())
                 .queryParam("state", state)
                 .toUriString();
         MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
@@ -38,7 +38,7 @@ public class SteamOpenIdService {
         params.add("openid.realm", steamProperties.getOpenidRealm());
         params.add("openid.identity", "http://specs.openid.net/auth/2.0/identifier_select");
         params.add("openid.claimed_id", "http://specs.openid.net/auth/2.0/identifier_select");
-        return UriComponentsBuilder.fromHttpUrl(SteamApiConstants.OPENID_ENDPOINT)
+        return UriComponentsBuilder.fromUriString(SteamApiConstants.OPENID_ENDPOINT)
                 .queryParams(params)
                 .encode(StandardCharsets.UTF_8)
                 .build()
@@ -68,7 +68,8 @@ public class SteamOpenIdService {
         HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(verifyParams, headers);
         String response = restTemplate.postForObject(SteamApiConstants.OPENID_ENDPOINT, request, String.class);
         if (!StringUtils.hasText(response) || !response.contains("is_valid:true")) {
-            log.warn("Steam OpenID 校验失败: {}", response);
+            // 响应正文可能包含回调参数，禁止写入日志。
+            log.warn("Steam OpenID 校验失败");
             throw new BusinessException("Steam 授权校验失败");
         }
         String claimedId = params.get("openid.claimed_id");

@@ -58,7 +58,7 @@ public class SteamFollowServiceImpl implements SteamFollowService {
                 .stream()
                 .collect(Collectors.toMap(UserSteamGame::getAppId, Function.identity(), (a, b) -> a));
         List<Long> appIds = follows.stream().map(UserGameFollow::getAppId).filter(id -> id != null).distinct().toList();
-        Map<Long, GameCatalog> catalogMap = gameCatalogMapper.selectBatchIds(appIds).stream()
+        Map<Long, GameCatalog> catalogMap = gameCatalogMapper.selectByIds(appIds).stream()
                 .collect(Collectors.toMap(GameCatalog::getAppId, Function.identity(), (a, b) -> a));
         List<UserGameFollowVO> result = new ArrayList<>();
         for (UserGameFollow follow : follows) {

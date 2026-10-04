@@ -71,7 +71,7 @@ social/audit/user
 
 本地基础设施由根目录 `docker-compose.yml` 描述。服务配置优先从环境变量读取，开发默认值仅用于本地启动；生产必须显式注入：
 
-- `MYSQL_*`、`REDIS_*`、`NACOS_*`
+- `MYSQL_*`、`REDIS_*`、`NACOS_*`、`ALIBABA_CLOUD_ACCESS_KEY_ID`、`ALIBABA_CLOUD_ACCESS_KEY_SECRET`
 - `JWT_ACCESS_SECRET`、`JWT_REFRESH_SECRET`、`GATEWAY_INTERNAL_SECRET`
 - `SMTP_*`、`STEAM_WEB_API_KEY`、`DASHSCOPE_API_KEY`、`DEEPSEEK_API_KEY`
 - `MINIO_*`、`SEARCH_ES_*`、`KAFKA_*`、`XXL_JOB_ACCESS_TOKEN`

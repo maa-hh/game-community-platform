@@ -132,7 +132,7 @@ public class SteamStoreClient {
 
     /** 请求 Steam appdetails 并返回指定游戏数据节点。 */
     private JsonNode fetchAppData(long appId, String language) {
-        String url = UriComponentsBuilder.fromHttpUrl(SteamApiConstants.APP_DETAILS_URL)
+        String url = UriComponentsBuilder.fromUriString(SteamApiConstants.APP_DETAILS_URL)
                 .queryParam("appids", appId)
                 .queryParam("l", language)
                 .queryParam("cc", steamProperties.getApiCc())
@@ -147,7 +147,8 @@ public class SteamStoreClient {
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
-            log.warn("Steam 游戏资料获取失败: appId={}, language={}", appId, language, e);
+            log.warn("Steam 游戏资料获取失败: appId={}, language={}, errorType={}",
+                    appId, language, e.getClass().getSimpleName());
             throw new BusinessException("获取 Steam 游戏资料失败");
         }
     }
@@ -242,7 +243,7 @@ public class SteamStoreClient {
     private List<SteamAchievementDefinitionPayload> fetchAchievementSchema(
             long appId, JsonNode storeAchievements) {
         if (StringUtils.hasText(steamProperties.getWebApiKey())) {
-            String url = UriComponentsBuilder.fromHttpUrl(SteamApiConstants.GAME_SCHEMA_URL)
+            String url = UriComponentsBuilder.fromUriString(SteamApiConstants.GAME_SCHEMA_URL)
                     .queryParam("key", steamProperties.getWebApiKey())
                     .queryParam("appid", appId)
                     .queryParam("l", steamProperties.getApiLang())
@@ -271,7 +272,8 @@ public class SteamStoreClient {
                     }
                 }
             } catch (Exception e) {
-                log.warn("Steam 成就 schema 获取失败: appId={}", appId, e);
+                log.warn("Steam 成就 schema 获取失败: appId={}, errorType={}",
+                        appId, e.getClass().getSimpleName());
             }
         }
 

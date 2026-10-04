@@ -336,7 +336,7 @@ public class GameChartServiceImpl implements GameChartService {
         if (appIds.isEmpty()) {
             return Map.of();
         }
-        List<GameCatalog> catalogs = gameCatalogMapper.selectBatchIds(appIds);
+        List<GameCatalog> catalogs = gameCatalogMapper.selectByIds(appIds);
         Map<Long, GameCatalog> map = new LinkedHashMap<>();
         for (GameCatalog catalog : catalogs) {
             map.put(catalog.getAppId(), catalog);

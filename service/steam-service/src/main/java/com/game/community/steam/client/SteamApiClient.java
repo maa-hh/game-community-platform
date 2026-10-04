@@ -11,6 +11,7 @@ import com.game.community.model.payload.steam.SteamPlayerAchievementPayload;
 import com.game.community.model.payload.steam.SteamPlayerSummaryPayload;
 import com.game.community.steam.config.SteamProperties;
 import com.game.community.steam.util.SteamAchievementIconUrl;
+import com.game.community.steam.util.SteamUrlUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -35,7 +36,7 @@ public class SteamApiClient {
     /** 获取 Steam 用户公开资料。 */
     public SteamPlayerSummaryPayload getPlayerSummary(String steamId) {
         requireApiKey();
-        String url = UriComponentsBuilder.fromHttpUrl(SteamApiConstants.PLAYER_SUMMARIES_URL)
+        String url = UriComponentsBuilder.fromUriString(SteamApiConstants.PLAYER_SUMMARIES_URL)
                 .queryParam("key", steamProperties.getWebApiKey())
                 .queryParam("steamids", steamId)
                 .toUriString();
@@ -50,13 +51,15 @@ public class SteamApiClient {
             SteamPlayerSummaryPayload summary = new SteamPlayerSummaryPayload();
             summary.setSteamId(player.path("steamid").asText());
             summary.setPersonaName(player.path("personaname").asText(null));
-            summary.setAvatarUrl(player.path("avatarfull").asText(null));
+            summary.setAvatarUrl(SteamUrlUtils.normalizeAvatarUrl(
+                    player.path("avatarfull").asText(null)));
             summary.setProfileUrl(player.path("profileurl").asText(null));
             return summary;
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
-            log.warn("GetPlayerSummaries 失败: steamId={}", steamId, e);
+            log.warn("GetPlayerSummaries 失败: steamId={}, errorType={}",
+                    steamId, e.getClass().getSimpleName());
             throw new BusinessException("获取 Steam 用户资料失败");
         }
     }
@@ -64,7 +67,7 @@ public class SteamApiClient {
     /** 获取 Steam 等级，接口失败时返回 0。 */
     public int getSteamLevel(String steamId) {
         requireApiKey();
-        String url = UriComponentsBuilder.fromHttpUrl(SteamApiConstants.STEAM_LEVEL_URL)
+        String url = UriComponentsBuilder.fromUriString(SteamApiConstants.STEAM_LEVEL_URL)
                 .queryParam("key", steamProperties.getWebApiKey())
                 .queryParam("steamid", steamId)
                 .toUriString();
@@ -73,7 +76,8 @@ public class SteamApiClient {
             JsonNode root = objectMapper.readTree(body);
             return root.path("response").path("player_level").asInt(0);
         } catch (Exception e) {
-            log.warn("GetSteamLevel 失败: steamId={}", steamId, e);
+            log.warn("GetSteamLevel 失败: steamId={}, errorType={}",
+                    steamId, e.getClass().getSimpleName());
             return 0;
         }
     }
@@ -87,15 +91,21 @@ public class SteamApiClient {
             return chineseResult;
         }
 
-        SteamOwnedGamesPayload englishResult = fetchOwnedGames(
-                steamId, SteamApiConstants.LIBRARY_NAME_EN_LANGUAGE);
+        SteamOwnedGamesPayload englishResult = null;
+        try {
+            englishResult = fetchOwnedGames(
+                    steamId, SteamApiConstants.LIBRARY_NAME_EN_LANGUAGE);
+        } catch (BusinessException e) {
+            // 英文名只用于补充展示，不能因为第二次请求失败让已经取得的游戏库整体同步失败。
+            log.warn("Steam 游戏英文名补充失败: steamId={}", steamId);
+        }
         mergeLibraryNames(chineseResult, englishResult);
         return chineseResult;
     }
 
     /** 按语言拉取 Steam 游戏库，只解析游戏卡片需要的基础字段。 */
     private SteamOwnedGamesPayload fetchOwnedGames(String steamId, String language) {
-        String url = UriComponentsBuilder.fromHttpUrl(SteamApiConstants.OWNED_GAMES_URL)
+        String url = UriComponentsBuilder.fromUriString(SteamApiConstants.OWNED_GAMES_URL)
                 .queryParam("key", steamProperties.getWebApiKey())
                 .queryParam("steamid", steamId)
                 .queryParam("include_appinfo", 1)
@@ -136,9 +146,10 @@ public class SteamApiClient {
             }
             return result;
         } catch (Exception e) {
-            log.warn("GetOwnedGames 失败: steamId={}", steamId, e);
-            result.setLibraryPublic(false);
-            return result;
+            log.warn("GetOwnedGames 失败: steamId={}, errorType={}",
+                    steamId, e.getClass().getSimpleName());
+            // 网络、超时、鉴权失败都不等于用户把游戏库设为私密，交给上层提示重试。
+            throw new BusinessException("Steam 游戏库请求失败，请稍后重试");
         }
     }
 
@@ -173,7 +184,7 @@ public class SteamApiClient {
         if (!StringUtils.hasText(steamProperties.getWebApiKey())) {
             return List.of();
         }
-        String url = UriComponentsBuilder.fromHttpUrl(SteamApiConstants.PLAYER_ACHIEVEMENTS_URL)
+        String url = UriComponentsBuilder.fromUriString(SteamApiConstants.PLAYER_ACHIEVEMENTS_URL)
                 .queryParam("key", steamProperties.getWebApiKey())
                 .queryParam("steamid", steamId)
                 .queryParam("appid", appId)
@@ -214,7 +225,7 @@ public class SteamApiClient {
         if (!StringUtils.hasText(steamProperties.getWebApiKey())) {
             return Map.of();
         }
-        String url = UriComponentsBuilder.fromHttpUrl(SteamApiConstants.GLOBAL_ACHIEVEMENTS_URL)
+        String url = UriComponentsBuilder.fromUriString(SteamApiConstants.GLOBAL_ACHIEVEMENTS_URL)
                 .queryParam("gameid", appId)
                 .toUriString();
         try {
@@ -234,7 +245,8 @@ public class SteamApiClient {
             }
             return result;
         } catch (Exception e) {
-            log.debug("GetGlobalAchievementPercentagesForApp 失败: appId={}", appId, e);
+            log.debug("GetGlobalAchievementPercentagesForApp 失败: appId={}, errorType={}",
+                    appId, e.getClass().getSimpleName());
             return Map.of();
         }
     }
@@ -244,7 +256,7 @@ public class SteamApiClient {
         if (!StringUtils.hasText(steamProperties.getWebApiKey())) {
             return List.of();
         }
-        String url = UriComponentsBuilder.fromHttpUrl(SteamApiConstants.GAME_SCHEMA_URL)
+        String url = UriComponentsBuilder.fromUriString(SteamApiConstants.GAME_SCHEMA_URL)
                 .queryParam("key", steamProperties.getWebApiKey())
                 .queryParam("appid", appId)
                 .queryParam("l", steamProperties.getApiLang())
@@ -277,7 +289,8 @@ public class SteamApiClient {
             }
             return result;
         } catch (Exception e) {
-            log.debug("GetSchemaForGame 失败: appId={}", appId, e);
+            log.debug("GetSchemaForGame 失败: appId={}, errorType={}",
+                    appId, e.getClass().getSimpleName());
             return List.of();
         }
     }

@@ -40,7 +40,7 @@ public class SteamChartClient {
     public List<SteamChartGamePayload> searchApps(String keyword, int start, int limit) {
         int safeStart = Math.max(0, start);
         int safeLimit = Math.max(1, Math.min(limit, 50));
-        String url = UriComponentsBuilder.fromHttpUrl(SteamApiConstants.STORE_SEARCH_URL)
+        String url = UriComponentsBuilder.fromUriString(SteamApiConstants.STORE_SEARCH_URL)
                 .queryParam("term", keyword)
                 .queryParam("start", safeStart)
                 .queryParam("count", safeLimit)
@@ -68,7 +68,8 @@ public class SteamChartClient {
             }
             return result;
         } catch (Exception e) {
-            log.warn("Steam Store 搜索失败: keyword={}", keyword, e);
+            log.warn("Steam Store 搜索失败: keywordLength={}, errorType={}",
+                    keyword == null ? 0 : keyword.length(), e.getClass().getSimpleName());
             return List.of();
         }
     }
@@ -91,7 +92,7 @@ public class SteamChartClient {
 
     /** 拉取 Steam 精选榜单数据。 */
     private JsonNode loadFeaturedCategories() {
-        String url = UriComponentsBuilder.fromHttpUrl(SteamApiConstants.FEATURED_CATEGORIES_URL)
+        String url = UriComponentsBuilder.fromUriString(SteamApiConstants.FEATURED_CATEGORIES_URL)
                 .queryParam("cc", steamProperties.getApiCc())
                 // 榜单展示固定使用中文，不受通用 Steam 语言配置影响。
                 .queryParam("l", SteamApiConstants.LIBRARY_NAME_ZH_LANGUAGE)
@@ -99,7 +100,7 @@ public class SteamChartClient {
         try {
             return objectMapper.readTree(restTemplate.getForObject(url, String.class));
         } catch (Exception e) {
-            log.warn("Steam 精选榜单获取失败", e);
+            log.warn("Steam 精选榜单获取失败: errorType={}", e.getClass().getSimpleName());
             return objectMapper.createObjectNode();
         }
     }
@@ -147,7 +148,7 @@ public class SteamChartClient {
     private List<SteamChartGamePayload> fetchSearchChartGames(
             String board, int start, int limit) {
         UriComponentsBuilder builder = UriComponentsBuilder
-                .fromHttpUrl(SteamApiConstants.STORE_SEARCH_URL)
+                .fromUriString(SteamApiConstants.STORE_SEARCH_URL)
                 .queryParam("json", 1)
                 .queryParam("start", start)
                 .queryParam("count", limit)
@@ -186,7 +187,8 @@ public class SteamChartClient {
             }
             return result;
         } catch (Exception e) {
-            log.warn("Steam 榜单搜索失败: board={}", board, e);
+            log.warn("Steam 榜单搜索失败: board={}, errorType={}",
+                    board, e.getClass().getSimpleName());
             return List.of();
         }
     }
