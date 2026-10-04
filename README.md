@@ -1,6 +1,6 @@
 # 游戏社区平台前端
 
-这是游戏社区平台的 React 前端，负责官网入口、社区信息流、游戏资料、帖子详情与编辑、个人主页、通知、商城、审核工作台等浏览器端能力。后端是同一远程仓库中的 `master` 分支；前端建议以独立的 `frontend` 分支协作，避免前后端两个独立 Git 历史互相覆盖。
+这是游戏社区平台的 React 前端，负责官网入口、社区信息流、游戏资料、帖子详情与编辑、个人主页、通知、商城、审核工作台等浏览器端能力。后端实现位于同一远程仓库的 `backend` 分支，`master` 只保留项目介绍与分支导航；前端使用独立的 `frontend` 分支协作，避免两个工程的目录和 Git 历史互相覆盖。
 
 ## 技术栈与边界
 
@@ -78,15 +78,23 @@ src/
 | `/game/:appId`      | Main | 否     | 游戏详情、评价、成就和讨论       |
 | `/recommend`        | Main | 否     | 热榜推荐                         |
 | `/games`            | Main | 否     | 游戏发现、搜索和关注             |
-| `/feed`             | Main | 是     | 登录用户关注信息流               |
-| `/profile`          | Main | 是     | 当前用户资料、动态、Steam 和装扮 |
+| `/feed`             | Main | 操作时 | 游客可进入；登录后显示关注信息流 |
+| `/profile`          | Main | 操作时 | 他人主页公开；本人私有操作需登录 |
 | `/search`           | Main | 是     | 用户/帖子搜索                    |
-| `/shop`             | Main | 是     | 装扮商城、背包、装备             |
+| `/shop`             | Main | 操作时 | 游客可浏览；兑换与背包需登录     |
 | `/notifications`    | Main | 是     | 通知分类、未读数和 SSE           |
 | `/post/editor`      | Main | 是     | 图文/文章/视频发布和审核进度     |
 | `/admin/moderation` | Main | 管理员 | 审核工单                         |
 
 `/login` 兼容旧入口并重定向到 `/`；`/about` 兼容旧入口并重定向到 `/games`；未知路径由懒加载的 NotFound 处理。
+
+### 运行时可靠性约定
+
+- 小屏顶栏拆成品牌、操作、主导航和搜索区；操作区使用等宽分布，页面子导航按内容选择等宽网格或横向滚动，禁止压缩到文字重叠。
+- 帖子/游戏详情、404 和审核页使用可恢复懒加载。发布后旧 HTML 引用失效 chunk 时，同一路由最多自动刷新一次；仍失败则显示自定义恢复页，不暴露框架错误栈。
+- 游戏详情以 `detailReady` 为唯一补全状态。接口先返回本地快照，`false` 时前端做有界轮询；切换详情子 Tab 保持原滚动位置，并按新内容可用高度收敛。
+- 视频播放器内嵌状态保持 16:9；移动端的音量、弹幕和全屏控件使用紧凑布局，并在退出全屏、旋转和视口变化后重新计算尺寸。
+- 帖子复制链接默认使用已注册的 `/post/:id` 前端路由。HTTP 或内嵌 WebView 拒绝自动复制时展示原生可长按文本；生产环境应启用 HTTPS 以稳定使用 Clipboard API。
 
 ## 与后端的协议边界
 
@@ -118,7 +126,7 @@ REACT_APP_UPLOAD_CONCURRENCY=4      # 分片上传并发，自动限制为 1~8
 REACT_APP_RESET_AUTH_ON_BOOT=false  # 仅测试时显式开启清理登录态
 ```
 
-生产构建默认使用当前站点作为 API 根地址，部署层需要把 `/user`、`/article`、`/social`、`/notification`、`/game`、`/steam`、`/search`、`/shop`、`/audit`、`/danmaku` 等路径反代到后端 gateway。历史路由必须回退到 `build/index.html`；SSE 不得被代理层缓冲或设置短超时。
+生产构建默认使用当前站点作为 API 根地址，部署层需要把 `/user`、`/article`、`/social`、`/notification`、`/game`、`/steam`、`/search`、`/shop`、`/audit`、`/danmaku` 等 API 路径反代到后端 gateway。页面路由（特别是 `/post/:id`、`/game/:appId`）必须回退到 `build/index.html`；SSE 不得被代理层缓冲或设置短超时。若要启用后端 OG 分享页，必须额外把 `/share/post/**` 转发到 gateway，否则前端仍应复制 `/post/:id`。生产站点应使用 HTTPS，否则浏览器可能禁止自动写入剪贴板和敏感 Cookie。
 
 ```bash
 npm run build

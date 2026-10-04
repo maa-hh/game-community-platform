@@ -49,14 +49,22 @@ src/index.tsx
 RootLayout
 ├── HomeLayout / → Home
 └── MainLayout /
-    ├── public: community, post/:id, game/:appId, recommend, games
-    ├── AuthGuard: feed, profile, search, shop, notifications, post/editor
+    ├── public: community, post/:id, game/:appId, recommend, games,
+    │           feed, profile, shop
+    ├── AuthGuard: search, notifications, post/editor
     └── AdminGuard: admin/moderation
 ```
 
-首屏常用页面同步 import，详情页、404 和审核页 lazy import。`router/preload.ts` 在用户点击帖子/游戏卡片意图时预加载对应详情 chunk，点击后的导航仍以服务端详情为准。
+首屏常用页面同步 import，详情页、404 和审核页 lazy import。`router/preload.ts` 在用户点击帖子/游戏卡片意图时预加载对应详情 chunk，点击后的导航仍以服务端详情为准。懒加载统一经过 `importWithChunkReload`：检测到发布版本切换导致的 ChunkLoadError 时，同一路由在当前会话最多刷新一次；再次失败由根路由的 `RouteErrorFallback` 提供重试/返回入口，禁止无限刷新或显示 React Router 堆栈。
 
 页面级鉴权通过 `router/guards.tsx`，管理员鉴权通过 `router/AdminGuard.tsx`。组件内的单次操作鉴权使用 `useRequireLogin`，不能复制 token 检查。
+
+### 3.1 小屏布局约束
+
+- `AppHeader` 在小屏拆成多行：品牌独占并居中，主题/发布/消息/头像在下一行等宽分布，主导航再使用等宽列；桌面布局不受影响。
+- `PageSubTopBar`、游戏发现和个人主页 Tab 根据数量使用等宽网格或可滚动容器，不允许 flex item 被压缩到文字覆盖。
+- 页面切换 Tab 时保持可复用的滚动位置；当新内容高度不足时，由浏览器将位置限制到该页面最大可滚动高度。
+- 条件展示的个人主页操作和 Tab 使用占位或稳定容器尺寸，避免浏览历史、赞过等面板切换时整页横向宽度或顶部高度跳变。
 
 ## 4. 数据流与状态所有权
 
@@ -121,11 +129,13 @@ Ant Design 统一为 6.5.1：
 ## 7. 性能与一致性策略
 
 - 首屏页面同步导入，详情/审核/404 懒加载。
+- 懒加载失败只允许每个路由自动恢复一次，后续交给错误页，避免刷新循环。
 - 帖子列表统一 `ContentCard`，减少重复 DOM 和视觉漂移。
 - Feed 用 RTK Query infinite query、主键去重、缓存刷新和预加载。
 - 图片使用 LazyImage/封面组件；视频列表只显示封面，详情页再创建 DPlayer。
 - 分片上传限制并发、支持重试、续传和中止；未完成会话由持久化恢复 hook 处理。
 - 资料、通知和关注流通过 revision/dirty 标记失效，避免旧请求覆盖新状态。
+- 游戏详情以服务端 `detailReady` 驱动有界轮询；完整缓存不重复刷新，待补全或过期快照采用 stale-while-revalidate。
 
 ## 8. 开发和生产配置
 
@@ -137,6 +147,8 @@ Ant Design 统一为 6.5.1：
 2. API 上下文转发到 `BACKEND_URL`，保留 query、Cookie、SSE 响应头；
 3. 其他历史路由返回 `build/index.html`；
 4. 后端不可用时返回明确的 502，而不是静默返回 HTML。
+
+复制分享默认生成站点同源 `/post/:id` 或 `/game/:appId`。后端 `/share/post/**` 是可选 OG 落地页，只有部署层确认转发到 gateway 后才能对外使用。Clipboard API 需要安全上下文；HTTP 环境只能尽力使用同步兼容复制，并始终保留普通文本的长按复制入口。
 
 ## 9. 架构级验证
 

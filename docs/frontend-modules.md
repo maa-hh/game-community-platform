@@ -15,8 +15,8 @@
 | `content.ts`      | 分类、文章 CRUD、发布审核、详情、审核进度、图片/视频上传                 | `/category/**`、`/article/**`、`/file/**`；包含分片上传队列、重试、续传、合并和绑定        |
 | `social.ts`       | Feed、评论、回复、点赞、收藏、分享、转发、关注、拉黑、举报、个人社交列表 | `/social/**`、`/report`；统一后端历史数字字段和帖子类型，提供 mock 分支                    |
 | `notification.ts` | 通知汇总、分类消息、已读、SSE 事件解析                                   | `/notification/**`；SSE 事件兼容旧包装结构                                                 |
-| `game.ts`         | 游戏详情、发现、图表、评价、评价回复、游戏分享、讨论                     | `/game/**`、`/social/game-reviews/**`；把 raw game map 为页面模型                          |
-| `steam.ts`        | Steam 授权、个人资料、库、成就、同步、解绑、他人 Steam 数据              | `/steam/**`；保留分页和同步游标                                                            |
+| `game.ts`         | 游戏详情、发现、图表、评价、评价回复、游戏分享、讨论                     | `/game/**`、`/social/game-reviews/**`；映射 `detailReady`，禁止用字段数量猜测补全状态      |
+| `steam.ts`        | Steam 授权、个人资料、库、成就、同步、解绑、他人 Steam 数据              | `/steam/**`；保留分页/同步游标，头像 URL 在服务边界升级为 HTTPS                            |
 | `userGame.ts`     | 关注游戏、批量检查、从 Steam 导入、用户游戏列表                          | `/steam/follows/**`；提供列表 enrichment                                                   |
 | `hotRank.ts`      | 热榜查询、热榜 item 转 Feed item                                         | `/hot-article/rank`；对应后端 `recommend-service-current.md`，兼容热榜分数、行为统计字段   |
 | `search.ts`       | 搜索建议、建议词触发、历史、游戏/文章搜索                                | `/search/**`；结果映射到游戏卡或 ContentCard                                               |
@@ -98,7 +98,7 @@
 | ------------------ | -------------------------------------------------- | ------------------------------------------ |
 | `Home`             | 官网首屏、视频背景、登录入口、主题                 | `HomeLayout`、`useAuthModal`               |
 | `Community`        | 游客最新帖子、无限滚动、点赞/收藏                  | `PostFeedList`、community RTK Query        |
-| `Feed`             | 登录用户关注流、刷新、失效同步                     | follow RTK Query、FeedPanel                |
+| `Feed`             | 游客空态、登录用户关注流、刷新、失效同步           | follow RTK Query、FeedPanel                |
 | `Recommend`        | 热榜周期、日期筛选和热度卡片                       | `hotRank`、PostFeedList                    |
 | `Games`            | 游戏发现、搜索建议、筛选、关注、瀑布流             | `game`、`userGame`、MasonryGrid            |
 | `GameDetail`       | 游戏资料、价格、成就、Steam 统计、评价和讨论       | `useGameDetail`、多个 GameDetail parts     |
@@ -118,7 +118,14 @@
 - `base-ui/`：不读取 Redux、不调用 service，使用通用 props；详情见 `frontend-components.md`。
 - `constants/`：品牌、内容类型、媒体展示、头像框、主页背景、评论卡片和布局常量；不得在 JSX 内重复写 catalog。
 - `types/`：跨模块稳定类型；service 的后端 raw 类型和页面 domain 类型分离，映射在 service/utils 边界完成。
-- `utils/`：纯函数为主，包括时间/计数/价格/Steam HTML/通知路由/帖子映射/导航和缓存键；不得产生 React 副作用或直接弹 Toast。
+- `utils/`：纯函数为主，包括时间/计数/价格/Steam HTML/通知路由/帖子映射/导航、分享 URL 和缓存键；不得直接弹 Toast。`clipboard.ts` 是浏览器能力适配例外，只返回复制结果，由调用方决定反馈。
+
+### 5.1 关键异步边界
+
+- `GameDetail/useGameDetail` 首次立即展示本地快照；只有 `detailReady === false` 才做有界轮询，完整详情不重复请求 Steam。
+- `SteamSection` 仅对“已绑定且头像为空”的资料做短轮询；未绑定或已经有头像时立即结束。
+- 分享转发以创建文章接口成功为完成边界，不再为确认结果追加详情请求；分享计数补记失败不得把成功转发改报为失败。
+- 复制分享默认生成 `/post/:id` 或 `/game/:appId`。自动复制不可验证时保留面板并显示 `ManualCopyField`，由用户使用系统长按菜单复制。
 
 ## 6. mock 模块
 

@@ -51,3 +51,4 @@
 4. 文档不写真实密钥、账号、生产域名、个人路径、日志内容或数据库真实数据。
 5. 所有中文文档以 UTF-8 保存；代码行为与文档冲突时先修正文档事实，再决定是否需要代码变更。
 6. 合并前运行 `npm run lint`、`npm run typecheck`、`npm run build` 和 `git diff --check`。
+7. 涉及部署时同时核对：页面路由回退、可选 `/share/post/**` 代理、HTTPS Clipboard/Cookie、SSE 缓冲以及发布后旧 chunk 恢复策略。

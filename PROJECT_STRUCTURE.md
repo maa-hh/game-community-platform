@@ -52,7 +52,7 @@ src/
 ├── router/        # 路由表 + RouterProvider
 ├── service/       # axios 封装 + API
 ├── store/         # Redux 模块 + 类型化 hooks
-├── utils/         # 纯工具函数
+├── utils/         # 纯工具函数及隔离的浏览器能力适配
 ├── views/         # 页面级组件（不管布局壳子）
 ├── App.tsx        # Provider 装配（Redux、antd、Router）
 └── index.tsx      # 入口（全局样式、mock）
@@ -165,7 +165,7 @@ base-ui/
 
 - 路由表 + `createBrowserRouter`，不散落 `<Route>`。
 - 数据路由 API，History 模式（URL 无 `#`）。
-- 首屏同步 import，次要页 `lazy()` + `Suspense`。
+- 首屏同步 import；次要页 `lazy()` 统一通过 `router/lazyImport.ts` 加载，并由根路由 `errorElement` 处理失败。ChunkLoadError 每个路由只自动刷新一次，禁止无限重载。
 - 守卫放 `router/guards.ts`。
 
 ---
@@ -196,8 +196,8 @@ base-ui/
 
 ### 9. `utils/` — 工具函数
 
-- 纯函数，无副作用。
-- 示例：`storage.ts`（token）、`format.ts`、`validate.ts`。
+- 默认写纯函数；剪贴板、storage 等浏览器能力适配必须集中封装，只返回结果，不直接操作业务状态或弹 Toast。
+- 示例：`storage.ts`（token）、`clipboard.ts`、`format.ts`、`validate.ts`。
 
 ---
 
