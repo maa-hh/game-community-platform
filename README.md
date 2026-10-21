@@ -4,6 +4,12 @@
 
 本仓库采用“入口分支 + 后端实现分支 + 前端实现分支”的组织方式：master 只负责项目介绍和导航，完整代码分别位于 backend 与 frontend 分支。这样既能让仓库首页保持清晰，也能避免前后端两个独立工程的目录和 Git 历史互相覆盖。
 
+## 演示视频
+
+[![游戏社区平台演示视频封面](media/game-community-demo-cover.png)](https://github.com/maa-hh/game-community-platform/raw/refs/heads/master/media/game-community-demo.mp4)
+
+[▶ 播放完整演示视频（约 1 分 49 秒，H.264/AAC MP4）](https://github.com/maa-hh/game-community-platform/raw/refs/heads/master/media/game-community-demo.mp4)
+
 ## 项目简介
 
     浏览器前端（frontend）
